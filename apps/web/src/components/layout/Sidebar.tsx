@@ -8,6 +8,7 @@ import {
   CheckSquare,
   AlertTriangle,
   ArrowLeftRight,
+  UserCircle2,
   Users,
   Shield,
   Building2,
@@ -40,6 +41,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'OPERATIONS',
     items: [
+      { href: '/dashboard/clients', label: 'Clients', icon: UserCircle2 },
       { href: '/dashboard/projects', label: 'Projects', icon: FolderKanban },
       { href: '/dashboard/approvals', label: 'Approvals', icon: CheckSquare },
       { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
@@ -86,7 +88,7 @@ export function Sidebar() {
           TI
         </div>
         <div className="min-w-0">
-          <p className="text-white font-semibold text-sm leading-tight truncate">Trendy Interiors</p>
+          <p className="text-white font-semibold text-sm leading-tight truncate">Trendy Interios</p>
           <p className="text-slate-400 text-xs leading-tight">CRM Platform</p>
         </div>
       </div>

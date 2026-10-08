@@ -3,8 +3,8 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Trendy Interiors — Admin',
-  description: 'Admin dashboard for Trendy Interiors workflow management',
+  title: 'Trendy Interios — Admin',
+  description: 'Admin dashboard for Trendy Interios workflow management',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

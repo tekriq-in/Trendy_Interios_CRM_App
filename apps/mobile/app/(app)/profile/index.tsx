@@ -26,7 +26,7 @@ export default function ProfileScreen() {
           <Text style={styles.avatarText}>TI</Text>
         </View>
         <View>
-          <Text style={styles.name}>Trendy Interiors Staff</Text>
+          <Text style={styles.name}>Trendy Interios Staff</Text>
           <Text style={styles.role}>Managing Director</Text>
           {userId ? <Text style={styles.userId} numberOfLines={1}>ID: {userId}</Text> : null}
         </View>
@@ -69,7 +69,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.version}>Trendy Interiors CRM · v0.1.0</Text>
+      <Text style={styles.version}>Trendy Interios CRM · v0.1.0</Text>
     </View>
   );
 }

@@ -1,4 +1,4 @@
-# CLAUDE.md — Trendy Interiors CRM
+# CLAUDE.md — Trendy Interios CRM
 
 Source of truth: `docs/SOW.md`. If this file and the SOW disagree, the SOW wins.
 

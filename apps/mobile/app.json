@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Trendy Interiors",
+    "name": "Trendy Interios",
     "slug": "trendy-interiors",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Trendy Interiors to access your photos for project uploads."
+          "photosPermission": "Allow Trendy Interios to access your photos for project uploads."
         }
       ]
     ],

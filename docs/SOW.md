@@ -1,5 +1,5 @@
-# Statement of Work — Trendy Interiors Workflow System
-**Client:** Trendy Interiors | **Prepared by:** Tekriq Technologies
+# Statement of Work — Trendy Interios Workflow System
+**Client:** Trendy Interios | **Prepared by:** Tekriq Technologies
 
 ---
 

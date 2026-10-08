@@ -1,4 +1,4 @@
-# Trendy Interiors CRM — Implementation Plan
+# Trendy Interios CRM — Implementation Plan
 
 ## 1. Monorepo Structure
 

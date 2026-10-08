@@ -78,7 +78,7 @@ export default function LoginScreen() {
             <Text style={styles.logoText}>TI</Text>
           </View>
         </View>
-        <Text style={styles.title}>Trendy Interiors</Text>
+        <Text style={styles.title}>Trendy Interios</Text>
         <Text style={styles.subtitle}>
           {mfaRequired ? 'Two-factor authentication' : 'Sign in to continue'}
         </Text>

@@ -70,7 +70,7 @@ export default function LoginPage() {
         <div className="w-20 h-20 rounded-2xl bg-indigo-600 flex items-center justify-center text-3xl font-bold mb-8 shadow-2xl">
           TI
         </div>
-        <h1 className="text-4xl font-bold mb-3 tracking-tight">Trendy Interiors</h1>
+        <h1 className="text-4xl font-bold mb-3 tracking-tight">Trendy Interios</h1>
         <p className="text-slate-300 text-center text-lg max-w-sm leading-relaxed">
           End-to-end project tracking for interior manufacturing
         </p>
@@ -98,7 +98,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
               TI
             </div>
-            <span className="font-semibold text-slate-900">Trendy Interiors</span>
+            <span className="font-semibold text-slate-900">Trendy Interios</span>
           </div>
 
           {!mfaRequired ? (

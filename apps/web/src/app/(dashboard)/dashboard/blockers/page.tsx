@@ -2,8 +2,13 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import type { Blocker } from '@ti/shared';
+import { Table, Th, Td, Tr } from '@/components/ui/Table';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 type BlockerPopulated = Blocker & {
   project?: { _id: string; title: string };
@@ -19,33 +24,31 @@ interface RaiseForm {
 
 const EMPTY_FORM: RaiseForm = { title: '', description: '', type: 'internal', projectId: '' };
 
+type Filter = 'all' | 'open' | 'sla_triggered' | 'resolved';
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'sla_triggered', label: 'SLA Triggered' },
+  { value: 'resolved', label: 'Resolved' },
+];
+
+const inputCls = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow';
+
 export default function BlockersPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RaiseForm>(EMPTY_FORM);
-  const [filter, setFilter] = useState<'all' | 'open' | 'sla_triggered' | 'resolved'>('all');
+  const [filter, setFilter] = useState<Filter>('all');
 
   const { data: blockers, isLoading } = useQuery<BlockerPopulated[]>({
     queryKey: ['blockers', filter],
-    queryFn: () =>
-      apiClient
-        .get(filter === 'all' ? '/blockers' : `/blockers?status=${filter}`)
-        .then((r) => r.data),
+    queryFn: () => apiClient.get(filter === 'all' ? '/blockers' : `/blockers?status=${filter}`).then(r => r.data),
   });
 
   const raise = useMutation({
-    mutationFn: (data: RaiseForm) =>
-      apiClient.post('/blockers', {
-        title: data.title,
-        description: data.description,
-        type: data.type,
-        project: data.projectId,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['blockers'] });
-      setShowForm(false);
-      setForm(EMPTY_FORM);
-    },
+    mutationFn: (data: RaiseForm) => apiClient.post('/blockers', { title: data.title, description: data.description, type: data.type, project: data.projectId }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['blockers'] }); setShowForm(false); setForm(EMPTY_FORM); },
   });
 
   const triggerSla = useMutation({
@@ -58,153 +61,131 @@ export default function BlockersPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['blockers'] }),
   });
 
-  const statusBadge = (status: string) => {
-    const map: Record<string, string> = {
-      open: 'bg-yellow-100 text-yellow-800',
-      sla_triggered: 'bg-red-100 text-red-800',
-      resolved: 'bg-green-100 text-green-800',
-    };
-    return map[status] ?? 'bg-gray-100 text-gray-700';
-  };
+  function statusVariant(status: string): 'yellow' | 'red' | 'green' | 'gray' {
+    if (status === 'open') return 'yellow';
+    if (status === 'sla_triggered') return 'red';
+    if (status === 'resolved') return 'green';
+    return 'gray';
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Blockers</h1>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
-        >
-          {showForm ? 'Cancel' : 'Raise Blocker'}
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Blockers"
+        description="Track and resolve project blockers"
+        action={
+          <Button variant={showForm ? 'secondary' : 'primary'} onClick={() => setShowForm(v => !v)}>
+            {showForm ? <><X className="w-4 h-4" /> Cancel</> : <><Plus className="w-4 h-4" /> Raise Blocker</>}
+          </Button>
+        }
+      />
 
       {showForm && (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h2 className="font-semibold text-gray-800 text-sm">New Blocker</h2>
-          <input
-            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
-            placeholder="Title"
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-          />
-          <textarea
-            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
-            placeholder="Description"
-            rows={2}
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
-          <div className="flex gap-3">
-            <select
-              className="border border-gray-300 rounded px-3 py-1.5 text-sm"
-              value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value as RaiseForm['type'] })}
-            >
-              <option value="internal">Internal</option>
-              <option value="client_side">Client-side</option>
-            </select>
-            <input
-              className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm"
-              placeholder="Project ID"
-              value={form.projectId}
-              onChange={(e) => setForm({ ...form, projectId: e.target.value })}
-            />
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-slate-800 mb-4">New Blocker</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Title *</label>
+              <input className={inputCls} placeholder="Brief title of the blocker" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+              <textarea className={inputCls} placeholder="What is blocking progress?" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
+              <select className={inputCls} value={form.type} onChange={e => setForm({ ...form, type: e.target.value as RaiseForm['type'] })}>
+                <option value="internal">Internal</option>
+                <option value="client_side">Client-side</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Project ID *</label>
+              <input className={inputCls} placeholder="MongoDB ObjectId" value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2">
+              <Button onClick={() => raise.mutate(form)} disabled={raise.isPending || !form.title || !form.projectId}>
+                {raise.isPending ? 'Saving…' : 'Submit Blocker'}
+              </Button>
+              {raise.isError && <p className="text-xs text-red-600 mt-2">Failed to raise blocker. Please try again.</p>}
+            </div>
           </div>
-          <button
-            onClick={() => raise.mutate(form)}
-            disabled={raise.isPending || !form.title || !form.projectId}
-            className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {raise.isPending ? 'Saving…' : 'Submit'}
-          </button>
-          {raise.isError && (
-            <p className="text-xs text-red-600">Failed to raise blocker.</p>
-          )}
         </div>
       )}
 
-      <div className="flex gap-2">
-        {(['all', 'open', 'sla_triggered', 'resolved'] as const).map((s) => (
+      {/* Filter pills */}
+      <div className="flex gap-2 flex-wrap">
+        {FILTERS.map(f => (
           <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`text-xs px-3 py-1 rounded-full border ${
-              filter === s
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'border-gray-300 text-gray-600 hover:bg-gray-100'
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors border ${
+              filter === f.value
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'border-slate-300 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            {s === 'all' ? 'All' : s === 'sla_triggered' ? 'SLA Triggered' : s.charAt(0).toUpperCase() + s.slice(1)}
+            {f.label}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Title</Th>
+              <Th>Type</Th>
+              <Th>Status</Th>
+              <Th>Project</Th>
+              <Th>Raised By</Th>
+              <Th>SLA Triggered</Th>
+              <Th>Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {blockers?.map(b => (
+              <Tr key={b._id}>
+                <Td><span className="font-medium text-slate-900">{b.title}</span></Td>
+                <Td>{b.type === 'client_side' ? 'Client-side' : 'Internal'}</Td>
+                <Td>
+                  <Badge variant={statusVariant(b.status)}>
+                    {b.status === 'sla_triggered' ? 'SLA Triggered' : b.status.charAt(0).toUpperCase() + b.status.slice(1)}
+                  </Badge>
+                </Td>
+                <Td>{b.project?.title ?? '—'}</Td>
+                <Td>{b.raisedBy?.name ?? '—'}</Td>
+                <Td className="text-slate-400 text-xs">
+                  {b.slaTriggeredAt ? new Date(b.slaTriggeredAt).toLocaleDateString('en-IN') : '—'}
+                </Td>
+                <Td>
+                  <div className="flex gap-1.5">
+                    {b.status === 'open' && (
+                      <Button variant="secondary" className="text-xs py-1 px-2" onClick={() => triggerSla.mutate(b._id)} disabled={triggerSla.isPending}>
+                        Trigger SLA
+                      </Button>
+                    )}
+                    {(b.status === 'open' || b.status === 'sla_triggered') && (
+                      <Button variant="ghost" className="text-xs py-1 px-2 text-green-700 hover:bg-green-50" onClick={() => resolve.mutate(b._id)} disabled={resolve.isPending}>
+                        Resolve
+                      </Button>
+                    )}
+                    {b.status === 'resolved' && <span className="text-xs text-slate-400">—</span>}
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+            {blockers?.length === 0 && (
               <tr>
-                {['Title', 'Type', 'Status', 'Project', 'Raised By', 'SLA At', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                    {h}
-                  </th>
-                ))}
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
+                  No blockers found.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {blockers?.map((b) => (
-                <tr key={b._id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{b.title}</td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {b.type === 'client_side' ? 'Client-side' : 'Internal'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(b.status)}`}>
-                      {b.status === 'sla_triggered' ? 'SLA Triggered' : b.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{b.project?.title ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{b.raisedBy?.name ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    {b.slaTriggeredAt ? new Date(b.slaTriggeredAt).toLocaleDateString() : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1.5">
-                      {b.status === 'open' && (
-                        <button
-                          onClick={() => triggerSla.mutate(b._id)}
-                          disabled={triggerSla.isPending}
-                          className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 disabled:opacity-50"
-                        >
-                          Trigger SLA
-                        </button>
-                      )}
-                      {(b.status === 'open' || b.status === 'sla_triggered') && (
-                        <button
-                          onClick={() => resolve.mutate(b._id)}
-                          disabled={resolve.isPending}
-                          className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 disabled:opacity-50"
-                        >
-                          Resolve
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {blockers?.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
-                    No blockers found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            )}
+          </tbody>
+        </Table>
       )}
     </div>
   );

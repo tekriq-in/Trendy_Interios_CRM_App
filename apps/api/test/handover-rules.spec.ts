@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { HandoversService } from '../src/modules/handovers/handovers.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
@@ -13,6 +14,7 @@ const mockHandoverModel = {
 };
 
 const mockActivityLog = { record: jest.fn() };
+const mockEventEmitter = { emit: jest.fn() };
 
 describe('Handover Rules', () => {
   let service: HandoversService;
@@ -24,6 +26,7 @@ describe('Handover Rules', () => {
         HandoversService,
         { provide: getModelToken('Handover'), useValue: mockHandoverModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 

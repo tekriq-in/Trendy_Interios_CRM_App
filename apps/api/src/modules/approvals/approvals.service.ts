@@ -1,15 +1,17 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Approval, ApprovalDocument } from './schemas/approval.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
+import { WHATSAPP_SERVICE, IWhatsAppService } from '../whatsapp/whatsapp.interface';
 
 @Injectable()
 export class ApprovalsService {
   constructor(
     @InjectModel(Approval.name) private approvalModel: Model<ApprovalDocument>,
     private activityLog: ActivityLogService,
+    @Inject(WHATSAPP_SERVICE) private whatsapp: IWhatsAppService,
   ) {}
 
   findPending() {
@@ -71,6 +73,20 @@ export class ApprovalsService {
       entityId: id,
       metadata: { kind: approval.kind },
     });
+
+    if (approval.kind === 'client_update') {
+      await approval.populate({ path: 'project', populate: { path: 'client', select: 'phone name' } });
+      const project = approval.project as unknown as { title: string; client: { phone: string; name: string } };
+      if (project?.client?.phone) {
+        await this.whatsapp.sendTemplate(
+          project.client.phone,
+          'client_update_approved',
+          [project.client.name ?? 'Customer', project.title ?? 'your project'],
+        );
+        approval.whatsappScheduled = true;
+        await approval.save();
+      }
+    }
 
     return approval;
   }

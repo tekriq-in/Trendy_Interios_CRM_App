@@ -32,4 +32,10 @@ export class PaymentsController {
   ) {
     return this.service.record(projectId, dto, actor._id);
   }
+
+  @Post('payments/:id/follow-up')
+  @RequirePermissions(PERMISSIONS.PAYMENTS_RECORD)
+  triggerFollowUp(@Param('id') id: string, @CurrentUser() actor: { _id: string }) {
+    return this.service.triggerFollowUp(id, actor._id);
+  }
 }

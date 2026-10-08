@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { ApprovalsService } from '../src/modules/approvals/approvals.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
+import { WHATSAPP_SERVICE } from '../src/modules/whatsapp/whatsapp.interface';
 import { PERMISSIONS } from '@ti/shared';
 
 const mockApprovalModel = {
@@ -15,6 +16,7 @@ const mockApprovalModel = {
 };
 
 const mockActivityLog = { record: jest.fn() };
+const mockWhatsApp = { sendTemplate: jest.fn() };
 
 describe('Approval Gate — no client message without approved approval', () => {
   let service: ApprovalsService;
@@ -26,6 +28,7 @@ describe('Approval Gate — no client message without approved approval', () => 
         ApprovalsService,
         { provide: getModelToken('Approval'), useValue: mockApprovalModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
+        { provide: WHATSAPP_SERVICE, useValue: mockWhatsApp },
       ],
     }).compile();
 
@@ -51,9 +54,11 @@ describe('Approval Gate — no client message without approved approval', () => 
     const approvalId = new Types.ObjectId().toHexString();
     const updatedApproval = {
       _id: approvalId,
-      kind: 'client_update',
+      kind: 'quotation',
       status: 'approved',
       approvedAt: new Date(),
+      populate: jest.fn(),
+      save: jest.fn(),
     };
 
     mockApprovalModel.findByIdAndUpdate.mockResolvedValue(updatedApproval);
@@ -72,14 +77,23 @@ describe('Approval Gate — no client message without approved approval', () => 
     );
   });
 
-  it('WhatsApp is NOT triggered directly by approvals service (system-only boundary)', async () => {
-    // The WhatsAppService is not injected into ApprovalsService.
-    // This test verifies the service has no direct messaging capability.
-    const serviceKeys = Object.keys(service as unknown as Record<string, unknown>);
-    const hasWhatsapp = serviceKeys.some((k) =>
-      k.toLowerCase().includes('whatsapp'),
-    );
-    expect(hasWhatsapp).toBe(false);
+  it('WhatsApp is only triggered AFTER approval gate (not for non-client_update kinds)', async () => {
+    // WhatsApp is injected but only fires when kind === 'client_update' AND status === 'approved'.
+    // For other kinds (e.g. 'quotation'), sendTemplate must NOT be called.
+    const approvalId = new Types.ObjectId().toHexString();
+    mockApprovalModel.findByIdAndUpdate.mockResolvedValue({
+      _id: approvalId,
+      kind: 'quotation',
+      status: 'approved',
+      approvedAt: new Date(),
+      populate: jest.fn(),
+      save: jest.fn(),
+    });
+
+    const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_DECIDE] };
+    await service.approve(approvalId, actor);
+
+    expect(mockWhatsApp.sendTemplate).not.toHaveBeenCalled();
   });
 
   it('request approval throws Forbidden when actor lacks approvals:request', async () => {

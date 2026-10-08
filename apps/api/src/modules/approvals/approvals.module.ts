@@ -4,11 +4,13 @@ import { ApprovalsService } from './approvals.service';
 import { ApprovalsController } from './approvals.controller';
 import { Approval, ApprovalSchema } from './schemas/approval.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Approval.name, schema: ApprovalSchema }]),
     ActivityLogModule,
+    WhatsAppModule,
   ],
   providers: [ApprovalsService],
   controllers: [ApprovalsController],

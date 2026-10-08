@@ -1,84 +1,185 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
-import type { Project } from '@ti/shared';
+import { Plus, X } from 'lucide-react';
+
+interface Client { _id: string; name: string; }
+interface Dept { _id: string; name: string; order: number; }
+interface Project {
+  _id: string; title: string; status: string; progressPct: number;
+  client?: Client | string;
+  currentStage?: Dept | string;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  active: 'bg-emerald-50 text-emerald-700',
+  on_hold: 'bg-amber-50 text-amber-700',
+  completed: 'bg-blue-50 text-blue-700',
+  cancelled: 'bg-red-50 text-red-700',
+};
+
+const EMPTY_FORM = { clientId: '', title: '', firstStageId: '', targetDate: '' };
+type FormState = typeof EMPTY_FORM;
 
 export default function ProjectsPage() {
-  const { data: projects, isLoading } = useQuery<Project[]>({
+  const router = useRouter();
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: () => apiClient.get('/projects').then((r) => r.data),
   });
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading projects…</p>;
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ['clients'],
+    queryFn: () => apiClient.get('/clients').then((r) => r.data),
+  });
+
+  const { data: departments = [] } = useQuery<Dept[]>({
+    queryKey: ['departments'],
+    queryFn: () => apiClient.get('/departments').then((r) => r.data),
+  });
+
+  const sortedDepts = [...departments].sort((a, b) => a.order - b.order);
+
+  function set(key: keyof FormState, value: string) {
+    setForm((p) => ({ ...p, [key]: value }));
+  }
+
+  async function handleCreate() {
+    if (!form.clientId || !form.title.trim()) { setErr('Client and title are required.'); return; }
+    setSaving(true); setErr('');
+    try {
+      const res = await apiClient.post<Project>('/projects', {
+        clientId: form.clientId,
+        title: form.title.trim(),
+        firstStageId: form.firstStageId || undefined,
+        targetDate: form.targetDate || undefined,
+      });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      setShowModal(false);
+      router.push(`/dashboard/projects/${res.data._id}`);
+    } catch (e: unknown) {
+      setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to create project.');
+    } finally { setSaving(false); }
+  }
+
+  const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Projects</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{projects.length} project{projects.length !== 1 ? 's' : ''} total</p>
+        </div>
+        <button onClick={() => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+          <Plus className="w-4 h-4" /> New Project
+        </button>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Title</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Client</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Stage</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Progress</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {projects?.map((p) => (
-              <tr key={p._id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-800">{p.title}</td>
-                <td className="px-4 py-3 text-gray-600">
-                  {typeof p.client === 'object' && p.client !== null
-                    ? (p.client as { name: string }).name
-                    : p.client}
-                </td>
-                <td className="px-4 py-3 text-gray-600">
-                  {typeof p.currentStage === 'object' && p.currentStage !== null
-                    ? (p.currentStage as { name: string }).name
-                    : '—'}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded-full"
-                        style={{ width: `${p.progressPct}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-gray-500">{p.progressPct}%</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      p.status === 'active'
-                        ? 'bg-green-100 text-green-700'
-                        : p.status === 'on_hold'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {p.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {projects?.length === 0 && (
+      {isLoading ? (
+        <p className="text-sm text-slate-400">Loading projects…</p>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">
-                  No projects yet.
-                </td>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Title</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Current Stage</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Progress</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {projects.map((p) => (
+                <tr
+                  key={p._id}
+                  onClick={() => router.push(`/dashboard/projects/${p._id}`)}
+                  className="hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  <td className="px-4 py-3 font-medium text-slate-800">{p.title}</td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {typeof p.client === 'object' && p.client ? p.client.name : (p.client ?? '—')}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {typeof p.currentStage === 'object' && p.currentStage ? p.currentStage.name : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[60px]">
+                        <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${p.progressPct ?? 0}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-400 w-8 text-right font-mono">{p.progressPct ?? 0}%</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${STATUS_COLORS[p.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                      {p.status.replace('_', ' ')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {projects.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center text-slate-400 text-sm">No projects yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900">New Project</h2>
+              <button onClick={() => setShowModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className={labelCls}>Client *</label>
+                <select value={form.clientId} onChange={(e) => set('clientId', e.target.value)} className={inputCls}>
+                  <option value="">Select client…</option>
+                  {clients.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Project title *</label>
+                <input type="text" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Sharma Residence — Hall" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Starting stage</label>
+                <select value={form.firstStageId} onChange={(e) => set('firstStageId', e.target.value)} className={inputCls}>
+                  <option value="">Default (first department)</option>
+                  {sortedDepts.map((d) => <option key={d._id} value={d._id}>{d.order}. {d.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Target date</label>
+                <input type="date" value={form.targetDate} onChange={(e) => set('targetDate', e.target.value)} className={inputCls} />
+              </div>
+              {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
+              <button onClick={handleCreate} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                {saving ? 'Creating…' : 'Create project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

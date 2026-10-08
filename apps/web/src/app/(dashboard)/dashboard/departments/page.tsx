@@ -3,16 +3,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { Plus, Pencil, X } from 'lucide-react';
+import { Plus, Pencil, X, ChevronDown, ChevronRight, Users } from 'lucide-react';
 
-interface Department {
-  _id: string;
-  name: string;
-  description?: string;
-  order: number;
-  defaultSlaHours: number;
-  isActive: boolean;
-}
+interface Department { _id: string; name: string; description?: string; order: number; defaultSlaHours: number; isActive: boolean; }
+interface Role { _id: string; name: string; }
+interface Employee { _id: string; name: string; email: string; isActive: boolean; role: Role | string; department?: Department | string; }
 
 const EMPTY_FORM = { name: '', description: '', order: '', defaultSlaHours: '48' };
 type FormState = typeof EMPTY_FORM;
@@ -24,16 +19,45 @@ export default function DepartmentsPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [reassigning, setReassigning] = useState<{ employee: Employee; toDeptId: string } | null>(null);
 
   const { data: departments = [], isLoading } = useQuery<Department[]>({
     queryKey: ['departments'],
     queryFn: () => apiClient.get('/departments').then((r) => r.data),
   });
 
+  const { data: employees = [] } = useQuery<Employee[]>({
+    queryKey: ['users'],
+    queryFn: () => apiClient.get('/users').then((r) => r.data),
+  });
+
+  const reassignMut = useMutation({
+    mutationFn: ({ id, deptId }: { id: string; deptId: string }) =>
+      apiClient.patch(`/users/${id}`, { departmentId: deptId || undefined }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      setReassigning(null);
+    },
+  });
+
   const deactivateMut = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/departments/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['departments'] }),
   });
+
+  function employeesInDept(deptId: string) {
+    return employees.filter((e) => {
+      const d = e.department;
+      if (!d) return false;
+      return typeof d === 'object' ? d._id === deptId : d === deptId;
+    });
+  }
+
+  function roleName(r: Role | string | undefined) {
+    if (!r) return '—';
+    return typeof r === 'object' ? r.name : r;
+  }
 
   function set(key: keyof FormState, value: string) {
     setForm((p) => ({ ...p, [key]: value }));
@@ -57,39 +81,28 @@ export default function DepartmentsPage() {
   async function handleSave() {
     if (!form.name.trim()) { setErr('Department name is required.'); return; }
     if (!form.order || isNaN(Number(form.order))) { setErr('Order must be a number.'); return; }
-    setSaving(true);
-    setErr('');
+    setSaving(true); setErr('');
     try {
-      const payload = {
-        name: form.name.trim(),
-        description: form.description.trim() || undefined,
-        order: Number(form.order),
-        defaultSlaHours: Number(form.defaultSlaHours) || 48,
-      };
-      if (editing) {
-        await apiClient.patch(`/departments/${editing._id}`, payload);
-      } else {
-        await apiClient.post('/departments', payload);
-      }
+      const payload = { name: form.name.trim(), description: form.description.trim() || undefined, order: Number(form.order), defaultSlaHours: Number(form.defaultSlaHours) || 48 };
+      if (editing) { await apiClient.patch(`/departments/${editing._id}`, payload); }
+      else { await apiClient.post('/departments', payload); }
       qc.invalidateQueries({ queryKey: ['departments'] });
       setShowModal(false);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setErr(msg ?? 'Failed to save.');
-    } finally {
-      setSaving(false);
-    }
+      setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to save.');
+    } finally { setSaving(false); }
   }
 
   const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
   const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5';
+  const unassigned = employees.filter((e) => !e.department && e.isActive);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Departments</h1>
-          <p className="text-sm text-slate-500 mt-0.5">The 8 production stages of every project, in order.</p>
+          <p className="text-sm text-slate-500 mt-0.5">Production stages and their assigned staff.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
           <Plus className="w-4 h-4" /> New Department
@@ -99,58 +112,108 @@ export default function DepartmentsPage() {
       {isLoading ? (
         <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase w-12">Order</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Department</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Description</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Default SLA</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
-                <th className="px-4 py-3 w-20"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {departments.map((d) => (
-                <tr key={d._id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-slate-400 font-mono text-xs font-semibold">{String(d.order).padStart(2, '0')}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{d.name}</td>
-                  <td className="px-4 py-3 text-slate-500">{d.description ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <span className="font-semibold">{d.defaultSlaHours}</span>
-                    <span className="text-slate-400 ml-1">h</span>
-                  </td>
-                  <td className="px-4 py-3">
+        <div className="space-y-2">
+          {departments.map((d) => {
+            const members = employeesInDept(d._id);
+            const isOpen = expanded === d._id;
+            return (
+              <div key={d._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                {/* Department row */}
+                <div className="flex items-center gap-3 px-5 py-4">
+                  <button onClick={() => setExpanded(isOpen ? null : d._id)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0">
+                    {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+
+                  <span className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0 font-mono">
+                    {String(d.order).padStart(2, '0')}
+                  </span>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-slate-900 text-sm">{d.name}</div>
+                    {d.description && <div className="text-xs text-slate-400 truncate">{d.description}</div>}
+                  </div>
+
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{members.length} staff</span>
+                    </div>
+                    <div className="text-xs text-slate-400">SLA: <span className="font-semibold text-slate-600">{d.defaultSlaHours}h</span></div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${d.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                       {d.isActive ? 'Active' : 'Inactive'}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(d)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit">
-                        <Pencil className="w-3.5 h-3.5" />
+                    <button onClick={() => openEdit(d)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    {d.isActive && (
+                      <button onClick={() => { if (confirm(`Deactivate "${d.name}"?`)) deactivateMut.mutate(d._id); }} className="px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium">
+                        Deactivate
                       </button>
-                      {d.isActive && (
-                        <button
-                          onClick={() => { if (confirm(`Deactivate "${d.name}"?`)) deactivateMut.mutate(d._id); }}
-                          className="px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium"
-                          title="Deactivate"
-                        >
-                          Deactivate
-                        </button>
-                      )}
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded: members */}
+                {isOpen && (
+                  <div className="border-t border-slate-100 bg-slate-50 px-5 py-4">
+                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Staff in {d.name}</div>
+                    {members.length === 0 ? (
+                      <p className="text-sm text-slate-400">No staff assigned to this department.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {members.map((emp) => (
+                          <div key={emp._id} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-slate-800 truncate">{emp.name}</div>
+                              <div className="text-xs text-slate-400 truncate">{roleName(emp.role)}</div>
+                            </div>
+                            <select
+                              defaultValue={d._id}
+                              onChange={(e) => reassignMut.mutate({ id: emp._id, deptId: e.target.value })}
+                              className="text-xs border border-slate-200 rounded-md px-2 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 shrink-0"
+                            >
+                              {departments.map((dept) => (
+                                <option key={dept._id} value={dept._id}>{dept.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Unassigned employees */}
+          {unassigned.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 flex items-center gap-2">
+                <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Unassigned staff ({unassigned.length})</span>
+              </div>
+              <div className="border-t border-amber-200 px-5 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {unassigned.map((emp) => (
+                  <div key={emp._id} className="flex items-center justify-between bg-white border border-amber-200 rounded-lg px-3 py-2.5 gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-slate-800 truncate">{emp.name}</div>
+                      <div className="text-xs text-slate-400 truncate">{roleName(emp.role)}</div>
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {departments.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">No departments found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => { if (e.target.value) reassignMut.mutate({ id: emp._id, deptId: e.target.value }); }}
+                      className="text-xs border border-slate-200 rounded-md px-2 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 shrink-0"
+                    >
+                      <option value="" disabled>Assign…</option>
+                      {departments.map((dept) => (
+                        <option key={dept._id} value={dept._id}>{dept.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -159,40 +222,33 @@ export default function DepartmentsPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <h2 className="text-lg font-semibold text-slate-900">{editing ? 'Edit Department' : 'New Department'}</h2>
-              <button onClick={() => setShowModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setShowModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
-
             <div className="px-6 py-5 space-y-4">
               <div>
-                <label className={labelCls}>Department name *</label>
+                <label className={labelCls}>Name *</label>
                 <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Assembly" className={inputCls} />
               </div>
-
               <div>
                 <label className={labelCls}>Description</label>
-                <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional description" className={inputCls} />
+                <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional" className={inputCls} />
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Stage order *</label>
-                  <input type="number" min="1" value={form.order} onChange={(e) => set('order', e.target.value)} placeholder="e.g. 9" className={inputCls} />
+                  <input type="number" min="1" value={form.order} onChange={(e) => set('order', e.target.value)} className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>Default SLA (hours)</label>
                   <input type="number" min="1" value={form.defaultSlaHours} onChange={(e) => set('defaultSlaHours', e.target.value)} className={inputCls} />
                 </div>
               </div>
-
               {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
             </div>
-
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium">Cancel</button>
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
               <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                {saving ? 'Saving…' : editing ? 'Save changes' : 'Create department'}
+                {saving ? 'Saving…' : editing ? 'Save changes' : 'Create'}
               </button>
             </div>
           </div>

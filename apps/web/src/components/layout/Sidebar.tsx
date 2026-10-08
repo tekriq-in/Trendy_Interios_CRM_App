@@ -10,6 +10,7 @@ import {
   ArrowLeftRight,
   CreditCard,
   Users,
+  Shield,
   Building2,
   Clock,
   ScrollText,
@@ -50,7 +51,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'MANAGEMENT',
     items: [
-      { href: '/dashboard/users', label: 'Users', icon: Users },
+      { href: '/dashboard/users', label: 'Employees', icon: Users },
+      { href: '/dashboard/roles', label: 'Roles', icon: Shield },
       { href: '/dashboard/departments', label: 'Departments', icon: Building2 },
       { href: '/dashboard/sla', label: 'SLA Settings', icon: Clock },
     ],

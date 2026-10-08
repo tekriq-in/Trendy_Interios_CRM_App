@@ -2,6 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 
 interface BoardData {
   [stage: string]: Array<{ _id: string; title: string; progressPct: number; targetDate?: string }>;
@@ -13,27 +16,32 @@ interface ApprovalsSummary {
 }
 
 interface BlockerSummary {
-  _id: string;
-  title: string;
-  type: string;
-  status: string;
-  project?: { title: string };
+  _id: string; title: string; type: string; status: string; project?: { title: string };
 }
+
+interface WorkloadItem { userId: string; userName: string; totalTasks: number; inProgress: number; }
+interface StageDuration { stageName: string; avgHours: number; count: number; }
 
 export default function DashboardOverviewPage() {
   const board = useQuery<BoardData>({
     queryKey: ['dashboard-board'],
     queryFn: () => apiClient.get('/dashboard/board').then((r) => r.data),
   });
-
   const approvals = useQuery<ApprovalsSummary>({
     queryKey: ['dashboard-approvals'],
     queryFn: () => apiClient.get('/dashboard/approvals-pending').then((r) => r.data),
   });
-
   const blockers = useQuery<BlockerSummary[]>({
     queryKey: ['dashboard-blockers'],
     queryFn: () => apiClient.get('/dashboard/blockers').then((r) => r.data),
+  });
+  const workload = useQuery<WorkloadItem[]>({
+    queryKey: ['dashboard-workload'],
+    queryFn: () => apiClient.get('/dashboard/workload').then((r) => r.data),
+  });
+  const stageDurations = useQuery<StageDuration[]>({
+    queryKey: ['dashboard-stage-durations'],
+    queryFn: () => apiClient.get('/dashboard/stage-durations').then((r) => r.data),
   });
 
   return (
@@ -42,21 +50,9 @@ export default function DashboardOverviewPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
-        <StatCard
-          label="Pending Approvals"
-          value={approvals.data?.count ?? '—'}
-          color="blue"
-        />
-        <StatCard
-          label="Open Blockers"
-          value={blockers.data?.filter((b) => b.status === 'open').length ?? '—'}
-          color="red"
-        />
-        <StatCard
-          label="Active Stages"
-          value={board.data ? Object.keys(board.data).length : '—'}
-          color="green"
-        />
+        <StatCard label="Pending Approvals" value={approvals.data?.count ?? '—'} color="blue" />
+        <StatCard label="Open Blockers" value={blockers.data?.filter((b) => b.status === 'open').length ?? '—'} color="red" />
+        <StatCard label="Active Stages" value={board.data ? Object.keys(board.data).length : '—'} color="green" />
       </div>
 
       {/* Board view */}
@@ -75,10 +71,7 @@ export default function DashboardOverviewPage() {
                     <div key={p._id} className="bg-gray-50 rounded p-2 text-xs">
                       <p className="font-medium text-gray-800 truncate">{p.title}</p>
                       <div className="mt-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full"
-                          style={{ width: `${p.progressPct}%` }}
-                        />
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${p.progressPct}%` }} />
                       </div>
                       <p className="text-gray-500 mt-0.5">{p.progressPct}% complete</p>
                     </div>
@@ -90,12 +83,54 @@ export default function DashboardOverviewPage() {
         )}
       </section>
 
+      {/* Workload chart */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-700 mb-3">Team Workload</h2>
+        {workload.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+        {workload.data && workload.data.length > 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={workload.data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="userName" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="totalTasks" name="Total Tasks" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="inProgress" name="In Progress" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          !workload.isLoading && <p className="text-sm text-gray-400">No workload data yet.</p>
+        )}
+      </section>
+
+      {/* Stage durations chart */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-700 mb-3">Average Stage Duration (hours)</h2>
+        {stageDurations.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+        {stageDurations.data && stageDurations.data.length > 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={stageDurations.data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="stageName" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(v) => [`${v}h`, 'Avg Duration']} />
+                <Bar dataKey="avgHours" name="Avg Hours" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          !stageDurations.isLoading && <p className="text-sm text-gray-400">No stage duration data yet.</p>
+        )}
+      </section>
+
       {/* Pending approvals */}
       <section>
         <h2 className="text-lg font-semibold text-gray-700 mb-3">Pending Approvals</h2>
-        {approvals.data?.list.length === 0 && (
-          <p className="text-sm text-gray-400">No pending approvals.</p>
-        )}
+        {approvals.data?.list.length === 0 && <p className="text-sm text-gray-400">No pending approvals.</p>}
         <div className="bg-white rounded-lg border border-gray-200 divide-y">
           {approvals.data?.list.map((a) => (
             <div key={a._id} className="px-4 py-3 flex items-center justify-between">
@@ -105,9 +140,7 @@ export default function DashboardOverviewPage() {
                   {a.kind.replace('_', ' ')} · requested by {a.requestedBy?.name}
                 </p>
               </div>
-              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">
-                Pending
-              </span>
+              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">Pending</span>
             </div>
           ))}
         </div>
@@ -122,7 +155,6 @@ function StatCard({ label, value, color }: { label: string; value: string | numb
     red: 'bg-red-50 text-red-700',
     green: 'bg-green-50 text-green-700',
   };
-
   return (
     <div className={`rounded-xl p-4 ${colors[color]}`}>
       <p className="text-3xl font-bold">{value}</p>

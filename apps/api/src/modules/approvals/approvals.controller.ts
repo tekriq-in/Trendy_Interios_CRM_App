@@ -13,14 +13,34 @@ export class ApprovalsController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.APPROVALS_DECIDE)
-  findPending() {
-    return this.service.findPending();
+  findAll() {
+    return this.service.findAll();
+  }
+
+  @Post('generate-message')
+  @RequirePermissions(PERMISSIONS.APPROVALS_REQUEST)
+  generateMessage(
+    @Body() dto: {
+      rawNotes: string;
+      clientName: string;
+      projectTitle: string;
+      updateKind: string;
+      language?: 'en' | 'ta';
+    },
+  ) {
+    return this.service.generateMessage(dto);
   }
 
   @Post()
   @RequirePermissions(PERMISSIONS.APPROVALS_REQUEST)
   request(
-    @Body() dto: { projectId: string; kind: string; linkedDocumentId?: string },
+    @Body() dto: {
+      projectId: string;
+      kind: string;
+      rawNotes?: string;
+      generatedMessage?: string;
+      linkedDocumentId?: string;
+    },
     @CurrentUser() actor: { _id: string; rolePermissions: string[] },
   ) {
     return this.service.request(dto, actor);
@@ -30,18 +50,19 @@ export class ApprovalsController {
   @RequirePermissions(PERMISSIONS.APPROVALS_DECIDE)
   approve(
     @Param('id') id: string,
+    @Body() dto: { finalMessage?: string },
     @CurrentUser() actor: { _id: string; rolePermissions: string[] },
   ) {
-    return this.service.approve(id, actor);
+    return this.service.approve(id, dto, actor);
   }
 
   @Patch(':id/reject')
   @RequirePermissions(PERMISSIONS.APPROVALS_DECIDE)
   reject(
     @Param('id') id: string,
-    @Body() dto: { reason: string },
+    @Body() body: { reason: string },
     @CurrentUser() actor: { _id: string; rolePermissions: string[] },
   ) {
-    return this.service.reject(id, dto.reason, actor);
+    return this.service.reject(id, body.reason, actor);
   }
 }

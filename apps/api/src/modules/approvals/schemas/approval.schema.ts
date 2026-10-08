@@ -35,6 +35,12 @@ export class Approval {
   @Prop({ type: Types.ObjectId, ref: 'Document' })
   linkedDocument: Types.ObjectId;
 
+  @Prop({ trim: true })
+  rawNotes: string;
+
+  @Prop({ trim: true })
+  generatedMessage: string;
+
   @Prop()
   approvedAt: Date;
 

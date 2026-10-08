@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/projects', label: 'Projects' },
   { href: '/dashboard/approvals', label: 'Approvals' },
   { href: '/dashboard/blockers', label: 'Blockers' },
+  { href: '/dashboard/handovers', label: 'Handovers' },
   { href: '/dashboard/payments', label: 'Payments' },
   { href: '/dashboard/users', label: 'Users' },
   { href: '/dashboard/departments', label: 'Departments' },

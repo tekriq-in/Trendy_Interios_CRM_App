@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "approvals": "Approvals",
+    "blockers": "Blockers",
+    "payments": "Payments",
+    "users": "Users",
+    "departments": "Departments",
+    "sla": "SLA Settings",
+    "activityLog": "Activity Log"
+  },
+  "auth": {
+    "login": "Sign In",
+    "mfaPrompt": "Enter the 6-digit code from your authenticator app.",
+    "invalidCredentials": "Invalid credentials. Please try again.",
+    "invalidMfa": "Invalid MFA token. Please try again."
+  },
+  "project": {
+    "notFound": "Project not found.",
+    "accessDenied": "You do not have access to this project."
+  }
+}

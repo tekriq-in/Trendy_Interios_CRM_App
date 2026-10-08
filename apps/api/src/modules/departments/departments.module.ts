@@ -1,0 +1,17 @@
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { DepartmentsService } from './departments.service';
+import { DepartmentsController } from './departments.controller';
+import { Department, DepartmentSchema } from './schemas/department.schema';
+import { ActivityLogModule } from '../activity-log/activity-log.module';
+
+@Module({
+  imports: [
+    MongooseModule.forFeature([{ name: Department.name, schema: DepartmentSchema }]),
+    ActivityLogModule,
+  ],
+  providers: [DepartmentsService],
+  controllers: [DepartmentsController],
+  exports: [DepartmentsService, MongooseModule],
+})
+export class DepartmentsModule {}

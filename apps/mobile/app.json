@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Trendy Interiors",
+    "slug": "trendy-interiors",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "ti",
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-router",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Trendy Interiors to access your photos for project uploads."
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.tekriq.trendyinteriors",
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"]
+    },
+    "ios": {
+      "bundleIdentifier": "com.tekriq.trendyinteriors",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used for capturing project photos.",
+        "NSPhotoLibraryUsageDescription": "Used for selecting project photos."
+      }
+    }
+  }
+}

@@ -13,6 +13,11 @@ export class SlaController {
     return this.service.findAll();
   }
 
+  @Get('report')
+  getReport() {
+    return this.service.getReport();
+  }
+
   @Patch(':departmentId')
   update(
     @Param('departmentId') departmentId: string,

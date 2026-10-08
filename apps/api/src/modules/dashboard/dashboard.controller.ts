@@ -30,4 +30,9 @@ export class DashboardController {
   getApprovalsPending() {
     return this.service.getApprovalsPending();
   }
+
+  @Get('stage-durations')
+  getStageDurations() {
+    return this.service.getStageDurations();
+  }
 }

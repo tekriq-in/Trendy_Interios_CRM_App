@@ -78,6 +78,51 @@ export class DashboardService {
       .lean();
   }
 
+  async getStageDurations() {
+    const results = await this.projectModel.aggregate([
+      { $unwind: '$stageHistory' },
+      { $match: { 'stageHistory.completedAt': { $exists: true, $ne: null } } },
+      {
+        $addFields: {
+          durationHours: {
+            $divide: [
+              { $subtract: ['$stageHistory.completedAt', '$stageHistory.enteredAt'] },
+              3_600_000,
+            ],
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'departments',
+          localField: 'stageHistory.stage',
+          foreignField: '_id',
+          as: 'dept',
+        },
+      },
+      { $unwind: { path: '$dept', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: { stageId: '$stageHistory.stage', stageName: '$dept.name', order: '$dept.order' },
+          avgHours: { $avg: '$durationHours' },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          stageName: '$_id.stageName',
+          order: '$_id.order',
+          avgHours: { $round: ['$avgHours', 1] },
+          count: 1,
+        },
+      },
+      { $sort: { order: 1 } },
+    ]);
+
+    return results;
+  }
+
   async getApprovalsPending() {
     const [list, count] = await Promise.all([
       this.approvalModel

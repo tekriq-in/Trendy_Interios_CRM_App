@@ -72,22 +72,35 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <View style={styles.card}>
+        {/* Logo */}
+        <View style={styles.logoWrap}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoText}>TI</Text>
+          </View>
+        </View>
         <Text style={styles.title}>Trendy Interiors</Text>
+        <Text style={styles.subtitle}>
+          {mfaRequired ? 'Two-factor authentication' : 'Sign in to continue'}
+        </Text>
 
         {!mfaRequired ? (
           <>
+            <Text style={styles.label}>{t('email')}</Text>
             <TextInput
               style={styles.input}
-              placeholder={t('email')}
+              placeholder="you@trendyinteriors.in"
+              placeholderTextColor="#94A3B8"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
             />
+            <Text style={styles.label}>{t('password')}</Text>
             <TextInput
               style={styles.input}
-              placeholder={t('password')}
+              placeholder="••••••••"
+              placeholderTextColor="#94A3B8"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -98,15 +111,18 @@ export default function LoginScreen() {
               disabled={loading}
               accessibilityLabel={t('login')}
             >
-              <Text style={styles.buttonText}>{loading ? '…' : t('login')}</Text>
+              <Text style={styles.buttonText}>{loading ? 'Signing in…' : t('login')}</Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
-            <Text style={styles.mfaHint}>Enter the 6-digit code from your authenticator app.</Text>
+            <Text style={styles.mfaHint}>
+              Enter the 6-digit code from your authenticator app.
+            </Text>
             <TextInput
               style={[styles.input, styles.mfaInput]}
               placeholder="000000"
+              placeholderTextColor="#94A3B8"
               value={mfaToken}
               onChangeText={setMfaToken}
               keyboardType="number-pad"
@@ -117,7 +133,10 @@ export default function LoginScreen() {
               onPress={handleMfa}
               disabled={loading}
             >
-              <Text style={styles.buttonText}>{loading ? '…' : 'Verify'}</Text>
+              <Text style={styles.buttonText}>{loading ? 'Verifying…' : 'Verify'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMfaRequired(false)} style={styles.backBtn}>
+              <Text style={styles.backBtnText}>← Back to sign in</Text>
             </TouchableOpacity>
           </>
         )}
@@ -129,45 +148,60 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#0F172A',
     justifyContent: 'center',
     padding: 24,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 20,
+    padding: 32,
   },
+  logoWrap: { alignItems: 'center', marginBottom: 16 },
+  logoCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoText: { color: '#fff', fontWeight: '800', fontSize: 20 },
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#64748B',
     textAlign: 'center',
     marginBottom: 24,
   },
+  label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 },
   input: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#E2E8F0',
     borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginBottom: 12,
-    color: '#111827',
+    padding: 14,
+    fontSize: 15,
+    marginBottom: 14,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
   },
   button: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#4F46E5',
     borderRadius: 10,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 4,
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  mfaHint: { fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 16 },
-  mfaInput: { textAlign: 'center', letterSpacing: 8, fontSize: 24 },
+  mfaHint: { fontSize: 14, color: '#64748B', textAlign: 'center', marginBottom: 20 },
+  mfaInput: { textAlign: 'center', letterSpacing: 8, fontSize: 24, fontWeight: '700' },
+  backBtn: { marginTop: 16, alignItems: 'center' },
+  backBtnText: { color: '#4F46E5', fontSize: 14, fontWeight: '500' },
 });

@@ -1,13 +1,6 @@
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  TextInput,
-  ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, Alert,
+  ActivityIndicator, TextInput, ScrollView,
 } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,6 +13,15 @@ import type { RootState } from '../../../../src/store';
 import type { Task } from '@ti/shared';
 
 type TaskPopulated = Task & { assignedTo?: { name: string } };
+interface Dept { _id: string; name: string; order: number; }
+interface Project {
+  _id: string; title: string; progressPct: number; status: string;
+  currentStage?: Dept | string;
+}
+
+const STATUS_DOT: Record<string, string> = {
+  done: '#10B981', in_progress: '#3B82F6', blocked: '#EF4444', pending: '#94A3B8',
+};
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,360 +29,287 @@ export default function ProjectDetailScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
   const offlineQueue = useSelector((s: RootState) => s.offlineQueue.queue);
+
+  const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskPopulated[]>([]);
+  const [departments, setDepartments] = useState<Dept[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadTasks = useCallback(async () => {
+  // Handover state
+  const [showHandover, setShowHandover] = useState(false);
+  const [proofUri, setProofUri] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
     try {
-      const res = await api.get<TaskPopulated[]>(`/projects/${id}/tasks`);
-      setTasks(res.data);
+      const [projRes, tasksRes, deptsRes] = await Promise.all([
+        api.get<Project>(`/projects/${id}`),
+        api.get<TaskPopulated[]>(`/projects/${id}/tasks`),
+        api.get<Dept[]>('/departments'),
+      ]);
+      setProject(projRes.data);
+      setTasks(tasksRes.data);
+      setDepartments(deptsRes.data.sort((a, b) => a.order - b.order));
     } catch {
-      // offline — show cached tasks (empty for now; full offline cache in Phase 2)
+      // offline
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+  useEffect(() => { load(); }, [load]);
 
   async function markDone(taskId: string) {
     try {
       await api.patch(`/tasks/${taskId}`, { status: 'done' });
-      setTasks((prev) =>
-        prev.map((t) => (t._id === taskId ? { ...t, status: 'done' as const } : t)),
-      );
+      setTasks((prev) => prev.map((t) => t._id === taskId ? { ...t, status: 'done' as const } : t));
     } catch {
-      dispatch(
-        enqueue({
-          type: 'task_update',
-          payload: { taskId, data: { status: 'done' } },
-        }),
-      );
+      dispatch(enqueue({ type: 'task_update', payload: { taskId, data: { status: 'done' } } }));
       Alert.alert('Offline', t('offline'));
-      setTasks((prev) =>
-        prev.map((t) => (t._id === taskId ? { ...t, status: 'done' as const } : t)),
-      );
+      setTasks((prev) => prev.map((t) => t._id === taskId ? { ...t, status: 'done' as const } : t));
     }
   }
 
   async function uploadPhoto(taskId: string) {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission required', 'Allow photo access to upload.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
+    if (!perm.granted) { Alert.alert('Permission required', 'Allow photo access.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
-
     const asset = result.assets[0];
-
     try {
       const form = new FormData();
-      form.append('file', {
-        uri: asset.uri,
-        type: asset.mimeType ?? 'image/jpeg',
-        name: asset.fileName ?? 'photo.jpg',
-      } as unknown as Blob);
+      form.append('file', { uri: asset.uri, type: asset.mimeType ?? 'image/jpeg', name: asset.fileName ?? 'photo.jpg' } as unknown as Blob);
       form.append('projectId', id);
       form.append('type', 'photo');
-
-      await api.post('/documents/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      Alert.alert('Success', 'Photo uploaded.');
+      await api.post('/documents/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      Alert.alert('Uploaded', 'Photo uploaded successfully.');
     } catch {
-      dispatch(
-        enqueue({
-          type: 'document_upload',
-          payload: {
-            uri: asset.uri,
-            mimeType: asset.mimeType ?? 'image/jpeg',
-            fileName: asset.fileName ?? 'photo.jpg',
-            projectId: id,
-            type: 'photo',
-          },
-        }),
-      );
-      Alert.alert('Offline', 'Photo queued for upload when online.');
+      dispatch(enqueue({ type: 'document_upload', payload: { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileName: asset.fileName ?? 'photo.jpg', projectId: id, type: 'photo' } }));
+      Alert.alert('Offline', 'Photo queued for upload.');
     }
   }
 
-  const pendingCount = offlineQueue.length;
-
-  // Raise Handover state
-  const [showHandover, setShowHandover] = useState(false);
-  const [fromDept, setFromDept] = useState('');
-  const [toDept, setToDept] = useState('');
-  const [handoverNotes, setHandoverNotes] = useState('');
-  const [proofUri, setProofUri] = useState<string | null>(null);
-  const [handoverLoading, setHandoverLoading] = useState(false);
-  const [handoverMsg, setHandoverMsg] = useState('');
-
-  async function pickProofPhoto() {
+  async function pickProof() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission required', 'Allow photo access to add proof.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setProofUri(result.assets[0].uri);
-    }
+    if (!perm.granted) { Alert.alert('Permission required', 'Allow photo access.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (!result.canceled && result.assets[0]) setProofUri(result.assets[0].uri);
   }
 
   async function submitHandover() {
-    if (!proofUri) {
-      Alert.alert('Proof required', 'At least one proof photo is required.');
-      return;
-    }
+    if (!proofUri) { Alert.alert('Proof required', 'Take a photo as proof before raising handover.'); return; }
+
+    const currentStageId = typeof project?.currentStage === 'object' ? project.currentStage._id : project?.currentStage;
+    const currentIdx = departments.findIndex((d) => d._id === currentStageId);
+    const fromDept = departments[currentIdx];
+    const toDept = departments[currentIdx + 1];
+
     if (!fromDept || !toDept) {
-      Alert.alert('Missing fields', 'From and To department IDs are required.');
+      Alert.alert('Cannot raise handover', 'This project is already at the final stage.');
       return;
     }
-    setHandoverLoading(true);
+
+    setSubmitting(true);
     try {
+      // 1. Upload proof photo
       const form = new FormData();
-      form.append('file', { uri: proofUri, type: 'image/jpeg', name: 'proof.jpg' } as unknown as Blob);
+      form.append('file', { uri: proofUri, type: 'image/jpeg', name: 'handover-proof.jpg' } as unknown as Blob);
       form.append('projectId', id);
       form.append('type', 'photo');
-      const docRes = await api.post<{ _id: string }>('/documents/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const documentId = docRes.data._id;
+      const docRes = await api.post<{ _id: string }>('/documents/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
 
+      // 2. Raise handover
       await api.post('/handovers', {
         projectId: id,
-        fromDepartment: fromDept,
-        toDepartment: toDept,
-        proofFileIds: [documentId],
-        notes: handoverNotes,
+        fromDepartmentId: fromDept._id,
+        toDepartmentId: toDept._id,
+        proofFileIds: [docRes.data._id],
+        notes: notes.trim() || undefined,
       });
 
-      setHandoverMsg('Handover raised successfully.');
+      Alert.alert('Done', `Handover from ${fromDept.name} to ${toDept.name} raised successfully.`);
       setShowHandover(false);
-      setFromDept('');
-      setToDept('');
-      setHandoverNotes('');
       setProofUri(null);
+      setNotes('');
     } catch {
-      setHandoverMsg('Failed to raise handover. Please try again.');
+      Alert.alert('Error', 'Failed to raise handover. Please try again.');
     } finally {
-      setHandoverLoading(false);
+      setSubmitting(false);
     }
   }
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+  if (loading) return <View style={s.center}><ActivityIndicator color="#4F46E5" size="large" /></View>;
+
+  const currentStageId = typeof project?.currentStage === 'object' ? project?.currentStage?._id : project?.currentStage;
+  const currentIdx = departments.findIndex((d) => d._id === currentStageId);
+  const currentDept = departments[currentIdx];
+  const nextDept = departments[currentIdx + 1];
+  const pendingCount = offlineQueue.length;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 48 }}>
       {pendingCount > 0 && (
-        <View style={styles.offlineBanner}>
-          <Text style={styles.offlineBannerText}>
-            {pendingCount} action{pendingCount > 1 ? 's' : ''} pending sync
-          </Text>
+        <View style={s.offlineBanner}>
+          <Text style={s.offlineBannerText}>{pendingCount} action{pendingCount > 1 ? 's' : ''} pending sync</Text>
         </View>
       )}
 
-      <View style={styles.headerRow}>
-        <Text style={styles.heading}>{t('tasks')}</Text>
-        <TouchableOpacity
-          style={styles.chatBtn}
-          onPress={() => router.push(`/projects/${id}/chat` as never)}
-          accessibilityLabel="Open project chat"
-        >
-          <Text style={styles.chatBtnText}>💬 Chat</Text>
+      {/* Header */}
+      <View style={s.topRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.projectTitle}>{project?.title ?? '…'}</Text>
+          {currentDept && <Text style={s.stageName}>{currentDept.name}</Text>}
+        </View>
+        <TouchableOpacity style={s.chatBtn} onPress={() => router.push(`/projects/${id}/chat` as never)}>
+          <Text style={s.chatBtnText}>💬 Chat</Text>
         </TouchableOpacity>
       </View>
 
-      {tasks.length === 0 && <Text style={styles.empty}>{t('noTasks')}</Text>}
-      {tasks.map((item) => (
-        <View key={item._id} style={styles.taskCard}>
-          <View style={styles.taskRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.taskTitle}>{item.title}</Text>
-              <Text style={styles.taskSub}>
-                {typeof item.assignedTo === 'object' && item.assignedTo
-                  ? item.assignedTo.name
-                  : ''}
-                {' · '}
-                <Text
-                  style={[
-                    styles.taskStatus,
-                    item.status === 'done' && styles.taskDone,
-                    item.status === 'blocked' && styles.taskBlocked,
-                  ]}
-                >
-                  {t(item.status, item.status)}
-                </Text>
-              </Text>
-            </View>
-            <View style={styles.taskActions}>
-              {item.status !== 'done' && (
-                <TouchableOpacity
-                  style={styles.doneBtn}
-                  onPress={() => markDone(item._id)}
-                  accessibilityLabel="Mark task done"
-                >
-                  <Text style={styles.doneBtnText}>✓</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.photoBtn}
-                onPress={() => uploadPhoto(item._id)}
-                accessibilityLabel="Upload photo for task"
-              >
-                <Text style={styles.photoBtnText}>📷</Text>
+      {/* Progress bar */}
+      <View style={s.progressBg}>
+        <View style={[s.progressFill, { width: `${project?.progressPct ?? 0}%` as unknown as number }]} />
+      </View>
+      <Text style={s.progressLabel}>{project?.progressPct ?? 0}% complete</Text>
+
+      {/* Tasks */}
+      <Text style={s.sectionLabel}>TASKS</Text>
+      {tasks.length === 0 && <Text style={s.empty}>No tasks yet.</Text>}
+      {tasks.map((task) => (
+        <View key={task._id} style={s.taskCard}>
+          <View style={[s.statusDot, { backgroundColor: STATUS_DOT[task.status] ?? '#94A3B8' }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.taskTitle}>{task.title}</Text>
+            <Text style={s.taskSub}>{task.assignedTo?.name ?? ''} · {task.status.replace('_', ' ')}</Text>
+          </View>
+          <View style={s.taskBtns}>
+            {task.status !== 'done' && (
+              <TouchableOpacity style={s.doneBtn} onPress={() => markDone(task._id)} accessibilityLabel="Mark done">
+                <Text style={s.doneBtnText}>✓</Text>
               </TouchableOpacity>
-            </View>
+            )}
+            <TouchableOpacity style={s.photoBtn} onPress={() => uploadPhoto(task._id)} accessibilityLabel="Upload photo">
+              <Text style={s.photoBtnText}>📷</Text>
+            </TouchableOpacity>
           </View>
         </View>
       ))}
 
-      {/* Raise Handover */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Handover</Text>
-        <TouchableOpacity
-          style={styles.toggleBtn}
-          onPress={() => { setShowHandover((v) => !v); setHandoverMsg(''); }}
-        >
-          <Text style={styles.toggleBtnText}>{showHandover ? '✕ Cancel' : '＋ Raise Handover'}</Text>
-        </TouchableOpacity>
+      {/* Handover section */}
+      <View style={s.sectionRow}>
+        <Text style={s.sectionLabel}>HANDOVER</Text>
+        {!showHandover && nextDept && (
+          <TouchableOpacity style={s.raiseBtn} onPress={() => setShowHandover(true)}>
+            <Text style={s.raiseBtnText}>Raise Handover</Text>
+          </TouchableOpacity>
+        )}
+        {!nextDept && <Text style={s.finalStageText}>Final stage</Text>}
       </View>
 
-      {handoverMsg ? (
-        <Text style={[styles.handoverMsg, handoverMsg.startsWith('Failed') && styles.handoverMsgError]}>
-          {handoverMsg}
-        </Text>
-      ) : null}
+      {showHandover && nextDept && (
+        <View style={s.handoverCard}>
+          {/* From → To */}
+          <View style={s.handoverRoute}>
+            <View style={s.routePill}>
+              <Text style={s.routeLabel}>FROM</Text>
+              <Text style={s.routeName}>{currentDept?.name}</Text>
+            </View>
+            <Text style={s.routeArrow}>→</Text>
+            <View style={[s.routePill, s.routePillTo]}>
+              <Text style={[s.routeLabel, { color: '#4F46E5' }]}>TO</Text>
+              <Text style={[s.routeName, { color: '#4F46E5' }]}>{nextDept.name}</Text>
+            </View>
+          </View>
 
-      {showHandover && (
-        <View style={styles.handoverCard}>
-          <Text style={styles.inputLabel}>From Department ID</Text>
+          {/* Proof photo */}
+          <TouchableOpacity style={proofUri ? [s.proofBtn, s.proofBtnDone] : s.proofBtn} onPress={pickProof} accessibilityLabel="Add proof photo">
+            <Text style={proofUri ? [s.proofBtnText, s.proofBtnTextDone] : s.proofBtnText}>
+              {proofUri ? '✅ Proof photo added' : '📷 Add Proof Photo (required)'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Notes */}
           <TextInput
-            style={styles.input}
-            value={fromDept}
-            onChangeText={setFromDept}
-            placeholder="From Dept ID"
-            autoCapitalize="none"
-          />
-          <Text style={styles.inputLabel}>To Department ID</Text>
-          <TextInput
-            style={styles.input}
-            value={toDept}
-            onChangeText={setToDept}
-            placeholder="To Dept ID"
-            autoCapitalize="none"
-          />
-          <Text style={styles.inputLabel}>Notes</Text>
-          <TextInput
-            style={[styles.input, styles.inputMultiline]}
-            value={handoverNotes}
-            onChangeText={setHandoverNotes}
-            placeholder="Optional notes"
+            style={s.notesInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Notes (optional)"
+            placeholderTextColor="#94A3B8"
             multiline
             numberOfLines={3}
           />
-          <TouchableOpacity style={styles.proofBtn} onPress={pickProofPhoto}>
-            <Text style={styles.proofBtnText}>
-              {proofUri ? '✅ Proof photo selected' : '📷 Add Proof Photo *'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.submitBtn, handoverLoading && styles.submitBtnDisabled]}
-            onPress={submitHandover}
-            disabled={handoverLoading}
-          >
-            <Text style={styles.submitBtnText}>
-              {handoverLoading ? 'Submitting…' : 'Submit Handover'}
-            </Text>
-          </TouchableOpacity>
+
+          <View style={s.handoverBtns}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => { setShowHandover(false); setProofUri(null); setNotes(''); }}>
+              <Text style={s.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.submitBtn, (!proofUri || submitting) && s.submitBtnDisabled]}
+              onPress={submitHandover}
+              disabled={!proofUri || submitting}
+              accessibilityLabel="Submit handover"
+            >
+              <Text style={s.submitBtnText}>{submitting ? 'Submitting…' : 'Submit Handover'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3F4F6', paddingHorizontal: 16, paddingTop: 56 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  chatBtn: { marginLeft: 'auto', backgroundColor: '#2563EB', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-  chatBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  heading: { fontSize: 22, fontWeight: '700', color: '#111827' },
-  empty: { textAlign: 'center', color: '#9CA3AF', marginTop: 40, fontSize: 15 },
-  offlineBanner: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-  },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8FAFC', paddingHorizontal: 16, paddingTop: 56 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  offlineBanner: { backgroundColor: '#FEF3C7', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12 },
   offlineBannerText: { color: '#92400E', fontSize: 13 },
-  taskCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  taskRow: { flexDirection: 'row', alignItems: 'center' },
-  taskTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  taskSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
-  taskStatus: { color: '#6B7280' },
-  taskDone: { color: '#059669' },
-  taskBlocked: { color: '#DC2626' },
-  taskActions: { flexDirection: 'row', gap: 8 },
-  doneBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: '#D1FAE5',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  doneBtnText: { fontSize: 18, color: '#059669' },
-  photoBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  projectTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A', flexShrink: 1 },
+  stageName: { fontSize: 13, color: '#4F46E5', fontWeight: '600', marginTop: 2 },
+  chatBtn: { backgroundColor: '#EEF2FF', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, flexShrink: 0 },
+  chatBtnText: { color: '#4F46E5', fontWeight: '600', fontSize: 13 },
+
+  progressBg: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
+  progressFill: { height: '100%' as unknown as number, backgroundColor: '#4F46E5', borderRadius: 3 },
+  progressLabel: { fontSize: 11, color: '#94A3B8', marginBottom: 20, textAlign: 'right' },
+
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1, marginBottom: 8 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 8 },
+  raiseBtn: { backgroundColor: '#4F46E5', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  raiseBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  finalStageText: { fontSize: 12, color: '#10B981', fontWeight: '600' },
+  empty: { color: '#94A3B8', fontSize: 14, textAlign: 'center', marginVertical: 16 },
+
+  taskCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  taskTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  taskSub: { fontSize: 12, color: '#64748B', marginTop: 1, textTransform: 'capitalize' },
+  taskBtns: { flexDirection: 'row', gap: 6, flexShrink: 0 },
+  doneBtn: { width: 44, height: 44, backgroundColor: '#F0FDF4', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  doneBtnText: { fontSize: 18, color: '#10B981' },
+  photoBtn: { width: 44, height: 44, backgroundColor: '#EFF6FF', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   photoBtnText: { fontSize: 18 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, marginBottom: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  toggleBtn: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#EEF2FF', borderRadius: 8 },
-  toggleBtnText: { color: '#4F46E5', fontWeight: '600', fontSize: 13 },
-  handoverCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
-  inputLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280', marginBottom: 4, marginTop: 8 },
-  input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 14, fontSize: 15, color: '#111827', backgroundColor: '#FAFAFA' },
-  inputMultiline: { height: 80, textAlignVertical: 'top' },
-  proofBtn: { marginTop: 12, paddingVertical: 14, backgroundColor: '#EEF2FF', borderRadius: 10, alignItems: 'center' },
-  proofBtnText: { color: '#4F46E5', fontWeight: '600', fontSize: 15 },
-  submitBtn: { marginTop: 12, paddingVertical: 16, backgroundColor: '#4F46E5', borderRadius: 10, alignItems: 'center' },
+
+  handoverCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', gap: 12 },
+  handoverRoute: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  routePill: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+  routePillTo: { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF' },
+  routeLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.8, textTransform: 'uppercase' },
+  routeName: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginTop: 2 },
+  routeArrow: { fontSize: 18, color: '#94A3B8', flexShrink: 0 },
+
+  proofBtn: { paddingVertical: 14, backgroundColor: '#F1F5F9', borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed' },
+  proofBtnDone: { backgroundColor: '#F0FDF4', borderColor: '#A7F3D0', borderStyle: 'solid' },
+  proofBtnText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
+  proofBtnTextDone: { color: '#10B981' },
+
+  notesInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 12, fontSize: 14, color: '#0F172A', backgroundColor: '#F8FAFC', minHeight: 72, textAlignVertical: 'top' },
+
+  handoverBtns: { flexDirection: 'row', gap: 10 },
+  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center' },
+  cancelBtnText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
+  submitBtn: { flex: 2, paddingVertical: 14, borderRadius: 10, backgroundColor: '#4F46E5', alignItems: 'center' },
   submitBtnDisabled: { opacity: 0.5 },
-  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  handoverMsg: { color: '#059669', fontSize: 13, marginBottom: 8 },
-  handoverMsgError: { color: '#DC2626' },
+  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

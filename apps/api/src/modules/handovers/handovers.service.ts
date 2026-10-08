@@ -19,6 +19,21 @@ export class HandoversService {
     private eventEmitter: EventEmitter2,
   ) {}
 
+  async findAll(projectId?: string) {
+    const filter: Record<string, unknown> = {};
+    if (projectId) filter.project = new Types.ObjectId(projectId);
+    return this.handoverModel
+      .find(filter)
+      .populate('project', 'title')
+      .populate('fromDepartment', 'name')
+      .populate('toDepartment', 'name')
+      .populate('raisedBy', 'name email')
+      .populate('confirmedBy', 'name')
+      .populate('acceptedBy', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
   async raise(
     dto: {
       projectId: string;

@@ -1,4 +1,4 @@
-import { Controller, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { HandoversService } from './handovers.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -7,6 +7,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 export class HandoversController {
   constructor(private service: HandoversService) {}
+
+  @Get()
+  findAll(@Query('projectId') projectId?: string) {
+    return this.service.findAll(projectId);
+  }
 
   @Post()
   raise(

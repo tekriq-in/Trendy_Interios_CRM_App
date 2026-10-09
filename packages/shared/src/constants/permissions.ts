@@ -70,17 +70,18 @@ export const PERMISSIONS = {
 
   // Dashboard
   DASHBOARD_VIEW: 'dashboard:view',
-
-  // System-only — never assign to a user role
-  WHATSAPP_SEND_APPROVED: 'whatsapp:send_approved',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
+// System-only internal permissions — never included in PERMISSIONS, never assignable to any role.
+// The roles UI iterates Object.values(PERMISSIONS) and will never surface these.
+export const SYSTEM_PERMISSIONS = {
+  WHATSAPP_SEND_APPROVED: 'whatsapp:send_approved',
+} as const;
+
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  MD: Object.values(PERMISSIONS).filter(
-    (p) => p !== PERMISSIONS.WHATSAPP_SEND_APPROVED,
-  ) as Permission[],
+  MD: Object.values(PERMISSIONS) as Permission[],
 
   GM: [
     PERMISSIONS.USERS_READ,

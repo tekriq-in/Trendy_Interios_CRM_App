@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { ApprovalsService } from '../src/modules/approvals/approvals.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
+import { MessageGeneratorService } from '../src/modules/message-generator/message-generator.service';
 import { WHATSAPP_SERVICE } from '../src/modules/whatsapp/whatsapp.interface';
 import { PERMISSIONS } from '@ti/shared';
 
@@ -16,7 +17,8 @@ const mockApprovalModel = {
 };
 
 const mockActivityLog = { record: jest.fn() };
-const mockWhatsApp = { sendTemplate: jest.fn() };
+const mockWhatsApp = { sendTemplate: jest.fn(), sendMessage: jest.fn() };
+const mockMessageGenerator = { generate: jest.fn().mockResolvedValue('Mock generated message') };
 
 describe('Approval Gate — no client message without approved approval', () => {
   let service: ApprovalsService;
@@ -29,6 +31,7 @@ describe('Approval Gate — no client message without approved approval', () => 
         { provide: getModelToken('Approval'), useValue: mockApprovalModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: WHATSAPP_SERVICE, useValue: mockWhatsApp },
+        { provide: MessageGeneratorService, useValue: mockMessageGenerator },
       ],
     }).compile();
 
@@ -38,7 +41,7 @@ describe('Approval Gate — no client message without approved approval', () => 
 
   it('throws ForbiddenException when actor lacks approvals:decide', async () => {
     const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_REQUEST] };
-    await expect(service.approve('someId', actor)).rejects.toThrow(
+    await expect(service.approve('someId', {}, actor)).rejects.toThrow(
       'auth.insufficient_permissions',
     );
   });
@@ -64,7 +67,7 @@ describe('Approval Gate — no client message without approved approval', () => 
     mockApprovalModel.findByIdAndUpdate.mockResolvedValue(updatedApproval);
 
     const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_DECIDE] };
-    const result = await service.approve(approvalId, actor);
+    const result = await service.approve(approvalId, {}, actor);
 
     expect(mockApprovalModel.findByIdAndUpdate).toHaveBeenCalledWith(
       approvalId,
@@ -77,9 +80,7 @@ describe('Approval Gate — no client message without approved approval', () => 
     );
   });
 
-  it('WhatsApp is only triggered AFTER approval gate (not for non-client_update kinds)', async () => {
-    // WhatsApp is injected but only fires when kind === 'client_update' AND status === 'approved'.
-    // For other kinds (e.g. 'quotation'), sendTemplate must NOT be called.
+  it('WhatsApp.sendMessage is NOT called for non-client_update kinds (quotation)', async () => {
     const approvalId = new Types.ObjectId().toHexString();
     mockApprovalModel.findByIdAndUpdate.mockResolvedValue({
       _id: approvalId,
@@ -91,9 +92,39 @@ describe('Approval Gate — no client message without approved approval', () => 
     });
 
     const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_DECIDE] };
-    await service.approve(approvalId, actor);
+    await service.approve(approvalId, {}, actor);
 
+    expect(mockWhatsApp.sendMessage).not.toHaveBeenCalled();
     expect(mockWhatsApp.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('WhatsApp.sendMessage IS called after approving a client_update with a phone number', async () => {
+    const approvalId = new Types.ObjectId().toHexString();
+    const savedApproval = {
+      _id: approvalId,
+      kind: 'client_update',
+      status: 'approved',
+      generatedMessage: 'Dear Rajesh, your project is progressing well. — Team Trendy Interios',
+      whatsappScheduled: false,
+      approvedAt: new Date(),
+      save: jest.fn(),
+      populate: jest.fn().mockImplementation(function () {
+        this.project = {
+          title: 'Sharma Residence',
+          client: { phone: '+919876543210', name: 'Rajesh Sharma', whatsappOptIn: true },
+        };
+      }),
+    };
+
+    mockApprovalModel.findByIdAndUpdate.mockResolvedValue(savedApproval);
+
+    const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_DECIDE] };
+    await service.approve(approvalId, {}, actor);
+
+    expect(mockWhatsApp.sendMessage).toHaveBeenCalledWith(
+      '+919876543210',
+      expect.stringContaining('Trendy Interios'),
+    );
   });
 
   it('request approval throws Forbidden when actor lacks approvals:request', async () => {
@@ -103,10 +134,18 @@ describe('Approval Gate — no client message without approved approval', () => 
     ).rejects.toThrow('auth.insufficient_permissions');
   });
 
-  it('pending approvals list throws Forbidden when actor lacks approvals:decide', async () => {
-    // findPending does not guard itself — the controller + PermissionsGuard does.
-    // This test checks ApprovalsService.approve/reject boundary instead.
-    // Already covered above.
-    expect(true).toBe(true);
+  it('request client_update without generatedMessage throws BadRequestException', async () => {
+    const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_REQUEST] };
+    await expect(
+      service.request(
+        { projectId: new Types.ObjectId().toHexString(), kind: 'client_update', generatedMessage: '' },
+        actor,
+      ),
+    ).rejects.toThrow('approval.client_update_requires_generated_message');
+  });
+
+  it('whatsapp:send_approved permission is never in the PERMISSIONS export', () => {
+    const allSlugs = Object.values(PERMISSIONS);
+    expect(allSlugs).not.toContain('whatsapp:send_approved');
   });
 });

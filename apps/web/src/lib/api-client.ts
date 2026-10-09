@@ -12,13 +12,59 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+let isRefreshing = false;
+let refreshQueue: Array<(token: string) => void> = [];
+
+function drainQueue(token: string) {
+  refreshQueue.forEach((cb) => cb(token));
+  refreshQueue = [];
+}
+
 apiClient.interceptors.response.use(
   (res) => res,
   async (err) => {
-    if (err.response?.status === 401) {
-      useAuthStore.getState().clearAuth();
-      window.location.href = '/login';
+    const original = err.config;
+
+    if (err.response?.status !== 401 || original._retried) {
+      return Promise.reject(err);
     }
-    return Promise.reject(err);
+
+    const { refreshToken, setAuth, clearAuth } = useAuthStore.getState();
+
+    if (!refreshToken) {
+      clearAuth();
+      if (typeof window !== 'undefined') window.location.href = '/login';
+      return Promise.reject(err);
+    }
+
+    if (isRefreshing) {
+      return new Promise((resolve) => {
+        refreshQueue.push((token) => {
+          original.headers.Authorization = `Bearer ${token}`;
+          resolve(apiClient(original));
+        });
+      });
+    }
+
+    original._retried = true;
+    isRefreshing = true;
+
+    try {
+      const res = await axios.post<{ accessToken: string; refreshToken: string }>(
+        `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1'}/auth/refresh`,
+        { refreshToken },
+      );
+      const { accessToken, refreshToken: newRefreshToken } = res.data;
+      setAuth(accessToken, newRefreshToken);
+      original.headers.Authorization = `Bearer ${accessToken}`;
+      drainQueue(accessToken);
+      return apiClient(original);
+    } catch {
+      clearAuth();
+      if (typeof window !== 'undefined') window.location.href = '/login';
+      return Promise.reject(err);
+    } finally {
+      isRefreshing = false;
+    }
   },
 );

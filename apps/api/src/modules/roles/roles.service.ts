@@ -8,6 +8,13 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Role, RoleDocument } from './schemas/role.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { SYSTEM_PERMISSIONS } from '@ti/shared';
+
+const SYSTEM_SLUGS = new Set<string>(Object.values(SYSTEM_PERMISSIONS));
+
+function sanitizePermissions(permissions: string[]): string[] {
+  return permissions.filter((p) => !SYSTEM_SLUGS.has(p));
+}
 
 @Injectable()
 export class RolesService {
@@ -30,7 +37,11 @@ export class RolesService {
     const existing = await this.roleModel.findOne({ name: dto.name });
     if (existing) throw new ConflictException('role.name_taken');
 
-    const role = await this.roleModel.create({ ...dto, isSystem: false });
+    const role = await this.roleModel.create({
+      ...dto,
+      permissions: sanitizePermissions(dto.permissions),
+      isSystem: false,
+    });
     await this.activityLog.record({
       actor: actorId,
       action: 'role.created',
@@ -41,14 +52,18 @@ export class RolesService {
   }
 
   async update(id: string, dto: { name?: string; permissions?: string[] }, actorId: string) {
-    const role = await this.roleModel.findByIdAndUpdate(id, dto, { new: true });
+    const sanitized = {
+      ...dto,
+      ...(dto.permissions ? { permissions: sanitizePermissions(dto.permissions) } : {}),
+    };
+    const role = await this.roleModel.findByIdAndUpdate(id, sanitized, { new: true });
     if (!role) throw new NotFoundException('role.not_found');
     await this.activityLog.record({
       actor: actorId,
       action: 'role.updated',
       entity: 'roles',
       entityId: id,
-      metadata: dto,
+      metadata: sanitized,
     });
     return role;
   }

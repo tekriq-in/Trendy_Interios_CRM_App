@@ -23,6 +23,7 @@ interface StageDuration { stageName: string; avgHours: number; count: number; }
 interface Dept { _id: string; name: string; order: number; defaultSlaHours: number; }
 interface Employee { _id: string; name: string; department?: { _id: string } | string; isActive: boolean; }
 interface Client { _id: string; }
+interface SlaReportRow { projectId: string; projectTitle: string; stageName: string; hoursInStage: number; slaHours: number; breached: boolean; }
 
 const DEPT_COLORS = ['#6366f1','#8b5cf6','#0ea5e9','#10b981','#f59e0b','#f43f5e','#14b8a6','#f97316'];
 
@@ -36,8 +37,15 @@ export default function DashboardOverviewPage() {
   const departments = useQuery<Dept[]>({ queryKey: ['departments'], queryFn: () => apiClient.get('/departments').then(r => r.data) });
   const employees   = useQuery<Employee[]>({ queryKey: ['users'], queryFn: () => apiClient.get('/users').then(r => r.data) });
   const clients     = useQuery<Client[]>({ queryKey: ['clients', ''], queryFn: () => apiClient.get('/clients').then(r => r.data) });
+  const slaReport   = useQuery<SlaReportRow[]>({ queryKey: ['sla-report'], queryFn: () => apiClient.get('/sla/report').then(r => r.data).catch(() => [] as SlaReportRow[]) });
 
   const sortedDepts = [...(departments.data ?? [])].sort((a, b) => a.order - b.order);
+
+  // Map stageName → number of breached projects
+  const slaBreachByStage = new Map<string, number>();
+  for (const row of slaReport.data ?? []) {
+    if (row.breached) slaBreachByStage.set(row.stageName, (slaBreachByStage.get(row.stageName) ?? 0) + 1);
+  }
 
   const openBlockerCount = (blockers.data ?? []).filter(b => b.status === 'open').length;
   const totalProjects = Object.values(board.data ?? {}).reduce((s, arr) => s + arr.length, 0);
@@ -72,17 +80,26 @@ export default function DashboardOverviewPage() {
               b.status === 'open' && projectsHere.some(p => p._id === (b.project as unknown as { _id: string })?._id)
             );
 
+            const slaBreachCount = slaBreachByStage.get(dept.name) ?? 0;
             return (
-              <div key={dept._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors">
-                <div className="h-1.5 w-full" style={{ background: color }} />
+              <div key={dept._id} className={`bg-white border rounded-xl overflow-hidden hover:border-slate-300 transition-colors ${slaBreachCount > 0 ? 'border-red-300' : 'border-slate-200'}`}>
+                <div className="h-1.5 w-full" style={{ background: slaBreachCount > 0 ? '#ef4444' : color }} />
                 <div className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Stage {dept.order}</div>
                       <div className="font-semibold text-slate-900 text-sm mt-0.5">{dept.name}</div>
                     </div>
-                    <div className="text-xs px-2 py-0.5 rounded-full font-semibold text-slate-500 bg-slate-100">
-                      SLA {dept.defaultSlaHours}h
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="text-xs px-2 py-0.5 rounded-full font-semibold text-slate-500 bg-slate-100">
+                        SLA {dept.defaultSlaHours}h
+                      </div>
+                      {slaBreachCount > 0 && (
+                        <div className="text-xs px-2 py-0.5 rounded-full font-semibold text-red-700 bg-red-100 ring-1 ring-inset ring-red-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                          {slaBreachCount} SLA breach{slaBreachCount > 1 ? 'es' : ''}
+                        </div>
+                      )}
                     </div>
                   </div>
 

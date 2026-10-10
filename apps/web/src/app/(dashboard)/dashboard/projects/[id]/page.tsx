@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { ProjectChat } from '@/components/chat/ProjectChat';
-import { ArrowLeft, ChevronRight, CheckCircle2, Circle, Loader2, UserPlus, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Circle, Loader2, UserPlus, X, Upload, FileText, ExternalLink } from 'lucide-react';
 
 interface Dept { _id: string; name: string; order: number; }
 interface TeamMember { _id: string; name: string; email: string; }
@@ -19,6 +19,7 @@ interface Project {
   targetDate?: string;
 }
 interface Task { _id: string; title: string; status: string; }
+interface TIDocument { _id: string; fileName: string; mimeType: string; driveLink: string; type: string; }
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700',
@@ -39,6 +40,10 @@ export default function ProjectDetailPage({ params }: Props) {
   const qc = useQueryClient();
   const [advancing, setAdvancing] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
+  const [drawingType, setDrawingType] = useState<'drawing_2d' | 'drawing_3d'>('drawing_2d');
+  const [drawingUploading, setDrawingUploading] = useState(false);
+  const [drawingErr, setDrawingErr] = useState('');
+  const drawingInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project, isLoading } = useQuery<Project>({
     queryKey: ['project', id],
@@ -53,6 +58,14 @@ export default function ProjectDetailPage({ params }: Props) {
   const { data: departments = [] } = useQuery<Dept[]>({
     queryKey: ['departments'],
     queryFn: () => apiClient.get('/departments').then((r) => r.data),
+  });
+
+  const { data: drawings = [], refetch: refetchDrawings } = useQuery<TIDocument[]>({
+    queryKey: ['drawings', id],
+    queryFn: () =>
+      apiClient.get(`/projects/${id}/documents`).then((r) =>
+        (r.data as TIDocument[]).filter((d) => d.type === 'drawing_2d' || d.type === 'drawing_3d'),
+      ).catch(() => [] as TIDocument[]),
   });
 
   const { data: allUsers = [] } = useQuery<TeamMember[]>({
@@ -87,6 +100,20 @@ export default function ProjectDetailPage({ params }: Props) {
   const nextStage = currentIdx >= 0 && currentIdx < sortedDepts.length - 1 ? sortedDepts[currentIdx + 1] : null;
 
   const teamIds = new Set((project.assignedTeam ?? []).map((m) => m._id));
+
+  async function handleDrawingUpload(file: File) {
+    setDrawingUploading(true); setDrawingErr('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('projectId', id);
+      fd.append('type', drawingType);
+      await apiClient.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      refetchDrawings();
+    } catch {
+      setDrawingErr('Upload failed. Please try again.');
+    } finally { setDrawingUploading(false); }
+  }
 
   function toggleTeamMember(userId: string) {
     const next = new Set(teamIds);
@@ -225,6 +252,60 @@ export default function ProjectDetailPage({ params }: Props) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Drawings */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Drawings</h2>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-semibold">
+              {(['drawing_2d', 'drawing_3d'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setDrawingType(t)}
+                  className={`px-3 py-1.5 transition-colors ${drawingType === t ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  {t === 'drawing_2d' ? '2D' : '3D'}
+                </button>
+              ))}
+            </div>
+            <input
+              ref={drawingInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png,.dwg,.dxf,.svg"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleDrawingUpload(f); }}
+            />
+            <button
+              onClick={() => drawingInputRef.current?.click()}
+              disabled={drawingUploading}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {drawingUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Upload {drawingType === 'drawing_2d' ? '2D' : '3D'} Drawing
+            </button>
+          </div>
+        </div>
+
+        {drawingErr && <p className="text-xs text-red-500">{drawingErr}</p>}
+
+        {drawings.length === 0 ? (
+          <p className="text-sm text-slate-400">No drawings uploaded yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {drawings.map((d) => (
+              <div key={d._id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className="text-sm text-slate-800 flex-1 truncate">{d.fileName}</span>
+                <span className="text-xs text-slate-400 shrink-0 uppercase">{d.type.replace('drawing_', '')}</span>
+                <a href={d.driveLink} target="_blank" rel="noreferrer" className="p-1 text-slate-400 hover:text-indigo-600 shrink-0">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Chat */}

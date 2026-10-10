@@ -4,6 +4,7 @@ import { SlaService } from './sla.service';
 import { SlaController } from './sla.controller';
 import { SlaSettings, SlaSettingsSchema } from './schemas/sla-settings.schema';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
+import { Blocker, BlockerSchema } from '../blockers/schemas/blocker.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
 
 @Module({
@@ -11,6 +12,7 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
     MongooseModule.forFeature([
       { name: SlaSettings.name, schema: SlaSettingsSchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: Blocker.name, schema: BlockerSchema },
     ]),
     ActivityLogModule,
   ],

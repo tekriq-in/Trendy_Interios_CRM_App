@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import {
-  CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2,
+  CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip,
 } from 'lucide-react';
 
 interface NameObj { name: string }
@@ -60,6 +60,10 @@ export default function ApprovalsPage() {
   const [generatedMsg, setGeneratedMsg] = useState('');
   const [reqSaving, setReqSaving] = useState(false);
   const [reqErr, setReqErr] = useState('');
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [uploadedDocId, setUploadedDocId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: approvals = [], isLoading } = useQuery<Approval[]>({
     queryKey: ['approvals'],
@@ -86,6 +90,24 @@ export default function ApprovalsPage() {
       setRejectingId(null); setRejectReason('');
     },
   });
+
+  async function handleFileAttach(file: File) {
+    setAttachedFile(file);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (reqForm.projectId) fd.append('projectId', reqForm.projectId);
+      fd.append('type', reqForm.kind === 'drawing' ? 'drawing_2d' : 'other');
+      const res = await apiClient.post<{ _id: string }>('/documents/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setUploadedDocId(res.data._id);
+    } catch {
+      setReqErr('File upload failed. You can still submit without a document.');
+      setAttachedFile(null);
+    } finally { setUploading(false); }
+  }
 
   async function handleGenerate() {
     if (!reqForm.rawNotes.trim()) { setReqErr('Add some notes first.'); return; }
@@ -117,11 +139,14 @@ export default function ApprovalsPage() {
         kind: reqForm.kind,
         rawNotes: reqForm.rawNotes,
         generatedMessage: generatedMsg,
+        ...(uploadedDocId ? { linkedDocumentId: uploadedDocId } : {}),
       });
       qc.invalidateQueries({ queryKey: ['approvals'] });
       setShowRequest(false);
       setReqForm({ projectId: '', kind: 'client_update', rawNotes: '', language: 'en' });
       setGeneratedMsg('');
+      setAttachedFile(null);
+      setUploadedDocId(null);
     } catch (e: unknown) {
       setReqErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to submit.');
     } finally { setReqSaving(false); }
@@ -411,6 +436,32 @@ export default function ApprovalsPage() {
                   )}
                 </>
               )}
+
+              {/* Document attachment */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Attach document <span className="text-slate-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.dwg,.dxf"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileAttach(f); }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 border border-dashed border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50 w-full"
+                >
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+                  {uploading ? 'Uploading…' : attachedFile ? attachedFile.name : 'Click to attach a file'}
+                </button>
+                {uploadedDocId && (
+                  <p className="text-xs text-emerald-600 mt-1">Document uploaded successfully.</p>
+                )}
+              </div>
 
               {reqErr && (
                 <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{reqErr}</p>

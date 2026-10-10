@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Approval, ApprovalDocument } from './schemas/approval.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
@@ -14,6 +15,7 @@ export class ApprovalsService {
     private activityLog: ActivityLogService,
     @Inject(WHATSAPP_SERVICE) private whatsapp: IWhatsAppService,
     private messageGenerator: MessageGeneratorService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   findAll() {
@@ -74,6 +76,13 @@ export class ApprovalsService {
       entity: 'approvals',
       entityId: String(approval._id),
       metadata: { kind: dto.kind },
+    });
+
+    this.eventEmitter.emit('approval.requested', {
+      approvalId: String(approval._id),
+      projectId: dto.projectId,
+      kind: dto.kind,
+      requestedBy: actor._id,
     });
 
     return approval;

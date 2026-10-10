@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Blocker, BlockerDocument } from './schemas/blocker.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
@@ -10,6 +11,7 @@ export class BlockersService {
   constructor(
     @InjectModel(Blocker.name) private blockerModel: Model<BlockerDocument>,
     private activityLog: ActivityLogService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   findAll(user: { _id: string; rolePermissions: string[] }, status?: string) {
@@ -48,6 +50,14 @@ export class BlockersService {
       entity: 'blockers',
       entityId: String(blocker._id),
       metadata: { type: dto.type },
+    });
+
+    this.eventEmitter.emit('blocker.raised', {
+      blockerId: String(blocker._id),
+      projectId: dto.projectId,
+      title: dto.title,
+      type: dto.type,
+      raisedBy: actor._id,
     });
 
     return blocker;

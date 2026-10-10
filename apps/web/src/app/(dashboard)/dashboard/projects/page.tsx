@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { Plus, X } from 'lucide-react';
 
 interface Client { _id: string; name: string; }
@@ -87,7 +88,9 @@ export default function ProjectsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading projects…</p>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">

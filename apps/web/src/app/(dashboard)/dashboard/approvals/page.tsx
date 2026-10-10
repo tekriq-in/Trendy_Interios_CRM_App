@@ -3,6 +3,8 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { useToast } from '@/components/ui/Toast';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import {
   CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip,
 } from 'lucide-react';
@@ -42,6 +44,7 @@ function projectTitle(v: Approval['project']) {
 
 export default function ApprovalsPage() {
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   // reject state
   const [rejectingId, setRejectingId] = useState<string | null>(null);
@@ -79,7 +82,11 @@ export default function ApprovalsPage() {
   const approveMut = useMutation({
     mutationFn: ({ id, finalMessage }: { id: string; finalMessage?: string }) =>
       apiClient.patch(`/approvals/${id}/approve`, { finalMessage }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['approvals'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['approvals'] });
+      toast('success', 'Approval sent — WhatsApp message dispatched.');
+    },
+    onError: () => toast('error', 'Failed to approve. Please try again.'),
   });
 
   const rejectMut = useMutation({
@@ -88,7 +95,9 @@ export default function ApprovalsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['approvals'] });
       setRejectingId(null); setRejectReason('');
+      toast('warning', 'Approval rejected.');
     },
+    onError: () => toast('error', 'Failed to reject. Please try again.'),
   });
 
   async function handleFileAttach(file: File) {
@@ -142,6 +151,7 @@ export default function ApprovalsPage() {
         ...(uploadedDocId ? { linkedDocumentId: uploadedDocId } : {}),
       });
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      toast('success', 'Approval request submitted.');
       setShowRequest(false);
       setReqForm({ projectId: '', kind: 'client_update', rawNotes: '', language: 'en' });
       setGeneratedMsg('');
@@ -175,7 +185,9 @@ export default function ApprovalsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       ) : (
         <>
           {/* ── Pending ── */}

@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client';
 import {
   CheckSquare, AlertTriangle, FolderKanban, Users, UserCircle2, type LucideIcon,
 } from 'lucide-react';
+import { SkeletonDeptCard } from '@/components/ui/Skeleton';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -68,7 +69,9 @@ export default function DashboardOverviewPage() {
           <span className="text-xs text-slate-400">{sortedDepts.length} departments · {activeEmployees} staff</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {sortedDepts.map((dept, idx) => {
+          {departments.isLoading
+            ? Array.from({ length: 8 }).map((_, i) => <SkeletonDeptCard key={i} />)
+            : sortedDepts.map((dept, idx) => {
             const color = DEPT_COLORS[idx % DEPT_COLORS.length];
             const projectsHere = (board.data ?? {})[dept.name] ?? [];
             const staffHere = (employees.data ?? []).filter(e => {

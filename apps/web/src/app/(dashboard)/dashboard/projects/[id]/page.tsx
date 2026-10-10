@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { ProjectChat } from '@/components/chat/ProjectChat';
+import { useToast } from '@/components/ui/Toast';
 import { ArrowLeft, ChevronRight, CheckCircle2, Circle, Loader2, UserPlus, X, Upload, FileText, ExternalLink } from 'lucide-react';
 
 interface Dept { _id: string; name: string; order: number; }
@@ -38,6 +39,7 @@ export default function ProjectDetailPage({ params }: Props) {
   const { id } = params;
   const router = useRouter();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [advancing, setAdvancing] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [drawingType, setDrawingType] = useState<'drawing_2d' | 'drawing_3d'>('drawing_2d');
@@ -79,14 +81,19 @@ export default function ProjectDetailPage({ params }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project', id] });
       setAdvancing(false);
+      toast('success', 'Stage advanced successfully.');
     },
-    onError: () => setAdvancing(false),
+    onError: () => { setAdvancing(false); toast('error', 'Failed to advance stage.'); },
   });
 
   const updateTeamMut = useMutation({
     mutationFn: (teamIds: string[]) =>
       apiClient.patch(`/projects/${id}`, { assignedTeamIds: teamIds }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['project', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', id] });
+      toast('success', 'Team updated.');
+    },
+    onError: () => toast('error', 'Failed to update team.'),
   });
 
   if (isLoading) return <div className="flex items-center justify-center h-48"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
@@ -110,8 +117,10 @@ export default function ProjectDetailPage({ params }: Props) {
       fd.append('type', drawingType);
       await apiClient.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       refetchDrawings();
+      toast('success', 'Drawing uploaded.');
     } catch {
       setDrawingErr('Upload failed. Please try again.');
+      toast('error', 'Drawing upload failed.');
     } finally { setDrawingUploading(false); }
   }
 

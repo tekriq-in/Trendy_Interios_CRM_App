@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useSelector } from 'react-redux';
 import { Redirect } from 'expo-router';
@@ -10,10 +11,12 @@ import type { RootState } from '../../src/store';
 export default function AppLayout() {
   const token = useSelector((s: RootState) => s.auth.accessToken);
   const wasConnected = useRef<boolean | null>(null);
+  const [isConnected, setIsConnected] = useState<boolean>(true);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       const isNowConnected = state.isConnected === true;
+      setIsConnected(isNowConnected);
       if (isNowConnected && wasConnected.current === false) {
         syncOfflineQueue().catch(() => {});
       }
@@ -25,7 +28,13 @@ export default function AppLayout() {
   if (!token) return <Redirect href="/login" />;
 
   return (
-    <Tabs
+    <View style={styles.root}>
+      {!isConnected && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>Working offline — changes will sync when connected</Text>
+        </View>
+      )}
+      <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#4F46E5',
         tabBarInactiveTintColor: '#9CA3AF',
@@ -78,5 +87,21 @@ export default function AppLayout() {
       <Tabs.Screen name="projects/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="projects/[id]/chat" options={{ href: null }} />
     </Tabs>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  offlineBanner: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineText: {
+    color: '#78350F',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+});

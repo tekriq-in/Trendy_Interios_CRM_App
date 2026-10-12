@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { CheckCircle, XCircle, ChevronRight, ArrowRight } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, ArrowRight, Plus, X, Upload } from 'lucide-react';
 
 interface NameObj { name: string; }
 interface Handover {
@@ -17,6 +17,12 @@ interface Handover {
   rejectionReason?: string;
   createdAt?: string;
 }
+interface Dept { _id: string; name: string; order: number; }
+interface Project { _id: string; title: string; currentStage?: { _id: string } | string; }
+interface RaiseForm {
+  projectId: string; fromDeptId: string; toDeptId: string; notes: string;
+}
+const EMPTY_RAISE: RaiseForm = { projectId: '', fromDeptId: '', toDeptId: '', notes: '' };
 
 const STATUS_STYLE: Record<string, string> = {
   draft:     'bg-slate-100 text-slate-600',
@@ -34,10 +40,61 @@ export default function HandoversPage() {
   const qc = useQueryClient();
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [showRaise, setShowRaise] = useState(false);
+  const [raiseForm, setRaiseForm] = useState<RaiseForm>(EMPTY_RAISE);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [raiseErr, setRaiseErr] = useState('');
+  const proofInputRef = useRef<HTMLInputElement>(null);
 
   const { data: handovers = [], isLoading } = useQuery<Handover[]>({
     queryKey: ['handovers'],
     queryFn: () => apiClient.get('/handovers').then((r) => r.data),
+  });
+
+  const { data: projects = [] } = useQuery<Project[]>({
+    queryKey: ['projects'],
+    queryFn: () => apiClient.get('/projects').then((r) => r.data),
+    enabled: showRaise,
+  });
+
+  const { data: departments = [] } = useQuery<Dept[]>({
+    queryKey: ['departments'],
+    queryFn: () => apiClient.get('/departments').then((r) => r.data),
+    enabled: showRaise,
+  });
+
+  const sortedDepts = [...departments].sort((a, b) => a.order - b.order);
+
+  const raiseMut = useMutation({
+    mutationFn: async (form: RaiseForm) => {
+      if (!proofFile) throw new Error('Proof photo required');
+      // 1. Upload proof
+      const fd = new FormData();
+      fd.append('file', proofFile);
+      fd.append('projectId', form.projectId);
+      fd.append('type', 'photo');
+      const docRes = await apiClient.post<{ _id: string }>('/documents/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      // 2. Raise handover
+      return apiClient.post('/handovers', {
+        projectId: form.projectId,
+        fromDepartmentId: form.fromDeptId,
+        toDepartmentId: form.toDeptId,
+        proofFileIds: [docRes.data._id],
+        notes: form.notes || undefined,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['handovers'] });
+      setShowRaise(false);
+      setRaiseForm(EMPTY_RAISE);
+      setProofFile(null);
+      setRaiseErr('');
+    },
+    onError: (e: unknown) => {
+      setRaiseErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(e));
+    },
   });
 
   const confirmMut = useMutation({
@@ -142,12 +199,86 @@ export default function HandoversPage() {
     );
   }
 
+  const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5';
+
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Handovers</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Staff raise handovers from the mobile app — confirm and accept them here.</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Handovers</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Raise handovers from web or mobile — confirm and accept them here.</p>
+        </div>
+        <button
+          onClick={() => { setShowRaise(true); setRaiseForm(EMPTY_RAISE); setProofFile(null); setRaiseErr(''); }}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Raise Handover
+        </button>
       </div>
+
+      {/* Raise Handover Modal */}
+      {showRaise && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-12 px-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mb-8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900">Raise Handover</h2>
+              <button onClick={() => setShowRaise(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className={labelCls}>Project *</label>
+                <select value={raiseForm.projectId} onChange={e => setRaiseForm(p => ({ ...p, projectId: e.target.value }))} className={inputCls}>
+                  <option value="">Select project…</option>
+                  {projects.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>From department *</label>
+                  <select value={raiseForm.fromDeptId} onChange={e => setRaiseForm(p => ({ ...p, fromDeptId: e.target.value }))} className={inputCls}>
+                    <option value="">Select…</option>
+                    {sortedDepts.map(d => <option key={d._id} value={d._id}>{d.order}. {d.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>To department *</label>
+                  <select value={raiseForm.toDeptId} onChange={e => setRaiseForm(p => ({ ...p, toDeptId: e.target.value }))} className={inputCls}>
+                    <option value="">Select…</option>
+                    {sortedDepts.map(d => <option key={d._id} value={d._id}>{d.order}. {d.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Proof photo * <span className="text-slate-400 font-normal">(required by policy)</span></label>
+                <input ref={proofInputRef} type="file" accept="image/*" className="hidden" onChange={e => setProofFile(e.target.files?.[0] ?? null)} />
+                <button
+                  onClick={() => proofInputRef.current?.click()}
+                  className={`w-full border-2 border-dashed rounded-xl py-5 text-sm font-medium transition-colors ${proofFile ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-50 text-slate-500 hover:border-indigo-400 hover:text-indigo-600'}`}
+                >
+                  <Upload className="w-4 h-4 inline mr-2" />
+                  {proofFile ? `✓ ${proofFile.name}` : 'Click to upload proof photo'}
+                </button>
+              </div>
+              <div>
+                <label className={labelCls}>Notes</label>
+                <textarea value={raiseForm.notes} onChange={e => setRaiseForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Any handover notes…" className={`${inputCls} resize-none`} />
+              </div>
+              {raiseErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{raiseErr}</p>}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
+              <button onClick={() => setShowRaise(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
+              <button
+                onClick={() => raiseMut.mutate(raiseForm)}
+                disabled={!raiseForm.projectId || !raiseForm.fromDeptId || !raiseForm.toDeptId || !proofFile || raiseMut.isPending}
+                className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {raiseMut.isPending ? 'Raising…' : 'Raise Handover'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-slate-400">Loading…</p>

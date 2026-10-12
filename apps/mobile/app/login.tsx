@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
+import { registerForPushNotifications } from '../src/services/notifications.service';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -42,6 +43,7 @@ export default function LoginScreen() {
         setUserId(res.data.userId!);
       } else {
         dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken! }));
+        registerForPushNotifications().catch(() => {});
         router.replace('/(app)/projects');
       }
     } catch (err: unknown) {

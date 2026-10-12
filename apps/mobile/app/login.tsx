@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { router } from 'expo-router';
 import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
+import axios from 'axios';
 import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
 
@@ -43,8 +44,21 @@ export default function LoginScreen() {
         dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken! }));
         router.replace('/(app)/projects');
       }
-    } catch {
-      Alert.alert('Error', t('invalidCredentials', 'Invalid credentials'));
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          Alert.alert(
+            'Cannot reach server',
+            `Make sure you are on the same WiFi as your laptop.\n\nAPI: ${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1'}`,
+          );
+        } else if (err.response.status === 401) {
+          Alert.alert('Invalid credentials', 'Check your email and password.');
+        } else {
+          Alert.alert('Error', `Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+        }
+      } else {
+        Alert.alert('Error', String(err));
+      }
     } finally {
       setLoading(false);
     }

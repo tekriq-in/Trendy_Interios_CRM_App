@@ -15,15 +15,8 @@ export class Client {
   @Prop({ lowercase: true, trim: true })
   email: string;
 
-  @Prop({
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point',
-    },
-    coordinates: { type: [Number] },
-  })
-  location: { type: string; coordinates: number[] };
+  @Prop({ type: Object })
+  location?: { type: string; coordinates: number[] };
 
   @Prop({ trim: true })
   address: string;
@@ -47,4 +40,4 @@ export class Client {
 
 export const ClientSchema = SchemaFactory.createForClass(Client);
 ClientSchema.plugin(basePlugin);
-ClientSchema.index({ location: '2dsphere' });
+ClientSchema.index({ location: '2dsphere' }, { sparse: true });

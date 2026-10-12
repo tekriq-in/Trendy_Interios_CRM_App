@@ -25,6 +25,7 @@ export class SeedService implements OnApplicationBootstrap {
     await this.seedDepartments();
     await this.seedRoles();
     await this.seedMdUser();
+    await this.seedDemoUsers();
     this.logger.log('Seed complete');
   }
 
@@ -84,5 +85,33 @@ export class SeedService implements OnApplicationBootstrap {
     });
 
     this.logger.log(`Seeded MD user: ${email}`);
+  }
+
+  private async seedDemoUsers() {
+    const demoUsers = [
+      { name: 'Priya GM',           email: 'gm@trendyinterios.in',      role: 'GM',              password: 'Demo@gm123!' },
+      { name: 'Arjun Head',         email: 'head@trendyinterios.in',     role: 'Department Head', password: 'Demo@head123!' },
+      { name: 'Kavya Employee',     email: 'emp@trendyinterios.in',      role: 'Employee',        password: 'Demo@emp123!' },
+    ];
+
+    for (const u of demoUsers) {
+      const exists = await this.userModel.findOne({ email: u.email });
+      if (exists) continue;
+
+      const role = await this.roleModel.findOne({ name: u.role });
+      if (!role) continue;
+
+      const passwordHash = await bcrypt.hash(u.password, 12);
+      await this.userModel.create({
+        name: u.name,
+        email: u.email,
+        passwordHash,
+        role: role._id,
+        isActive: true,
+        preferredLanguage: 'en',
+      });
+
+      this.logger.log(`Seeded demo user: ${u.email} (${u.role})`);
+    }
   }
 }

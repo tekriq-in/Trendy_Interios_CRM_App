@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../../src/services/api';
+import { SkeletonProjectCard } from '../../../src/components/Skeleton';
 import type { Project } from '@ti/shared';
 
 type ProjectPopulated = Project & {
@@ -25,6 +26,7 @@ const EMPTY_CLIENT = {
 export default function ProjectsScreen() {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<ProjectPopulated[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // onboarding modal state
@@ -44,6 +46,8 @@ export default function ProjectsScreen() {
       setProjects(res.data);
     } catch {
       // silently handle offline
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -108,6 +112,19 @@ export default function ProjectsScreen() {
       setError('Failed to create project. Client saved — you can create the project later.');
       setShowModal(false);
     } finally { setSaving(false); }
+  }
+
+  if (loading) {
+    return (
+      <View style={s.container}>
+        <View style={s.header}>
+          <Text style={s.heading}>{t('projects')}</Text>
+        </View>
+        <View style={{ padding: 16, gap: 10 }}>
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonProjectCard key={i} />)}
+        </View>
+      </View>
+    );
   }
 
   return (

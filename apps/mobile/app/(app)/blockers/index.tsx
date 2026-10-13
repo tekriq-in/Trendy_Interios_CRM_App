@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  Modal, TextInput, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator,
+  Modal, TextInput, ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { api } from '../../../src/services/api';
+import { SkeletonBlockerRow } from '../../../src/components/Skeleton';
 import type { Blocker } from '@ti/shared';
 
 type BlockerPopulated = Blocker & { project?: { title: string } };
@@ -79,8 +80,13 @@ export default function BlockersScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color="#4F46E5" size="large" />
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.heading}>Blockers</Text>
+        </View>
+        <View style={{ gap: 8 }}>
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonBlockerRow key={i} />)}
+        </View>
       </View>
     );
   }
@@ -227,7 +233,6 @@ export default function BlockersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC', paddingHorizontal: 16, paddingTop: 56 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   heading: { fontSize: 24, fontWeight: '700', color: '#0F172A' },
   raiseBtn: {

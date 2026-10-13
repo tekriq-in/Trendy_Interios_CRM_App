@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator,
+  View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
 } from 'react-native';
 import { api } from '../../../src/services/api';
+import { SkeletonTaskRow } from '../../../src/components/Skeleton';
 import type { Project, Task } from '@ti/shared';
 
 type FlatTask = Task & { projectTitle: string };
@@ -66,8 +67,11 @@ export default function MyTasksScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color="#4F46E5" size="large" />
+      <View style={styles.container}>
+        <Text style={styles.heading}>My Tasks</Text>
+        <View style={{ gap: 8 }}>
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonTaskRow key={i} />)}
+        </View>
       </View>
     );
   }
@@ -118,7 +122,6 @@ export default function MyTasksScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC', paddingHorizontal: 16, paddingTop: 56 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
   heading: { fontSize: 24, fontWeight: '700', color: '#0F172A', marginBottom: 16 },
   empty: { textAlign: 'center', color: '#94A3B8', marginTop: 48, fontSize: 15 },
   card: {

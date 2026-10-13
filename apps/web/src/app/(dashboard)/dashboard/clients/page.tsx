@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
-import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus } from 'lucide-react';
+import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface Client {
   _id: string; name: string; phone: string; email?: string;
@@ -29,6 +30,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
 
   // New project after client creation
   const [newClientId, setNewClientId] = useState<string | null>(null);
@@ -50,12 +52,14 @@ export default function ClientsPage() {
 
   function set(key: keyof FormState, value: string | boolean) {
     setForm(p => ({ ...p, [key]: value }));
+    if (typeof value === 'string' && fieldErrors[key]) setFieldErrors(p => ({ ...p, [key]: '' }));
   }
 
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setErr('');
+    setFieldErrors({});
     setShowModal(true);
   }
 
@@ -67,12 +71,17 @@ export default function ClientsPage() {
       notes: c.notes ?? '', whatsappOptIn: c.whatsappOptIn ?? false,
     });
     setErr('');
+    setFieldErrors({});
     setShowModal(true);
   }
 
   async function handleSave() {
-    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); return; }
-    setSaving(true); setErr('');
+    const errors: Partial<Record<keyof FormState, string>> = {};
+    if (!form.name.trim()) errors.name = 'Client name is required.';
+    if (!form.phone.trim()) errors.phone = 'Phone number is required.';
+    else if (!/^[0-9+\s\-()]{7,15}$/.test(form.phone.trim())) errors.phone = 'Enter a valid phone number.';
+    if (Object.keys(errors).length) { setFieldErrors(errors); return; }
+    setSaving(true); setErr(''); setFieldErrors({});
     try {
       const payload = {
         name: form.name.trim(), phone: form.phone.trim(),
@@ -116,8 +125,11 @@ export default function ClientsPage() {
     } finally { setProjectSaving(false); }
   }
 
-  const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  const inputCls = (field?: keyof FormState) =>
+    `w-full border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${field && fieldErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-300'}`;
   const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5';
+  const fieldErr = (field: keyof FormState) =>
+    fieldErrors[field] ? <p className="text-xs text-red-600 mt-1">{fieldErrors[field]}</p> : null;
 
   return (
     <div className="space-y-6">
@@ -139,7 +151,24 @@ export default function ClientsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 animate-pulse">
+              <div className="h-4 bg-slate-200 rounded w-2/3" />
+              <div className="h-3 bg-slate-200 rounded w-1/3" />
+              <div className="h-3 bg-slate-200 rounded w-1/2" />
+            </div>
+          ))}
+        </div>
+      ) : clients.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl">
+          <EmptyState
+            icon={UserCircle2}
+            title="No clients yet"
+            description="Add your first client to start tracking interior projects, follow-ups, and payment milestones."
+            action={{ label: '+ Add Client', onClick: openCreate }}
+          />
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {clients.map(c => (
@@ -186,9 +215,6 @@ export default function ClientsPage() {
               </div>
             </div>
           ))}
-          {clients.length === 0 && (
-            <div className="col-span-3 text-center py-16 text-slate-400 text-sm">No clients found.</div>
-          )}
         </div>
       )}
 
@@ -204,33 +230,35 @@ export default function ClientsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className={labelCls}>Full name *</label>
-                  <input type="text" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Rajesh Sharma" className={inputCls} />
+                  <input type="text" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Rajesh Sharma" className={inputCls('name')} />
+                  {fieldErr('name')}
                 </div>
                 <div>
                   <label className={labelCls}>Phone *</label>
-                  <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" className={inputCls} />
+                  <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" className={inputCls('phone')} />
+                  {fieldErr('phone')}
                 </div>
                 <div>
                   <label className={labelCls}>Email</label>
-                  <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="raj@example.com" className={inputCls} />
+                  <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="raj@example.com" className={inputCls()} />
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Address</label>
-                  <input type="text" value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Anna Nagar, Chennai" className={inputCls} />
+                  <input type="text" value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Anna Nagar, Chennai" className={inputCls()} />
                 </div>
                 <div>
                   <label className={labelCls}>Lead source</label>
-                  <select value={form.leadSource} onChange={e => set('leadSource', e.target.value)} className={inputCls}>
+                  <select value={form.leadSource} onChange={e => set('leadSource', e.target.value)} className={inputCls()}>
                     {LEAD_SOURCES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className={labelCls}>Referred by</label>
-                  <input type="text" value={form.referredBy} onChange={e => set('referredBy', e.target.value)} placeholder="Name of referrer" className={inputCls} />
+                  <input type="text" value={form.referredBy} onChange={e => set('referredBy', e.target.value)} placeholder="Name of referrer" className={inputCls()} />
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Notes</label>
-                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="Any additional notes…" className={`${inputCls} resize-none`} />
+                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="Any additional notes…" className={`${inputCls()} resize-none`} />
                 </div>
                 <div className="col-span-2 flex items-center gap-3">
                   <input id="wa" type="checkbox" checked={form.whatsappOptIn} onChange={e => set('whatsappOptIn', e.target.checked)} className="w-4 h-4 accent-indigo-600" />
@@ -261,11 +289,11 @@ export default function ClientsPage() {
               <p className="text-sm text-slate-500">Create a project for this client and assign a starting department.</p>
               <div>
                 <label className={labelCls}>Project title *</label>
-                <input type="text" value={projectForm.title} onChange={e => setProjectForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Hall renovation" className={inputCls} />
+                <input type="text" value={projectForm.title} onChange={e => setProjectForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Hall renovation" className={inputCls()} />
               </div>
               <div>
                 <label className={labelCls}>Starting department</label>
-                <select value={projectForm.firstStageId} onChange={e => setProjectForm(p => ({ ...p, firstStageId: e.target.value }))} className={inputCls}>
+                <select value={projectForm.firstStageId} onChange={e => setProjectForm(p => ({ ...p, firstStageId: e.target.value }))} className={inputCls()}>
                   {sortedDepts.map(d => <option key={d._id} value={d._id}>{d.order}. {d.name}</option>)}
                 </select>
               </div>

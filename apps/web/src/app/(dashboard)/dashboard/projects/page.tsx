@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import { Plus, X } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Plus, X, FolderKanban } from 'lucide-react';
 
 interface Client { _id: string; name: string; }
 interface Dept { _id: string; name: string; order: number; }
@@ -32,6 +33,7 @@ export default function ProjectsPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
 
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -52,11 +54,15 @@ export default function ProjectsPage() {
 
   function set(key: keyof FormState, value: string) {
     setForm((p) => ({ ...p, [key]: value }));
+    if (fieldErrors[key]) setFieldErrors((p) => ({ ...p, [key]: '' }));
   }
 
   async function handleCreate() {
-    if (!form.clientId || !form.title.trim()) { setErr('Client and title are required.'); return; }
-    setSaving(true); setErr('');
+    const errors: Partial<Record<keyof FormState, string>> = {};
+    if (!form.clientId) errors.clientId = 'Please select a client.';
+    if (!form.title.trim()) errors.title = 'Project title is required.';
+    if (Object.keys(errors).length) { setFieldErrors(errors); return; }
+    setSaving(true); setErr(''); setFieldErrors({});
     try {
       const res = await apiClient.post<Project>('/projects', {
         clientId: form.clientId,
@@ -72,8 +78,11 @@ export default function ProjectsPage() {
     } finally { setSaving(false); }
   }
 
-  const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  const inputCls = (field?: keyof FormState) =>
+    `w-full border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${field && fieldErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-300'}`;
   const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5';
+  const fieldErr = (field: keyof FormState) =>
+    fieldErrors[field] ? <p className="text-xs text-red-600 mt-1">{fieldErrors[field]}</p> : null;
 
   return (
     <div className="space-y-6">
@@ -90,6 +99,15 @@ export default function ProjectsPage() {
       {isLoading ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <EmptyState
+            icon={FolderKanban}
+            title="No projects yet"
+            description="Start by creating your first interior project. Each project tracks stages, tasks, and handovers end-to-end."
+            action={{ label: '+ New Project', onClick: () => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); } }}
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -132,11 +150,6 @@ export default function ProjectsPage() {
                   </td>
                 </tr>
               ))}
-              {projects.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-400 text-sm">No projects yet.</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -152,25 +165,27 @@ export default function ProjectsPage() {
             <div className="px-6 py-5 space-y-4">
               <div>
                 <label className={labelCls}>Client *</label>
-                <select value={form.clientId} onChange={(e) => set('clientId', e.target.value)} className={inputCls}>
+                <select value={form.clientId} onChange={(e) => set('clientId', e.target.value)} className={inputCls('clientId')}>
                   <option value="">Select client…</option>
                   {clients.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
                 </select>
+                {fieldErr('clientId')}
               </div>
               <div>
                 <label className={labelCls}>Project title *</label>
-                <input type="text" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Sharma Residence — Hall" className={inputCls} />
+                <input type="text" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Sharma Residence — Hall" className={inputCls('title')} />
+                {fieldErr('title')}
               </div>
               <div>
                 <label className={labelCls}>Starting stage</label>
-                <select value={form.firstStageId} onChange={(e) => set('firstStageId', e.target.value)} className={inputCls}>
+                <select value={form.firstStageId} onChange={(e) => set('firstStageId', e.target.value)} className={inputCls()}>
                   <option value="">Default (first department)</option>
                   {sortedDepts.map((d) => <option key={d._id} value={d._id}>{d.order}. {d.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className={labelCls}>Target date</label>
-                <input type="date" value={form.targetDate} onChange={(e) => set('targetDate', e.target.value)} className={inputCls} />
+                <input type="date" value={form.targetDate} onChange={(e) => set('targetDate', e.target.value)} className={inputCls()} />
               </div>
               {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { useAuthStore } from '@/store/auth.store';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -26,15 +27,19 @@ function getTitle(pathname: string): string {
 export function Header() {
   const pathname = usePathname();
   const title = getTitle(pathname);
+  const user = useAuthStore((s) => s.user);
 
   return (
     <header className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0">
       <p className="text-sm font-semibold text-slate-900">{title}</p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
-          MD
+          {user?.initials ?? 'MD'}
         </div>
-        <span className="text-sm text-slate-600 hidden sm:block">Managing Director</span>
+        <div className="hidden sm:block text-right">
+          <p className="text-sm font-medium text-slate-800 leading-tight">{user?.name ?? 'Admin'}</p>
+          <p className="text-xs text-slate-400 leading-tight">{user?.role ?? 'Managing Director'}</p>
+        </div>
       </div>
     </header>
   );

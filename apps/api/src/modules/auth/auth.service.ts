@@ -123,10 +123,11 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(user: { _id: unknown; email: string }) {
+  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string }) {
     const sub = String(user._id);
+    const roleName = typeof user.role === 'object' && user.role ? user.role.name : (user.role ?? 'Staff');
     const accessToken = this.jwtService.sign(
-      { sub, email: user.email },
+      { sub, email: user.email, name: user.name ?? '', role: roleName },
       { expiresIn: this.config.get('JWT_ACCESS_EXPIRES', '15m') },
     );
     const refreshToken = this.jwtService.sign(

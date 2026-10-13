@@ -4,7 +4,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -16,6 +15,7 @@ import axios from 'axios';
 import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
 import { registerForPushNotifications } from '../src/services/notifications.service';
+import { Toast, useToast } from '../src/components/Toast';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -26,6 +26,7 @@ export default function LoginScreen() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [userId, setUserId] = useState('');
   const [loading, setLoading] = useState(false);
+  const { toast, show: showToast, hide: hideToast } = useToast();
 
   async function handleLogin() {
     if (!email || !password) return;
@@ -49,17 +50,17 @@ export default function LoginScreen() {
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         if (!err.response) {
-          Alert.alert(
-            'Cannot reach server',
-            `Make sure you are on the same WiFi as your laptop.\n\nAPI: ${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1'}`,
+          showToast(
+            `Cannot reach server. Check WiFi.\nAPI: ${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1'}`,
+            'error',
           );
         } else if (err.response.status === 401) {
-          Alert.alert('Invalid credentials', 'Check your email and password.');
+          showToast('Invalid credentials. Check your email and password.', 'error');
         } else {
-          Alert.alert('Error', `Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+          showToast(`Server error ${err.response.status}`, 'error');
         }
       } else {
-        Alert.alert('Error', String(err));
+        showToast(String(err), 'error');
       }
     } finally {
       setLoading(false);
@@ -76,7 +77,7 @@ export default function LoginScreen() {
       dispatch(setAuth({ accessToken: res.data.accessToken, refreshToken: res.data.refreshToken }));
       router.replace('/(app)/projects');
     } catch {
-      Alert.alert('Error', 'Invalid MFA token');
+      showToast('Invalid MFA token. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -87,6 +88,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.container}
     >
+      <Toast message={toast.message} kind={toast.kind} visible={toast.visible} onHide={hideToast} />
       <View style={styles.card}>
         {/* Logo */}
         <View style={styles.logoWrap}>

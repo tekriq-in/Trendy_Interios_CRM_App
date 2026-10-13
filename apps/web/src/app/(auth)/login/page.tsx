@@ -32,7 +32,14 @@ export default function LoginPage() {
         setMfaRequired(true);
         setUserId(res.data.userId!);
       } else {
-        setAuth(res.data.accessToken!, res.data.refreshToken!);
+        // Decode JWT payload to extract name/email/role for UI display
+        const payload = JSON.parse(atob(res.data.accessToken!.split('.')[1]));
+        const name: string = payload.name ?? email.split('@')[0];
+        const roleName: string = payload.role ?? 'Staff';
+        const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+        setAuth(res.data.accessToken!, res.data.refreshToken!, {
+          name, email, role: roleName, initials,
+        });
         router.push('/dashboard');
       }
     } catch {
@@ -51,7 +58,11 @@ export default function LoginPage() {
         '/auth/mfa/verify',
         { userId, token: mfaToken },
       );
-      setAuth(res.data.accessToken, res.data.refreshToken);
+      const payload = JSON.parse(atob(res.data.accessToken.split('.')[1]));
+      const name: string = payload.name ?? email.split('@')[0];
+      const roleName: string = payload.role ?? 'Staff';
+      const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+      setAuth(res.data.accessToken, res.data.refreshToken, { name, email, role: roleName, initials });
       router.push('/dashboard');
     } catch {
       setError('Invalid MFA code. Please try again.');

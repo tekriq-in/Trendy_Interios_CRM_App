@@ -15,6 +15,7 @@ import {
   Clock,
   ScrollText,
   LogOut,
+  CreditCard,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
@@ -46,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/approvals', label: 'Approvals', icon: CheckSquare },
       { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
       { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
+      { href: '/dashboard/payments', label: 'Payments', icon: CreditCard },
     ],
   },
   {
@@ -69,6 +71,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const user = useAuthStore((s) => s.user);
 
   function isActive(item: NavItem) {
     if (item.exact) return pathname === item.href;
@@ -128,11 +131,11 @@ export function Sidebar() {
       <div className="p-3 border-t border-slate-800">
         <div className="flex items-center gap-3 px-2 py-2">
           <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-            MD
+            {user?.initials ?? 'MD'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium leading-tight truncate">Admin</p>
-            <p className="text-slate-500 text-xs leading-tight">Managing Director</p>
+            <p className="text-white text-sm font-medium leading-tight truncate">{user?.name ?? 'Admin'}</p>
+            <p className="text-slate-500 text-xs leading-tight truncate">{user?.role ?? 'Managing Director'}</p>
           </div>
           <button
             onClick={handleLogout}

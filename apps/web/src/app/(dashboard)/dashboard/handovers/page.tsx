@@ -3,7 +3,9 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { CheckCircle, XCircle, ChevronRight, ArrowRight, Plus, X, Upload } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, ArrowRight, Plus, X, Upload, PackageCheck } from 'lucide-react';
+import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface NameObj { name: string; }
 interface Handover {
@@ -29,6 +31,13 @@ const STATUS_STYLE: Record<string, string> = {
   confirmed: 'bg-amber-50 text-amber-700',
   accepted:  'bg-emerald-50 text-emerald-700',
   rejected:  'bg-red-50 text-red-600',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  draft:     'Waiting for confirmation',
+  confirmed: 'Ready to accept',
+  accepted:  'Completed',
+  rejected:  'Rejected',
 };
 
 function nameOf(v: NameObj | string | undefined) {
@@ -137,7 +146,7 @@ export default function HandoversPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_STYLE[h.status]}`}>
-              {h.status}
+              {STATUS_LABEL[h.status] ?? h.status}
             </span>
           </div>
         </div>
@@ -148,9 +157,9 @@ export default function HandoversPage() {
             <button
               onClick={() => confirmMut.mutate(h._id)}
               disabled={confirmMut.isPending}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-semibold bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm"
             >
-              <ChevronRight className="w-3.5 h-3.5" /> Confirm
+              <ChevronRight className="w-4 h-4" /> Confirm Handover
             </button>
           </div>
         )}
@@ -160,15 +169,15 @@ export default function HandoversPage() {
             <button
               onClick={() => acceptMut.mutate(h._id)}
               disabled={acceptMut.isPending}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-semibold bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
             >
-              <CheckCircle className="w-3.5 h-3.5" /> Accept
+              <CheckCircle className="w-4 h-4" /> Accept &amp; Move Stage
             </button>
             <button
               onClick={() => { setRejectingId(h._id); setRejectReason(''); }}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-semibold bg-white text-red-600 border border-red-300 px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
             >
-              <XCircle className="w-3.5 h-3.5" /> Reject
+              <XCircle className="w-4 h-4" /> Reject
             </button>
           </div>
         )}
@@ -281,19 +290,30 @@ export default function HandoversPage() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
+      ) : handovers.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <EmptyState
+            icon={PackageCheck}
+            title="No handovers yet"
+            description="Raise a handover when a project is ready to move from one department to the next. A proof photo is required."
+            action={{ label: 'Raise Handover', onClick: () => { setShowRaise(true); setRaiseForm(EMPTY_RAISE); setProofFile(null); setRaiseErr(''); } }}
+          />
+        </div>
       ) : (
         <>
           {/* Pending */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Pending</h2>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Needs Action</h2>
               {pending.length > 0 && (
                 <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">{pending.length}</span>
               )}
             </div>
             {pending.length === 0 ? (
-              <p className="text-sm text-slate-400 bg-slate-50 rounded-xl px-4 py-6 text-center">No pending handovers.</p>
+              <p className="text-sm text-slate-400 bg-slate-50 rounded-xl px-4 py-6 text-center">All handovers are up to date.</p>
             ) : (
               <div className="space-y-3">{pending.map(renderHandover)}</div>
             )}

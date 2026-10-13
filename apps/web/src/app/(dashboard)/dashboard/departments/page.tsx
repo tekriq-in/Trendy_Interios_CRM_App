@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { Plus, Pencil, X, ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, Building2 } from 'lucide-react';
+import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface Department { _id: string; name: string; description?: string; order: number; defaultSlaHours: number; isActive: boolean; }
 interface Role { _id: string; name: string; }
@@ -21,6 +23,7 @@ export default function DepartmentsPage() {
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [reassigning, setReassigning] = useState<{ employee: Employee; toDeptId: string } | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<Department | null>(null);
 
   const { data: departments = [], isLoading } = useQuery<Department[]>({
     queryKey: ['departments'],
@@ -110,7 +113,18 @@ export default function DepartmentsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
+      ) : departments.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <EmptyState
+            icon={Building2}
+            title="No departments yet"
+            description="Departments define the production stages for every project. Create your first department to get started."
+            action={{ label: 'New Department', onClick: openCreate }}
+          />
+        </div>
       ) : (
         <div className="space-y-2">
           {departments.map((d) => {
@@ -142,11 +156,17 @@ export default function DepartmentsPage() {
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${d.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                       {d.isActive ? 'Active' : 'Inactive'}
                     </span>
-                    <button onClick={() => openEdit(d)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                      <Pencil className="w-3.5 h-3.5" />
+                    <button
+                      onClick={() => openEdit(d)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit
                     </button>
                     {d.isActive && (
-                      <button onClick={() => { if (confirm(`Deactivate "${d.name}"?`)) deactivateMut.mutate(d._id); }} className="px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium">
+                      <button
+                        onClick={() => setConfirmDeactivate(d)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors"
+                      >
                         Deactivate
                       </button>
                     )}
@@ -214,6 +234,35 @@ export default function DepartmentsPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Deactivate confirmation */}
+      {confirmDeactivate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Deactivate &ldquo;{confirmDeactivate.name}&rdquo;?</h3>
+              <p className="text-sm text-slate-500 mt-1.5">
+                This department will be marked inactive. Existing projects will not be affected, but no new projects can be assigned to it.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setConfirmDeactivate(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { deactivateMut.mutate(confirmDeactivate._id); setConfirmDeactivate(null); }}
+                disabled={deactivateMut.isPending}
+                className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                Yes, Deactivate
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

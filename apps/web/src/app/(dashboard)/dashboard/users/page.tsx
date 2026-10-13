@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { UserPlus, Pencil, UserX, X } from 'lucide-react';
+import { UserPlus, Pencil, UserX, X, Users } from 'lucide-react';
+import { SkeletonRow } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface Role { _id: string; name: string; }
 interface Department { _id: string; name: string; }
@@ -33,6 +35,25 @@ function deptName(d: Department | string | undefined): string {
   return typeof d === 'object' ? d.name : d;
 }
 
+function initials(name: string) {
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  'bg-indigo-100 text-indigo-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-sky-100 text-sky-700',
+  'bg-violet-100 text-violet-700',
+];
+
+function avatarColor(name: string) {
+  let hash = 0;
+  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 export default function UsersPage() {
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -40,6 +61,7 @@ export default function UsersPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -58,7 +80,7 @@ export default function UsersPage() {
 
   const deactivateMut = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/users/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setConfirmDeactivate(null); },
   });
 
   function set(key: keyof FormState, value: string) {
@@ -146,17 +168,26 @@ export default function UsersPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
+      ) : users.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <EmptyState
+            icon={Users}
+            title="No employees yet"
+            description="Add your first employee to start assigning them to projects and departments."
+            action={{ label: 'Add Employee', onClick: openCreate }}
+          />
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Email</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Employee</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Role</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Department</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Lang</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -164,41 +195,80 @@ export default function UsersPage() {
             <tbody className="divide-y divide-slate-100">
               {users.map((u) => (
                 <tr key={u._id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800">{u.name}</td>
-                  <td className="px-4 py-3 text-slate-500">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${avatarColor(u.name)}`}>
+                        {initials(u.name)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-800 truncate">{u.name}</div>
+                        <div className="text-xs text-slate-400 truncate">{u.email}</div>
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{roleName(u.role)}</td>
                   <td className="px-4 py-3 text-slate-600">{deptName(u.department)}</td>
-                  <td className="px-4 py-3 text-slate-400 uppercase text-xs font-semibold">{u.preferredLanguage}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${u.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                       {u.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(u)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit">
-                        <Pencil className="w-3.5 h-3.5" />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(u)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
                       </button>
                       {u.isActive && (
                         <button
-                          onClick={() => { if (confirm(`Deactivate ${u.name}?`)) deactivateMut.mutate(u._id); }}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Deactivate"
+                          onClick={() => setConfirmDeactivate(u)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors"
                         >
-                          <UserX className="w-3.5 h-3.5" />
+                          <UserX className="w-3.5 h-3.5" /> Deactivate
                         </button>
                       )}
                     </div>
                   </td>
                 </tr>
               ))}
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">No employees found.</td>
-                </tr>
-              )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Deactivate confirmation modal */}
+      {confirmDeactivate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <UserX className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Deactivate {confirmDeactivate.name}?</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  This employee will no longer be able to log in. You can reactivate them later if needed.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setConfirmDeactivate(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deactivateMut.mutate(confirmDeactivate._id)}
+                disabled={deactivateMut.isPending}
+                className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deactivateMut.isPending ? 'Deactivating…' : 'Yes, Deactivate'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

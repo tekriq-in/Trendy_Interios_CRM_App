@@ -180,35 +180,52 @@ export default function ProjectDetailPage({ params }: Props) {
         </div>
 
         {/* Stepper */}
-        <div className="flex items-start gap-0 overflow-x-auto pb-1">
-          {sortedDepts.map((dept, idx) => {
-            const isCurrent = dept._id === currentStageId;
-            const isDone = completedStageIds.has(dept._id);
-            const isUpcoming = !isCurrent && !isDone;
-            return (
-              <div key={dept._id} className="flex items-center min-w-0">
-                <div className="flex flex-col items-center gap-1.5 px-2 min-w-[80px]">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                    isDone ? 'bg-emerald-500 text-white' :
-                    isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100' :
-                    'bg-slate-100 text-slate-400'
-                  }`}>
-                    {isDone ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-3 h-3" />}
+        <div className="overflow-x-auto pb-2">
+          <div className="flex items-start min-w-max gap-0">
+            {sortedDepts.map((dept, idx) => {
+              const isCurrent = dept._id === currentStageId;
+              const isDone = completedStageIds.has(dept._id);
+              const stageEntry = (project.stageHistory ?? []).find((h) =>
+                (typeof h.stage === 'object' ? h.stage._id : h.stage) === dept._id,
+              );
+              return (
+                <div key={dept._id} className="flex items-start">
+                  <div className="flex flex-col items-center gap-2 w-[90px]">
+                    {/* Circle */}
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all shadow-sm ${
+                      isDone ? 'bg-emerald-500 text-white' :
+                      isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100' :
+                      'bg-slate-100 text-slate-400 border border-slate-200'
+                    }`}>
+                      {isDone ? <CheckCircle2 className="w-5 h-5" /> : <span>{idx + 1}</span>}
+                    </div>
+                    {/* Label */}
+                    <div className="text-center">
+                      <span className={`text-xs leading-tight font-semibold ${
+                        isCurrent ? 'text-indigo-700' : isDone ? 'text-emerald-700' : 'text-slate-400'
+                      }`}>
+                        {dept.name}
+                      </span>
+                      {isCurrent && stageEntry && (
+                        <p className="text-[10px] text-indigo-400 mt-0.5 leading-tight">
+                          Since {new Date(stageEntry.enteredAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </p>
+                      )}
+                      {isDone && stageEntry?.completedAt && (
+                        <p className="text-[10px] text-emerald-500 mt-0.5 leading-tight">
+                          Done {new Date(stageEntry.completedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <span className={`text-center text-xs leading-tight max-w-[72px] ${
-                    isCurrent ? 'text-indigo-700 font-semibold' :
-                    isDone ? 'text-emerald-700 font-medium' :
-                    'text-slate-400'
-                  }`}>
-                    {dept.name}
-                  </span>
+                  {/* Connector line */}
+                  {idx < sortedDepts.length - 1 && (
+                    <div className={`h-0.5 w-8 mt-5 shrink-0 ${isDone ? 'bg-emerald-400' : isCurrent ? 'bg-indigo-200' : 'bg-slate-200'}`} />
+                  )}
                 </div>
-                {idx < sortedDepts.length - 1 && (
-                  <div className={`h-0.5 w-8 shrink-0 mb-6 ${isDone ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 

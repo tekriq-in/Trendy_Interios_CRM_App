@@ -15,7 +15,6 @@ import {
   Clock,
   ScrollText,
   LogOut,
-  CreditCard,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
@@ -47,7 +46,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/approvals', label: 'Approvals', icon: CheckSquare },
       { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
       { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
-      { href: '/dashboard/payments', label: 'Payments', icon: CreditCard },
     ],
   },
   {

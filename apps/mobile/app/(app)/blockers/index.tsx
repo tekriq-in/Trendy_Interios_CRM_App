@@ -8,6 +8,7 @@ import { SkeletonBlockerRow } from '../../../src/components/Skeleton';
 import type { Blocker } from '@ti/shared';
 
 type BlockerPopulated = Blocker & { project?: { title: string } };
+type ProjectItem = { _id: string; title: string };
 
 const TYPE_COLORS: Record<string, { bg: string; text: string }> = {
   internal: { bg: '#EFF6FF', text: '#2563EB' },
@@ -28,7 +29,9 @@ export default function BlockersScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'internal' | 'client_side'>('internal');
-  const [projectId, setProjectId] = useState('');
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -51,11 +54,24 @@ export default function BlockersScreen() {
     setRefreshing(false);
   }, [loadBlockers]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!title.trim() || !projectId.trim()) {
-      setFormError('Title and Project ID are required.');
-      return;
+  const openModal = useCallback(async () => {
+    setTitle('');
+    setDescription('');
+    setType('internal');
+    setSelectedProject(null);
+    setFormError('');
+    setModalVisible(true);
+    try {
+      const res = await api.get<ProjectItem[]>('/projects');
+      setProjects(res.data);
+    } catch {
+      setProjects([]);
     }
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    if (!title.trim()) { setFormError('Title is required.'); return; }
+    if (!selectedProject) { setFormError('Please select a project.'); return; }
     setSubmitting(true);
     setFormError('');
     try {
@@ -63,20 +79,16 @@ export default function BlockersScreen() {
         title: title.trim(),
         description: description.trim(),
         type,
-        projectId: projectId.trim(),
+        projectId: selectedProject._id,
       });
-      setTitle('');
-      setDescription('');
-      setProjectId('');
-      setType('internal');
       setModalVisible(false);
       await loadBlockers();
     } catch {
-      setFormError('Failed to raise blocker. Check the Project ID and try again.');
+      setFormError('Failed to raise blocker. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }, [title, description, type, projectId, loadBlockers]);
+  }, [title, description, type, selectedProject, loadBlockers]);
 
   if (loading) {
     return (
@@ -97,7 +109,7 @@ export default function BlockersScreen() {
         <Text style={styles.heading}>Blockers</Text>
         <TouchableOpacity
           style={styles.raiseBtn}
-          onPress={() => setModalVisible(true)}
+          onPress={openModal}
           accessibilityLabel="Raise a new blocker"
         >
           <Text style={styles.raiseBtnText}>+ Raise</Text>
@@ -202,15 +214,17 @@ export default function BlockersScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.label}>Project ID *</Text>
-            <TextInput
-              style={styles.input}
-              value={projectId}
-              onChangeText={setProjectId}
-              placeholder="MongoDB ObjectId of the project"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="none"
-            />
+            <Text style={styles.label}>Project *</Text>
+            <TouchableOpacity
+              style={[styles.input, styles.pickerBtn, !selectedProject && formError ? styles.inputError : null]}
+              onPress={() => setShowProjectPicker(true)}
+              accessibilityLabel="Select project"
+            >
+              <Text style={selectedProject ? styles.pickerText : styles.pickerPlaceholder}>
+                {selectedProject ? selectedProject.title : 'Select a project…'}
+              </Text>
+              <Text style={styles.pickerChevron}>›</Text>
+            </TouchableOpacity>
 
             {formError ? <Text style={styles.error}>{formError}</Text> : null}
 
@@ -226,6 +240,56 @@ export default function BlockersScreen() {
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Project Picker Modal */}
+      <Modal
+        visible={showProjectPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowProjectPicker(false)}
+      >
+        <View style={styles.pickerModal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Project</Text>
+            <TouchableOpacity onPress={() => setShowProjectPicker(false)} style={styles.closeBtn}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {projects.length === 0 ? (
+            <Text style={styles.empty}>No projects assigned to you.</Text>
+          ) : (
+            <FlatList
+              data={projects}
+              keyExtractor={(p) => p._id}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.projectPickerItem,
+                    selectedProject?._id === item._id && styles.projectPickerItemActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedProject(item);
+                    setShowProjectPicker(false);
+                    if (formError) setFormError('');
+                  }}
+                  accessibilityLabel={`Select project ${item.title}`}
+                >
+                  <Text style={[
+                    styles.projectPickerText,
+                    selectedProject?._id === item._id && styles.projectPickerTextActive,
+                  ]}>
+                    {item.title}
+                  </Text>
+                  {selectedProject?._id === item._id && (
+                    <Text style={{ color: '#4F46E5', fontSize: 18 }}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
       </Modal>
     </View>
   );
@@ -277,6 +341,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     minHeight: 48,
   },
+  inputError: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
   textArea: { minHeight: 96, textAlignVertical: 'top' },
   typeRow: { flexDirection: 'row', gap: 12 },
   typeBtn: {
@@ -292,6 +357,14 @@ const styles = StyleSheet.create({
   typeBtnActive: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
   typeBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
   typeBtnTextActive: { color: '#4F46E5' },
+  pickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerText: { fontSize: 15, color: '#0F172A', flex: 1 },
+  pickerPlaceholder: { fontSize: 15, color: '#94A3B8', flex: 1 },
+  pickerChevron: { fontSize: 22, color: '#94A3B8', marginLeft: 8 },
   error: { color: '#DC2626', fontSize: 13, marginTop: 10 },
   submitBtn: {
     backgroundColor: '#4F46E5',
@@ -303,4 +376,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  // Project picker modal
+  pickerModal: { flex: 1, backgroundColor: '#fff', padding: 20 },
+  projectPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    minHeight: 56,
+  },
+  projectPickerItemActive: {
+    borderColor: '#4F46E5',
+    backgroundColor: '#EEF2FF',
+  },
+  projectPickerText: { fontSize: 15, color: '#0F172A', flex: 1, fontWeight: '500' },
+  projectPickerTextActive: { color: '#4F46E5', fontWeight: '700' },
 });

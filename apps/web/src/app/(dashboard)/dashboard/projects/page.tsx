@@ -34,6 +34,8 @@ export default function ProjectsPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -51,6 +53,15 @@ export default function ProjectsPage() {
   });
 
   const sortedDepts = [...departments].sort((a, b) => a.order - b.order);
+
+  const filteredProjects = projects.filter((p) => {
+    const q = search.toLowerCase();
+    const titleMatch = p.title.toLowerCase().includes(q);
+    const clientName = typeof p.client === 'object' && p.client ? p.client.name.toLowerCase() : '';
+    const clientMatch = clientName.includes(q);
+    const statusMatch = !statusFilter || p.status === statusFilter;
+    return (titleMatch || clientMatch) && statusMatch;
+  });
 
   function set(key: keyof FormState, value: string) {
     setForm((p) => ({ ...p, [key]: value }));
@@ -86,14 +97,36 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Projects</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{projects.length} project{projects.length !== 1 ? 's' : ''} total</p>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {filteredProjects.length} of {projects.length} project{projects.length !== 1 ? 's' : ''}
+          </p>
         </div>
-        <button onClick={() => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-          <Plus className="w-4 h-4" /> New Project
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by title or client…"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="on_hold">On Hold</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button onClick={() => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
+            <Plus className="w-4 h-4" /> New Project
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -122,7 +155,14 @@ export default function ProjectsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {projects.map((p) => (
+              {filteredProjects.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-slate-400 text-sm">
+                    No projects match your search.
+                  </td>
+                </tr>
+              )}
+              {filteredProjects.map((p) => (
                 <tr
                   key={p._id}
                   onClick={() => router.push(`/dashboard/projects/${p._id}`)}

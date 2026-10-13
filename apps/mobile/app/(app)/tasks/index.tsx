@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
+  Modal, TextInput, ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { api } from '../../../src/services/api';
 import { SkeletonTaskRow } from '../../../src/components/Skeleton';
 import type { Project, Task } from '@ti/shared';
 
 type FlatTask = Task & { projectTitle: string };
+type ProjectItem = { _id: string; title: string };
 
 const STATUS_COLORS: Record<string, string> = {
   pending: '#F59E0B',
@@ -19,6 +21,16 @@ export default function MyTasksScreen() {
   const [tasks, setTasks] = useState<FlatTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Create task modal
+  const [showModal, setShowModal] = useState(false);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const loadTasks = useCallback(async () => {
     try {
@@ -65,6 +77,38 @@ export default function MyTasksScreen() {
     }
   }, []);
 
+  const openCreateModal = useCallback(async () => {
+    setTaskTitle('');
+    setDueDate('');
+    setSelectedProject(null);
+    setCreateError('');
+    setShowModal(true);
+    try {
+      const res = await api.get<ProjectItem[]>('/projects');
+      setProjects(res.data);
+    } catch {
+      setProjects([]);
+    }
+  }, []);
+
+  const handleCreate = useCallback(async () => {
+    if (!taskTitle.trim()) { setCreateError('Task title is required.'); return; }
+    if (!selectedProject) { setCreateError('Please select a project.'); return; }
+    setCreating(true); setCreateError('');
+    try {
+      await api.post(`/projects/${selectedProject._id}/tasks`, {
+        title: taskTitle.trim(),
+        dueDate: dueDate || undefined,
+      });
+      setShowModal(false);
+      await loadTasks();
+    } catch {
+      setCreateError('Failed to create task. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  }, [taskTitle, selectedProject, dueDate, loadTasks]);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -83,7 +127,7 @@ export default function MyTasksScreen() {
         data={tasks}
         keyExtractor={(item) => item._id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
         ListEmptyComponent={<Text style={styles.empty}>No tasks assigned.</Text>}
         renderItem={({ item }) => (
           <View style={styles.card}>
@@ -116,6 +160,131 @@ export default function MyTasksScreen() {
           </View>
         )}
       />
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={openCreateModal}
+        accessibilityLabel="Create new task"
+      >
+        <Text style={styles.fabIcon}>+</Text>
+      </TouchableOpacity>
+
+      {/* Create Task Modal */}
+      <Modal
+        visible={showModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView style={styles.modalContainer} contentContainerStyle={{ paddingBottom: 48 }}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>New Task</Text>
+              <TouchableOpacity onPress={() => setShowModal(false)} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.label}>Task title *</Text>
+            <TextInput
+              style={styles.input}
+              value={taskTitle}
+              onChangeText={(v) => { setTaskTitle(v); if (createError) setCreateError(''); }}
+              placeholder="What needs to be done?"
+              placeholderTextColor="#94A3B8"
+            />
+
+            <Text style={styles.label}>Project *</Text>
+            <TouchableOpacity
+              style={[styles.input, styles.pickerBtn]}
+              onPress={() => setShowProjectPicker(true)}
+              accessibilityLabel="Select project"
+            >
+              <Text style={selectedProject ? styles.pickerText : styles.pickerPlaceholder}>
+                {selectedProject ? selectedProject.title : 'Select a project…'}
+              </Text>
+              <Text style={styles.pickerChevron}>›</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.label}>Due date (optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={dueDate}
+              onChangeText={setDueDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numbers-and-punctuation"
+            />
+
+            {createError ? <Text style={styles.error}>{createError}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.submitBtn, creating && { opacity: 0.6 }]}
+              onPress={handleCreate}
+              disabled={creating}
+              accessibilityLabel="Create task"
+            >
+              <Text style={styles.submitBtnText}>
+                {creating ? 'Creating…' : 'Create Task'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Project Picker Modal */}
+      <Modal
+        visible={showProjectPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowProjectPicker(false)}
+      >
+        <View style={styles.pickerModal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Project</Text>
+            <TouchableOpacity onPress={() => setShowProjectPicker(false)} style={styles.closeBtn}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {projects.length === 0 ? (
+            <Text style={styles.empty}>No projects available.</Text>
+          ) : (
+            <FlatList
+              data={projects}
+              keyExtractor={(p) => p._id}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.projectPickerItem,
+                    selectedProject?._id === item._id && styles.projectPickerItemActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedProject(item);
+                    setShowProjectPicker(false);
+                    if (createError) setCreateError('');
+                  }}
+                  accessibilityLabel={`Select ${item.title}`}
+                >
+                  <Text style={[
+                    styles.projectPickerText,
+                    selectedProject?._id === item._id && styles.projectPickerTextActive,
+                  ]}>
+                    {item.title}
+                  </Text>
+                  {selectedProject?._id === item._id && (
+                    <Text style={{ color: '#4F46E5', fontSize: 18 }}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -156,4 +325,72 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   doneBtnText: { color: '#4F46E5', fontWeight: '600', fontSize: 14 },
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fabIcon: { color: '#fff', fontSize: 28, fontWeight: '300', marginTop: -2 },
+  // Modal
+  modalContainer: { flex: 1, backgroundColor: '#fff', padding: 20 },
+  pickerModal: { flex: 1, backgroundColor: '#fff', padding: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
+  closeBtn: { padding: 8, minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  closeBtnText: { fontSize: 18, color: '#64748B' },
+  label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6, marginTop: 16 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+    minHeight: 48,
+  },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pickerText: { fontSize: 15, color: '#0F172A', flex: 1 },
+  pickerPlaceholder: { fontSize: 15, color: '#94A3B8', flex: 1 },
+  pickerChevron: { fontSize: 22, color: '#94A3B8', marginLeft: 8 },
+  error: { color: '#DC2626', fontSize: 13, marginTop: 10 },
+  submitBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 28,
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  projectPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    minHeight: 56,
+  },
+  projectPickerItemActive: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
+  projectPickerText: { fontSize: 15, color: '#0F172A', flex: 1, fontWeight: '500' },
+  projectPickerTextActive: { color: '#4F46E5', fontWeight: '700' },
 });

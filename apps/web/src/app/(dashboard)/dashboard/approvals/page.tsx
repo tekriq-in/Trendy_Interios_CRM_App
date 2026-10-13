@@ -210,7 +210,7 @@ export default function ApprovalsPage() {
                 const editedMsg = editedMessages[a._id] ?? a.generatedMessage ?? '';
 
                 return (
-                  <div key={a._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <div key={a._id} className="bg-white border border-slate-200 border-l-4 border-l-amber-400 rounded-xl overflow-hidden">
                     {/* Header row */}
                     <div className="px-5 py-4 flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -260,23 +260,23 @@ export default function ApprovalsPage() {
                     )}
 
                     {/* Actions */}
-                    <div className="border-t border-slate-100 px-5 py-3 flex flex-wrap gap-2">
+                    <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 flex flex-wrap gap-2 items-center">
                       <button
                         onClick={() => approveMut.mutate({
                           id: a._id,
                           finalMessage: editedMessages[a._id] ?? a.generatedMessage,
                         })}
                         disabled={approveMut.isPending}
-                        className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-2 text-sm font-semibold bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
                       >
-                        <CheckCircle className="w-3.5 h-3.5" />
+                        <CheckCircle className="w-4 h-4" />
                         {a.kind === 'client_update' ? 'Approve & Send WhatsApp' : 'Approve'}
                       </button>
                       <button
                         onClick={() => { setRejectingId(a._id); setRejectReason(''); }}
-                        className="flex items-center gap-1.5 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
+                        className="flex items-center gap-2 text-sm font-semibold bg-white text-red-600 border border-red-300 px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
                       >
-                        <XCircle className="w-3.5 h-3.5" /> Reject
+                        <XCircle className="w-4 h-4" /> Reject
                       </button>
                     </div>
 

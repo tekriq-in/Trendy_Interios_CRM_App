@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { router } from 'expo-router';
@@ -5,11 +6,30 @@ import { useTranslation } from 'react-i18next';
 import { clearAuth } from '../../../src/store/slices/auth.slice';
 import type { RootState } from '../../../src/store';
 
+function decodeJwt(token: string): Record<string, unknown> {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return {};
+  }
+}
+
 export default function ProfileScreen() {
   const dispatch = useDispatch();
   const { i18n } = useTranslation();
-  const userId = useSelector((s: RootState) => s.auth.userId);
+  const accessToken = useSelector((s: RootState) => s.auth.accessToken);
   const currentLang = i18n.language;
+
+  const userInfo = useMemo(() => {
+    if (!accessToken) return { name: 'Staff', role: 'Employee', initials: 'ST', email: '' };
+    const payload = decodeJwt(accessToken);
+    const name = (payload.name as string) || (payload.email as string)?.split('@')[0] || 'Staff';
+    const role = (payload.role as string) || 'Employee';
+    const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+    const email = (payload.email as string) || '';
+    return { name, role, initials, email };
+  }, [accessToken]);
 
   function handleSignOut() {
     dispatch(clearAuth());
@@ -23,12 +43,12 @@ export default function ProfileScreen() {
       {/* Avatar + info */}
       <View style={styles.avatarCard}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>TI</Text>
+          <Text style={styles.avatarText}>{userInfo.initials}</Text>
         </View>
-        <View>
-          <Text style={styles.name}>Trendy Interios Staff</Text>
-          <Text style={styles.role}>Managing Director</Text>
-          {userId ? <Text style={styles.userId} numberOfLines={1}>ID: {userId}</Text> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.name} numberOfLines={1}>{userInfo.name}</Text>
+          <Text style={styles.role}>{userInfo.role}</Text>
+          {userInfo.email ? <Text style={styles.email} numberOfLines={1}>{userInfo.email}</Text> : null}
         </View>
       </View>
 
@@ -104,7 +124,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '700', fontSize: 18 },
   name: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
   role: { fontSize: 13, color: '#64748B', marginTop: 2 },
-  userId: { fontSize: 11, color: '#94A3B8', marginTop: 4, maxWidth: 220 },
+  email: { fontSize: 12, color: '#94A3B8', marginTop: 3 },
   section: { marginBottom: 28 },
   sectionLabel: {
     fontSize: 11,

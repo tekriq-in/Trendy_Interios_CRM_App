@@ -9,7 +9,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/approvals': 'Approvals',
   '/dashboard/blockers': 'Blockers',
   '/dashboard/handovers': 'Handovers',
-  '/dashboard/payments': 'Payments',
   '/dashboard/users': 'Users',
   '/dashboard/departments': 'Departments',
   '/dashboard/sla': 'SLA Settings',

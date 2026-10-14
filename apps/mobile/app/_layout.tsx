@@ -1,14 +1,19 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { store, persistor } from '../src/store';
 import '../src/i18n';
-import { registerForPushNotifications } from '../src/services/notifications.service';
 
 function AppInit() {
   useEffect(() => {
-    registerForPushNotifications();
+    // expo-notifications does not run on web
+    if (Platform.OS !== 'web') {
+      import('../src/services/notifications.service').then(({ registerForPushNotifications }) => {
+        registerForPushNotifications();
+      });
+    }
   }, []);
   return <Stack screenOptions={{ headerShown: false }} />;
 }

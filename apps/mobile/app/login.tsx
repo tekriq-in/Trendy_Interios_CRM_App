@@ -14,7 +14,6 @@ import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
-import { registerForPushNotifications } from '../src/services/notifications.service';
 import { Toast, useToast } from '../src/components/Toast';
 
 export default function LoginScreen() {
@@ -44,7 +43,12 @@ export default function LoginScreen() {
         setUserId(res.data.userId!);
       } else {
         dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken! }));
-        registerForPushNotifications().catch(() => {});
+        // expo-notifications is native-only — skip on web
+        if (Platform.OS !== 'web') {
+          import('../src/services/notifications.service').then(({ registerForPushNotifications }) => {
+            registerForPushNotifications().catch(() => {});
+          });
+        }
         router.replace('/(app)/projects');
       }
     } catch (err: unknown) {

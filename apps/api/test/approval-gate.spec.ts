@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ApprovalsService } from '../src/modules/approvals/approvals.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
 import { MessageGeneratorService } from '../src/modules/message-generator/message-generator.service';
 import { WHATSAPP_SERVICE } from '../src/modules/whatsapp/whatsapp.interface';
 import { PERMISSIONS } from '@ti/shared';
+
+const mockEventEmitter = { emit: jest.fn() };
 
 const mockApprovalModel = {
   find: jest.fn(),
@@ -32,6 +35,7 @@ describe('Approval Gate — no client message without approved approval', () => 
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: WHATSAPP_SERVICE, useValue: mockWhatsApp },
         { provide: MessageGeneratorService, useValue: mockMessageGenerator },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 

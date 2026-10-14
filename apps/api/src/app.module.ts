@@ -31,7 +31,13 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 500 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ([{
+        ttl: 60_000,
+        limit: config.get<number>('THROTTLE_LIMIT_GLOBAL', 100),
+      }]),
+    }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

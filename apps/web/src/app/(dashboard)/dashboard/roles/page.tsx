@@ -60,6 +60,7 @@ export default function RolesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
 
   const { data: roles = [], isLoading } = useQuery<Role[]>({
     queryKey: ['roles'],
@@ -153,7 +154,8 @@ export default function RolesPage() {
                   </button>
                   {!role.isSystem && (
                     <button
-                      onClick={() => { if (confirm(`Delete role "${role.name}"?`)) deleteMut.mutate(role._id); }}
+                      onClick={() => setConfirmDelete(role)}
+                      aria-label={`Delete role ${role.name}`}
                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -173,6 +175,31 @@ export default function RolesPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">Delete role?</h2>
+            <p className="text-sm text-slate-500 mb-5">
+              &ldquo;{confirmDelete.name}&rdquo; will be permanently removed. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { deleteMut.mutate(confirmDelete._id); setConfirmDelete(null); }}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

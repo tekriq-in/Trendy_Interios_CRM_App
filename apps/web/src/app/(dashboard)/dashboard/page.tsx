@@ -1,266 +1,760 @@
 'use client';
 
+import Link from 'next/link';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth.store';
 import {
-  CheckSquare, AlertTriangle, FolderKanban, Users, UserCircle2, type LucideIcon,
+  ArrowRight,
+  ArrowUpRight,
+  AlertTriangle,
+  Building2,
+  CheckCheck,
+  CheckSquare,
+  Clock3,
+  FolderKanban,
+  Layers3,
+  RefreshCw,
+  Users,
+  UserCircle2,
+  type LucideIcon,
 } from 'lucide-react';
-import { SkeletonDeptCard } from '@/components/ui/Skeleton';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
 } from 'recharts';
 
+interface Project {
+  _id: string;
+  title: string;
+  progressPct: number;
+  targetDate?: string;
+}
 interface BoardData {
-  [stage: string]: Array<{ _id: string; title: string; progressPct: number; targetDate?: string }>;
+  [stage: string]: Project[];
 }
 interface ApprovalsSummary {
   count: number;
-  list: Array<{ _id: string; kind: string; project: { title: string }; requestedBy: { name: string } }>;
+  list: Array<{
+    _id: string;
+    kind: string;
+    project?: { title: string };
+    requestedBy?: { name: string };
+  }>;
 }
-interface BlockerSummary { _id: string; title: string; type: string; status: string; project?: { title: string }; }
-interface WorkloadItem { userId: string; userName: string; totalTasks: number; inProgress: number; }
-interface StageDuration { stageName: string; avgHours: number; count: number; }
-interface Dept { _id: string; name: string; order: number; defaultSlaHours: number; }
-interface Employee { _id: string; name: string; department?: { _id: string } | string; isActive: boolean; }
-interface Client { _id: string; }
-interface SlaReportRow { projectId: string; projectTitle: string; stageName: string; hoursInStage: number; slaHours: number; breached: boolean; }
+interface BlockerSummary {
+  _id: string;
+  title: string;
+  type: string;
+  status: string;
+  project?: { _id: string; title: string };
+}
+interface WorkloadItem {
+  userId: string;
+  userName: string;
+  totalTasks: number;
+  inProgress: number;
+}
+interface StageDuration {
+  stageName: string;
+  avgHours: number;
+  count: number;
+}
+interface Dept {
+  _id: string;
+  name: string;
+  order: number;
+  defaultSlaHours: number;
+}
+interface Employee {
+  _id: string;
+  name: string;
+  department?: { _id: string } | string;
+  isActive: boolean;
+}
+interface Client {
+  _id: string;
+}
+interface SlaReportRow {
+  projectId: string;
+  stageName: string;
+  breached: boolean;
+}
 
-const DEPT_COLORS = ['#6366f1','#8b5cf6','#0ea5e9','#10b981','#f59e0b','#f43f5e','#14b8a6','#f97316'];
+const DEPT_COLORS = [
+  '#6366f1',
+  '#0d9488',
+  '#d97706',
+  '#8b5cf6',
+  '#0284c7',
+  '#e11d48',
+  '#059669',
+  '#c2410c',
+];
+const panel =
+  'rounded-2xl border border-slate-200/80 bg-white shadow-[0_2px_8px_-4px_rgba(15,23,42,0.08)]';
+const chartTick = { fontSize: 10, fill: '#64748b' };
+const tooltipStyle = { borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 };
+
+function useDashboardData<T>(key: string[], url: string) {
+  return useQuery<T>({ queryKey: key, queryFn: () => apiClient.get<T>(url).then((r) => r.data) });
+}
 
 export default function DashboardOverviewPage() {
-  const router = useRouter();
-  const board   = useQuery<BoardData>({ queryKey: ['dashboard-board'], queryFn: () => apiClient.get('/dashboard/board').then(r => r.data) });
-  const approvals = useQuery<ApprovalsSummary>({ queryKey: ['dashboard-approvals'], queryFn: () => apiClient.get('/dashboard/approvals-pending').then(r => r.data) });
-  const blockers  = useQuery<BlockerSummary[]>({ queryKey: ['dashboard-blockers'], queryFn: () => apiClient.get('/dashboard/blockers').then(r => r.data) });
-  const workload  = useQuery<WorkloadItem[]>({ queryKey: ['dashboard-workload'], queryFn: () => apiClient.get('/dashboard/workload').then(r => r.data) });
-  const stageDurations = useQuery<StageDuration[]>({ queryKey: ['dashboard-stage-durations'], queryFn: () => apiClient.get('/dashboard/stage-durations').then(r => r.data) });
-  const departments = useQuery<Dept[]>({ queryKey: ['departments'], queryFn: () => apiClient.get('/departments').then(r => r.data) });
-  const employees   = useQuery<Employee[]>({ queryKey: ['users'], queryFn: () => apiClient.get('/users').then(r => r.data) });
-  const clients     = useQuery<Client[]>({ queryKey: ['clients', ''], queryFn: () => apiClient.get('/clients').then(r => r.data) });
-  const slaReport   = useQuery<SlaReportRow[]>({ queryKey: ['sla-report'], queryFn: () => apiClient.get('/sla/report').then(r => r.data).catch(() => [] as SlaReportRow[]) });
-
+  const user = useAuthStore((s) => s.user);
+  const [attentionTab, setAttentionTab] = useState<'approvals' | 'blockers'>('approvals');
+  const board = useDashboardData<BoardData>(['dashboard-board'], '/dashboard/board');
+  const approvals = useDashboardData<ApprovalsSummary>(
+    ['dashboard-approvals'],
+    '/dashboard/approvals-pending',
+  );
+  const blockers = useDashboardData<BlockerSummary[]>(
+    ['dashboard-blockers'],
+    '/dashboard/blockers',
+  );
+  const workload = useDashboardData<WorkloadItem[]>(['dashboard-workload'], '/dashboard/workload');
+  const stageDurations = useDashboardData<StageDuration[]>(
+    ['dashboard-stage-durations'],
+    '/dashboard/stage-durations',
+  );
+  const departments = useDashboardData<Dept[]>(['departments'], '/departments');
+  const employees = useDashboardData<Employee[]>(['users'], '/users');
+  const clients = useDashboardData<Client[]>(['clients', ''], '/clients');
+  const slaReport = useDashboardData<SlaReportRow[]>(['sla-report'], '/sla/report');
+  const queries = [
+    board,
+    approvals,
+    blockers,
+    workload,
+    stageDurations,
+    departments,
+    employees,
+    clients,
+    slaReport,
+  ];
+  const failed = queries.filter((q) => q.isError);
+  const refreshing = queries.some((q) => q.isFetching);
   const sortedDepts = [...(departments.data ?? [])].sort((a, b) => a.order - b.order);
-
-  // Map stageName → number of breached projects
-  const slaBreachByStage = new Map<string, number>();
-  for (const row of slaReport.data ?? []) {
-    if (row.breached) slaBreachByStage.set(row.stageName, (slaBreachByStage.get(row.stageName) ?? 0) + 1);
-  }
-
-  const openBlockerCount = (blockers.data ?? []).filter(b => b.status === 'open').length;
-  const totalProjects = Object.values(board.data ?? {}).reduce((s, arr) => s + arr.length, 0);
-  const activeEmployees = (employees.data ?? []).filter(e => e.isActive).length;
+  const openBlockers = (blockers.data ?? []).filter(
+    (b) => b.status === 'open' || b.status === 'sla_triggered',
+  );
+  const allProjects = Object.values(board.data ?? {}).flat();
+  const activeEmployees = (employees.data ?? []).filter((e) => e.isActive);
+  const breached = (slaReport.data ?? []).filter((s) => s.breached);
+  const progress = allProjects.length
+    ? Math.round(allProjects.reduce((sum, p) => sum + (p.progressPct ?? 0), 0) / allProjects.length)
+    : 0;
+  const attention = attentionTab === 'approvals' ? approvals : blockers;
+  const attentionCount = attentionTab === 'approvals' ? approvals.data?.count : openBlockers.length;
 
   return (
-    <div className="space-y-8">
-      {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard icon={UserCircle2}  label="Clients"           value={clients.data?.length ?? '—'}     iconBg="bg-violet-50"  iconColor="text-violet-600" />
-        <StatCard icon={FolderKanban} label="Active Projects"   value={totalProjects}                   iconBg="bg-indigo-50"  iconColor="text-indigo-600" />
-        <StatCard icon={CheckSquare}  label="Pending Approvals" value={approvals.data?.count ?? '—'}    iconBg="bg-amber-50"   iconColor="text-amber-600" />
-        <StatCard icon={AlertTriangle} label="Open Blockers"    value={openBlockerCount}                iconBg="bg-red-50"     iconColor="text-red-600" />
+    <div className="space-y-7 pb-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">
+            Your studio, at a glance
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+            Workspace overview
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            A little clarity for everything you’re creating.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void Promise.all(queries.map((q) => q.refetch()))}
+          disabled={refreshing}
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing…' : 'Refresh overview'}
+        </button>
       </div>
 
-      {/* ── Department overview ── */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-slate-800">All Departments</h2>
-          <span className="text-xs text-slate-400">{sortedDepts.length} departments · {activeEmployees} staff</span>
+      {failed.length > 0 && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            Some information couldn’t be loaded. Other available data is still shown.
+          </span>
+          <button
+            type="button"
+            onClick={() => void Promise.all(failed.map((q) => q.refetch()))}
+            className="rounded px-2 py-1 font-semibold underline underline-offset-4"
+          >
+            Try again
+          </button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {departments.isLoading
-            ? Array.from({ length: 8 }).map((_, i) => <SkeletonDeptCard key={i} />)
-            : sortedDepts.map((dept, idx) => {
-            const color = DEPT_COLORS[idx % DEPT_COLORS.length];
-            const projectsHere = (board.data ?? {})[dept.name] ?? [];
-            const staffHere = (employees.data ?? []).filter(e => {
-              const d = e.department;
-              if (!d) return false;
-              return typeof d === 'object' ? d._id === dept._id : d === dept._id;
-            });
-            const blockersHere = (blockers.data ?? []).filter(b =>
-              b.status === 'open' && projectsHere.some(p => p._id === (b.project as unknown as { _id: string })?._id)
-            );
+      )}
 
-            const slaBreachCount = slaBreachByStage.get(dept.name) ?? 0;
-            return (
-              <div key={dept._id} className={`bg-white border rounded-xl overflow-hidden hover:border-slate-300 transition-colors ${slaBreachCount > 0 ? 'border-red-300' : 'border-slate-200'}`}>
-                <div className="h-1.5 w-full" style={{ background: slaBreachCount > 0 ? '#ef4444' : color }} />
-                <div className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Stage {dept.order}</div>
-                      <div className="font-semibold text-slate-900 text-sm mt-0.5">{dept.name}</div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="text-xs px-2 py-0.5 rounded-full font-semibold text-slate-500 bg-slate-100">
-                        SLA {dept.defaultSlaHours}h
-                      </div>
-                      {slaBreachCount > 0 && (
-                        <div className="text-xs px-2 py-0.5 rounded-full font-semibold text-red-700 bg-red-100 ring-1 ring-inset ring-red-200 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-                          {slaBreachCount} SLA breach{slaBreachCount > 1 ? 'es' : ''}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <div className="text-lg font-bold" style={{ color }}>{projectsHere.length}</div>
-                      <div className="text-xs text-slate-400">projects</div>
-                    </div>
-                    <div>
-                      <div className="text-lg font-bold text-slate-700">{staffHere.length}</div>
-                      <div className="text-xs text-slate-400">staff</div>
-                    </div>
-                    <div>
-                      <div className={`text-lg font-bold ${blockersHere.length > 0 ? 'text-red-500' : 'text-slate-300'}`}>{blockersHere.length}</div>
-                      <div className="text-xs text-slate-400">blockers</div>
-                    </div>
-                  </div>
-
-                  {/* Staff avatars */}
-                  {staffHere.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {staffHere.slice(0, 5).map(emp => (
-                        <div key={emp._id} className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-bold" title={emp.name}>
-                          {emp.name.charAt(0).toUpperCase()}
-                        </div>
-                      ))}
-                      {staffHere.length > 5 && (
-                        <div className="text-xs text-slate-400">+{staffHere.length - 5}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Projects in this dept */}
-                  {projectsHere.length > 0 && (
-                    <div className="space-y-1">
-                      {projectsHere.slice(0, 3).map(p => (
-                        <button
-                          key={p._id}
-                          onClick={() => router.push(`/dashboard/projects/${p._id}`)}
-                          className="w-full text-left"
-                        >
-                          <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5 hover:bg-slate-100 transition-colors">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium text-slate-700 truncate">{p.title}</div>
-                              <div className="h-1 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                                <div className="h-full rounded-full" style={{ width: `${p.progressPct}%`, background: color }} />
-                              </div>
-                            </div>
-                            <div className="text-xs text-slate-400 shrink-0">{p.progressPct}%</div>
-                          </div>
-                        </button>
-                      ))}
-                      {projectsHere.length > 3 && (
-                        <div className="text-xs text-slate-400 text-center pt-0.5">+{projectsHere.length - 3} more</div>
-                      )}
-                    </div>
-                  )}
-                  {projectsHere.length === 0 && (
-                    <div className="text-xs text-slate-300 text-center py-1">No active projects</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── Charts ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-800 mb-4">Team Workload</h2>
-          {workload.data && workload.data.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={workload.data} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="userName" tick={{ fontSize: 11, fill: '#64748b' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="totalTasks" name="Total" fill="#6366f1" radius={[4,4,0,0]} />
-                <Bar dataKey="inProgress" name="In Progress" fill="#f59e0b" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-slate-400 text-center py-10">No workload data yet.</p>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-800 mb-4">Avg Stage Duration (hrs)</h2>
-          {stageDurations.data && stageDurations.data.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={stageDurations.data} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="stageName" tick={{ fontSize: 10, fill: '#64748b' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={v => [`${v}h`, 'Avg']} />
-                <Bar dataKey="avgHours" name="Avg Hours" fill="#10b981" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-slate-400 text-center py-10">No stage data yet.</p>
-          )}
-        </div>
-      </div>
-
-      {/* ── Pending approvals ── */}
-      <section>
-        <h2 className="text-base font-semibold text-slate-800 mb-3">Pending Approvals</h2>
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
-          {approvals.data?.list.map(a => (
-            <div key={a._id} className="px-4 py-3 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-800">{a.project?.title}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{a.kind.replace(/_/g, ' ')} · {a.requestedBy?.name}</p>
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20">Pending</span>
+      <section
+        aria-labelledby="welcome-heading"
+        className="relative isolate overflow-hidden rounded-2xl bg-[#20243f] text-white"
+      >
+        <div aria-hidden="true" className="studio-grid absolute inset-0 -z-10" />
+        <div
+          aria-hidden="true"
+          className="absolute -right-16 -top-32 -z-10 h-96 w-96 rounded-full border-[48px] border-indigo-400/10"
+        />
+        <div className="grid gap-8 p-6 sm:p-8 xl:grid-cols-[1.5fr_1fr] xl:items-center">
+          <div>
+            <span className="inline-flex items-center gap-2 text-xs font-medium text-indigo-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-300" />
+              From first idea to final handover
+            </span>
+            <h2
+              id="welcome-heading"
+              className="mt-4 text-2xl font-medium tracking-tight sm:text-3xl"
+            >
+              Welcome back{user?.name ? `, ${user.name.split(' ')[0]}` : ''}.
+            </h2>
+            <p className="mt-3 max-w-lg text-sm leading-6 text-slate-300">
+              Great spaces start with a clear plan. Keep your projects moving, your teams connected,
+              and every detail in view.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/dashboard/projects"
+                className="inline-flex min-h-11 items-center gap-3 rounded-lg bg-white px-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-indigo-50"
+              >
+                Explore projects
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/dashboard/handovers"
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/20 px-4 text-sm font-medium text-white transition-colors hover:bg-white/10"
+              >
+                View handovers
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
-          ))}
-          {!approvals.isLoading && (approvals.data?.list.length ?? 0) === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-slate-400">No pending approvals.</div>
-          )}
+          </div>
+          <div className="rounded-xl border border-white/15 bg-white/[0.06] p-5 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-indigo-100">Portfolio progress</span>
+              <Layers3 className="h-4 w-4 text-indigo-300" />
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-4xl font-semibold tracking-tight">
+                {board.isError || board.isPending ? '—' : `${progress}%`}
+              </span>
+              <span className="text-xs text-slate-300">average completion</span>
+            </div>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-indigo-300"
+                style={{ width: `${Math.max(0, Math.min(progress, 100))}%` }}
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-300">
+              <span>
+                {board.isError || board.isPending ? '—' : allProjects.length} active projects
+              </span>
+              <span>
+                {employees.isError || employees.isPending ? '—' : activeEmployees.length} team
+                members
+              </span>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* ── Open blockers ── */}
-      {openBlockerCount > 0 && (
-        <section>
-          <h2 className="text-base font-semibold text-slate-800 mb-3">Open Blockers</h2>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
-            {(blockers.data ?? []).filter(b => b.status === 'open').map(b => (
-              <div key={b._id} className="px-4 py-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{b.title}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{b.project?.title} · {b.type.replace('_', ' ')}</p>
-                </div>
-                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-600 shrink-0">open</span>
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-5">
+        <StatCard
+          icon={FolderKanban}
+          label="Active projects"
+          value={allProjects.length}
+          pending={board.isPending}
+          error={board.isError}
+          hint="Ideas taking shape"
+          href="/dashboard/projects"
+          tone="bg-indigo-50 text-indigo-600"
+        />
+        <StatCard
+          icon={UserCircle2}
+          label="Clients"
+          value={clients.data?.length ?? 0}
+          pending={clients.isPending}
+          error={clients.isError}
+          hint="Relationships you’re building"
+          href="/dashboard/clients"
+          tone="bg-teal-50 text-teal-700"
+        />
+        <StatCard
+          icon={CheckSquare}
+          label="Pending approvals"
+          value={approvals.data?.count ?? 0}
+          pending={approvals.isPending}
+          error={approvals.isError}
+          hint="Ready for your review"
+          href="/dashboard/approvals"
+          tone="bg-amber-50 text-amber-700"
+        />
+        <StatCard
+          icon={AlertTriangle}
+          label="Unresolved blockers"
+          value={openBlockers.length}
+          pending={blockers.isPending}
+          error={blockers.isError}
+          hint="Help projects move forward"
+          href="/dashboard/blockers"
+          tone="bg-rose-50 text-rose-600"
+        />
+      </div>
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section aria-labelledby="pipeline-heading" className={`${panel} min-w-0 overflow-hidden`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 sm:p-6">
+            <div>
+              <h2 id="pipeline-heading" className="font-semibold text-slate-900">
+                Project pipeline
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Every department. One connected journey.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/projects"
+              className="inline-flex items-center gap-2 py-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+            >
+              All projects
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="p-5 sm:p-6">
+            <DataState
+              pending={departments.isPending || board.isPending}
+              error={departments.isError || board.isError}
+              empty={!sortedDepts.length}
+              emptyText="Your project pipeline will appear when departments are set up."
+            >
+              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                {sortedDepts.map((dept, index) => {
+                  const projects = board.data?.[dept.name] ?? [];
+                  const staff = activeEmployees.filter(
+                    (e) =>
+                      (typeof e.department === 'object' ? e.department?._id : e.department) ===
+                      dept._id,
+                  );
+                  const breaches = breached.filter((s) => s.stageName === dept.name).length;
+                  const color = DEPT_COLORS[index % DEPT_COLORS.length];
+                  return (
+                    <div key={dept._id} className="rounded-xl border border-slate-200/80 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold"
+                          style={{ color, backgroundColor: `${color}12` }}
+                        >
+                          {String(dept.order).padStart(2, '0')}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                          <Clock3 className="h-3 w-3" />
+                          {dept.defaultSlaHours}h SLA
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-sm font-semibold text-slate-800">{dept.name}</h3>
+                      <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+                        <span>
+                          {projects.length} project{projects.length === 1 ? '' : 's'}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {employees.isError || employees.isPending ? '—' : staff.length}
+                        </span>
+                      </div>
+                      <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                        {projects.slice(0, 2).map((p) => (
+                          <Link
+                            key={p._id}
+                            href={`/dashboard/projects/${p._id}`}
+                            className="group block rounded-lg p-1.5 transition-colors hover:bg-slate-50"
+                          >
+                            <div className="flex gap-2 text-xs">
+                              <span className="min-w-0 flex-1 truncate text-slate-600 group-hover:text-indigo-600">
+                                {p.title}
+                              </span>
+                              <span className="text-slate-500">{p.progressPct ?? 0}%</span>
+                            </div>
+                            <div className="mt-2 h-1 rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${Math.max(0, Math.min(p.progressPct ?? 0, 100))}%`,
+                                  backgroundColor: color,
+                                }}
+                              />
+                            </div>
+                          </Link>
+                        ))}
+                        {!projects.length && (
+                          <p className="py-3 text-xs text-slate-500">Ready for the next project</p>
+                        )}
+                        {projects.length > 2 && (
+                          <Link
+                            href="/dashboard/projects"
+                            className="block px-1.5 py-1 text-xs text-indigo-600"
+                          >
+                            +{projects.length - 2} more in the project list
+                          </Link>
+                        )}
+                      </div>
+                      {breaches > 0 && (
+                        <Link
+                          href="/dashboard/sla"
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700"
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          {breaches} SLA breach{breaches === 1 ? '' : 'es'}
+                        </Link>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+              {(board.data?.Unassigned?.length ?? 0) > 0 && (
+                <Link
+                  href="/dashboard/projects"
+                  className="mt-4 block rounded-lg bg-amber-50 p-3 text-xs text-amber-800"
+                >
+                  {board.data?.Unassigned.length} project(s) still need a department. View projects
+                  →
+                </Link>
+              )}
+            </DataState>
           </div>
         </section>
-      )}
+
+        <div className="space-y-5">
+          <section aria-labelledby="attention-heading" className={`${panel} overflow-hidden`}>
+            <div className="p-5">
+              <h2 id="attention-heading" className="font-semibold text-slate-900">
+                Needs attention
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">Small decisions. Forward momentum.</p>
+            </div>
+            <div
+              className="mx-5 mb-2 flex gap-1 rounded-lg bg-slate-100 p-1"
+              aria-label="Attention category"
+            >
+              {(['approvals', 'blockers'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  aria-pressed={attentionTab === tab}
+                  onClick={() => setAttentionTab(tab)}
+                  className={`min-h-10 flex-1 rounded-md text-xs font-semibold capitalize transition-colors ${attentionTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div className="p-5 pt-2">
+              <DataState
+                pending={attention.isPending}
+                error={attention.isError}
+                empty={!attentionCount}
+                emptyText={
+                  attentionTab === 'approvals'
+                    ? 'All caught up. No approvals waiting.'
+                    : 'No unresolved blockers. Keep creating.'
+                }
+              >
+                <div className="divide-y divide-slate-100">
+                  {attentionTab === 'approvals'
+                    ? approvals.data?.list
+                        .slice(0, 4)
+                        .map((a) => (
+                          <AttentionItem
+                            key={a._id}
+                            href="/dashboard/approvals"
+                            icon={CheckSquare}
+                            title={a.project?.title ?? 'Project approval'}
+                            subtitle={a.kind.replace(/_/g, ' ')}
+                            detail={a.requestedBy?.name ?? 'Awaiting review'}
+                            tone="bg-amber-50 text-amber-700"
+                          />
+                        ))
+                    : openBlockers
+                        .slice(0, 4)
+                        .map((b) => (
+                          <AttentionItem
+                            key={b._id}
+                            href="/dashboard/blockers"
+                            icon={AlertTriangle}
+                            title={b.title}
+                            subtitle={b.project?.title ?? 'Project blocker'}
+                            detail={b.status === 'sla_triggered' ? 'SLA escalated' : 'Open blocker'}
+                            tone="bg-rose-50 text-rose-600"
+                          />
+                        ))}
+                </div>
+              </DataState>
+            </div>
+            <Link
+              href={`/dashboard/${attentionTab}`}
+              className="flex min-h-12 items-center justify-center gap-2 border-t border-slate-100 bg-slate-50/50 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
+            >
+              View all {attentionTab}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </section>
+          <section className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5">
+            <div className="flex items-center gap-2 text-indigo-700">
+              <Building2 className="h-4 w-4" />
+              <h2 className="text-sm font-semibold">Keep your studio in sync</h2>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              Review team assignments and make sure every project has the right people behind it.
+            </p>
+            <Link
+              href="/dashboard/users"
+              className="mt-4 inline-flex items-center gap-2 py-1 text-xs font-semibold text-indigo-700"
+            >
+              Meet your team
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </section>
+        </div>
+      </div>
+
+      <section aria-labelledby="insights-heading">
+        <h2
+          id="insights-heading"
+          className="mb-4 text-lg font-semibold tracking-tight text-slate-900"
+        >
+          Behind the progress
+        </h2>
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div className={`${panel} min-w-0 p-5 sm:p-6`}>
+            <h3 className="text-sm font-semibold text-slate-900">Team workload</h3>
+            <p className="mb-6 mt-1 text-xs text-slate-500">
+              Open tasks and work already in motion.
+            </p>
+            <DataState
+              pending={workload.isPending}
+              error={workload.isError}
+              empty={!workload.data?.length}
+              emptyText="Team workload will appear as tasks are assigned."
+            >
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart
+                  accessibilityLayer
+                  data={workload.data}
+                  margin={{ top: 4, right: 0, left: -24, bottom: 4 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis
+                    dataKey="userName"
+                    tick={chartTick}
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={10}
+                  />
+                  <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+                  <Bar
+                    dataKey="totalTasks"
+                    name="Open tasks"
+                    fill="#6366f1"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={24}
+                  />
+                  <Bar
+                    dataKey="inProgress"
+                    name="In progress"
+                    fill="#a5b4fc"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={24}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </DataState>
+          </div>
+          <div className={`${panel} min-w-0 p-5 sm:p-6`}>
+            <h3 className="text-sm font-semibold text-slate-900">Time across stages</h3>
+            <p className="mb-6 mt-1 text-xs text-slate-500">
+              Average hours spent in completed stages.
+            </p>
+            <DataState
+              pending={stageDurations.isPending}
+              error={stageDurations.isError}
+              empty={!stageDurations.data?.length}
+              emptyText="Stage insights will appear after the first stage is completed."
+            >
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart
+                  accessibilityLayer
+                  data={stageDurations.data}
+                  margin={{ top: 4, right: 0, left: -24, bottom: 4 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis
+                    dataKey="stageName"
+                    tick={chartTick}
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={10}
+                  />
+                  <YAxis tick={chartTick} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(v) => [`${v} hours`, 'Average duration']}
+                  />
+                  <Bar
+                    dataKey="avgHours"
+                    name="Average hours"
+                    fill="#14b8a6"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={32}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </DataState>
+          </div>
+        </div>
+      </section>
+      <p className="text-center text-[11px] text-slate-500">
+        Trendy Interios · Thoughtful spaces. Connected teams.
+      </p>
     </div>
   );
 }
 
-function StatCard({ icon: Icon, label, value, iconBg, iconColor }: {
-  icon: LucideIcon; label: string; value: string | number; iconBg: string; iconColor: string;
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  pending,
+  error,
+  hint,
+  href,
+  tone,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  pending: boolean;
+  error: boolean;
+  hint: string;
+  href: string;
+  tone: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4">
-      <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
-        <Icon className={`w-5 h-5 ${iconColor}`} />
+    <Link
+      href={href}
+      className={`${panel} group p-4 transition-colors hover:border-indigo-300 sm:p-5`}
+    >
+      <div className="flex items-center justify-between">
+        <span className={`rounded-xl p-2.5 ${tone}`}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-indigo-600" />
       </div>
-      <div>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        <p className="text-sm text-slate-500">{label}</p>
+      <p className="mt-4 text-xs font-medium text-slate-500 sm:text-sm">{label}</p>
+      <div className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
+        {pending ? (
+          <span
+            aria-label="Loading"
+            className="inline-block h-8 w-12 animate-pulse rounded bg-slate-100"
+          />
+        ) : error ? (
+          '—'
+        ) : (
+          value
+        )}
       </div>
-    </div>
+      <p className="mt-2 text-[11px] leading-5 text-slate-500">
+        {error ? 'Currently unavailable' : hint}
+      </p>
+    </Link>
   );
+}
+
+function AttentionItem({
+  href,
+  icon: Icon,
+  title,
+  subtitle,
+  detail,
+  tone,
+}: {
+  href: string;
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  detail: string;
+  tone: string;
+}) {
+  return (
+    <Link href={href} className="group flex items-start gap-3 py-4">
+      <span className={`rounded-lg p-2 ${tone}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-sm font-medium text-slate-800 group-hover:text-indigo-600">
+          {title}
+        </p>
+        <p className="mt-1 text-xs capitalize text-slate-500">{subtitle}</p>
+        <p className="mt-1 text-[11px] text-slate-500">{detail}</p>
+      </div>
+      <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+    </Link>
+  );
+}
+
+function DataState({
+  pending,
+  error,
+  empty,
+  emptyText,
+  children,
+}: {
+  pending: boolean;
+  error: boolean;
+  empty: boolean;
+  emptyText: string;
+  children: ReactNode;
+}) {
+  if (pending)
+    return (
+      <div role="status" className="space-y-3 py-4">
+        <span className="sr-only">Loading data</span>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
+        ))}
+      </div>
+    );
+  if (error)
+    return (
+      <div className="flex flex-col items-center gap-3 py-10 text-center text-sm text-slate-500">
+        <AlertTriangle className="h-6 w-6 text-amber-600" />
+        <p>
+          This information is unavailable.
+          <br />
+          Use “Refresh overview” to try again.
+        </p>
+      </div>
+    );
+  if (empty)
+    return (
+      <div className="flex flex-col items-center gap-3 px-3 py-10 text-center">
+        <span className="rounded-full bg-slate-50 p-3 text-slate-400">
+          <CheckCheck className="h-5 w-5" />
+        </span>
+        <p className="max-w-xs text-xs leading-5 text-slate-500">{emptyText}</p>
+      </div>
+    );
+  return <>{children}</>;
 }

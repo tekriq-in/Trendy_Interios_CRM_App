@@ -33,7 +33,11 @@ apiClient.interceptors.response.use(
 
     if (!refreshToken) {
       clearAuth();
-      if (typeof window !== 'undefined') window.location.href = '/login';
+      // Don't redirect when the login endpoint itself returned 401 — let the
+      // login page's catch block handle it and show the inline error message.
+      if (typeof window !== 'undefined' && !original.url?.includes('/auth/login')) {
+        window.location.href = '/login';
+      }
       return Promise.reject(err);
     }
 

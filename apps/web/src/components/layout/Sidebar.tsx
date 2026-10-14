@@ -34,9 +34,7 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: 'OVERVIEW',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-    ],
+    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true }],
   },
   {
     label: 'OPERATIONS',
@@ -59,13 +57,11 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'SYSTEM',
-    items: [
-      { href: '/dashboard/activity-log', label: 'Activity Log', icon: ScrollText },
-    ],
+    items: [{ href: '/dashboard/activity-log', label: 'Activity Log', icon: ScrollText }],
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -82,23 +78,25 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-64 bg-slate-900 flex flex-col shrink-0 h-full">
+    <aside className="w-60 bg-[#181c32] flex flex-col shrink-0 h-full text-white">
       {/* Logo */}
-      <div className="h-16 flex items-center gap-3 px-5 border-b border-slate-800">
-        <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+      <div className="h-20 flex items-center gap-3 px-6 border-b border-white/10">
+        <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0 ring-4 ring-indigo-500/10">
           TI
         </div>
         <div className="min-w-0">
           <p className="text-white font-semibold text-sm leading-tight truncate">Trendy Interios</p>
-          <p className="text-slate-400 text-xs leading-tight">CRM Platform</p>
+          <p className="text-slate-400 text-[10px] tracking-[0.18em] uppercase mt-1">
+            Studio workspace
+          </p>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
+      <nav aria-label="Main navigation" className="flex-1 overflow-y-auto py-6 px-3 space-y-6">
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
-            <p className="text-slate-500 text-xs font-semibold tracking-wider px-2 mb-1.5">
+            <p className="text-slate-400 text-[10px] font-semibold tracking-[0.16em] px-3 mb-2">
               {group.label}
             </p>
             <div className="space-y-0.5">
@@ -109,10 +107,12 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                       active
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        ? 'bg-indigo-500/20 text-indigo-100 ring-1 ring-inset ring-indigo-400/25'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
@@ -132,15 +132,20 @@ export function Sidebar() {
             {user?.initials ?? 'MD'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium leading-tight truncate">{user?.name ?? 'Admin'}</p>
-            <p className="text-slate-500 text-xs leading-tight truncate">{user?.role ?? 'Managing Director'}</p>
+            <p className="text-white text-sm font-medium leading-tight truncate">
+              {user?.name ?? 'Admin'}
+            </p>
+            <p className="text-slate-400 text-xs leading-tight truncate">
+              {user?.role ?? 'Workspace'}
+            </p>
           </div>
           <button
             onClick={handleLogout}
-            className="text-slate-500 hover:text-white transition-colors p-1 rounded"
-            title="Sign out"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors px-2 py-1.5 rounded-lg text-xs font-medium hover:bg-white/5"
+            aria-label="Sign out"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            Sign out
           </button>
         </div>
       </div>

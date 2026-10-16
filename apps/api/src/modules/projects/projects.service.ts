@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Project, ProjectDocument } from './schemas/project.schema';
+import { User } from '../users/schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS, DEFAULT_STAGE_WEIGHTS } from '@ti/shared';
 
@@ -27,6 +28,8 @@ export interface UpdateProjectDto {
 export class ProjectsService {
   constructor(
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @InjectModel(User.name) private userModel: Model<any>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
   ) {}
@@ -37,13 +40,14 @@ export class ProjectsService {
       ? {}
       : { assignedTeam: new Types.ObjectId(user._id) };
 
-    return this.projectModel
+    const projects = await this.projectModel
       .find(filter)
       .populate('client', 'name phone')
       .populate('currentStage', 'name order')
-      .populate('assignedTeam', 'name email department')
       .sort({ createdAt: -1 })
       .lean();
+
+    return this.populateTeams(projects as unknown as Record<string, unknown>[]);
   }
 
   async findById(id: string, user: { _id: string; rolePermissions: string[] }) {
@@ -57,11 +61,35 @@ export class ProjectsService {
       .findOne(filter)
       .populate('client', 'name phone email address')
       .populate('currentStage', 'name order')
-      .populate('assignedTeam', 'name email department role')
-      .lean();
+      .lean() as unknown as Record<string, unknown> | null;
 
     if (!project) throw new NotFoundException('project.not_found');
-    return project;
+    const [populated] = await this.populateTeams([project]);
+    return populated;
+  }
+
+  private async populateTeams(projects: Record<string, unknown>[]) {
+    const allTeamIds = projects.flatMap((p) => {
+      const team = p.assignedTeam as unknown[];
+      return (team ?? []).map((id) => String(id));
+    });
+    const uniqueIds = [...new Set(allTeamIds)].filter(Boolean);
+
+    if (uniqueIds.length === 0) return projects;
+
+    const users = await this.userModel
+      .find({ _id: { $in: uniqueIds.map((id) => new Types.ObjectId(id)) } })
+      .select('name email department role')
+      .lean();
+
+    const userMap = new Map(users.map((u) => [String((u as Record<string, unknown>)._id), u]));
+
+    return projects.map((p) => ({
+      ...p,
+      assignedTeam: ((p.assignedTeam as unknown[]) ?? []).map(
+        (id) => userMap.get(String(id)) ?? { _id: String(id) },
+      ),
+    }));
   }
 
   async create(dto: CreateProjectDto, actorId: string) {
@@ -103,7 +131,7 @@ export class ProjectsService {
       update.assignedTeam = dto.assignedTeamIds.map((id) => new Types.ObjectId(id));
     }
 
-    const updated = await this.projectModel.findByIdAndUpdate(id, update, { new: true });
+    await this.projectModel.findByIdAndUpdate(id, update);
 
     await this.activityLog.record({
       actor: actorId,
@@ -113,7 +141,7 @@ export class ProjectsService {
       metadata: update,
     });
 
-    return updated;
+    return this.findById(id, { _id: actorId, rolePermissions: ['projects:read_all'] });
   }
 
   async advanceStage(

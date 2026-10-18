@@ -21,6 +21,12 @@ const mockProjectModel = {
   db: { model: jest.fn() },
 };
 
+const mockUserModel = {
+  find: jest.fn().mockReturnValue({
+    select: jest.fn().mockReturnThis(),
+    lean: jest.fn().mockResolvedValue([]),
+  }),
+};
 const mockActivityLog = { record: jest.fn() };
 const mockEventEmitter = { emit: jest.fn() };
 
@@ -33,6 +39,7 @@ describe('Permission Scoping — Employee project isolation', () => {
       providers: [
         ProjectsService,
         { provide: getModelToken('Project'), useValue: mockProjectModel },
+        { provide: getModelToken('User'), useValue: mockUserModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: EventEmitter2, useValue: mockEventEmitter },
       ],

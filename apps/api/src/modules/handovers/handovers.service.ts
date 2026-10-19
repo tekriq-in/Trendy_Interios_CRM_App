@@ -30,6 +30,7 @@ export class HandoversService {
       .populate('raisedBy', 'name email')
       .populate('confirmedBy', 'name')
       .populate('acceptedBy', 'name')
+      .populate('proofFiles', 'fileName driveLink mimeType type')
       .sort({ createdAt: -1 })
       .lean();
   }

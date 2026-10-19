@@ -55,6 +55,13 @@ export class DocumentsService {
     return doc;
   }
 
+  async findByProject(projectId: string) {
+    return this.docModel
+      .find({ project: projectId, isDeleted: { $ne: true } })
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
   async findById(id: string) {
     const doc = await this.docModel.findOne({ _id: id, isDeleted: false }).lean();
     if (!doc) throw new NotFoundException('document.not_found');

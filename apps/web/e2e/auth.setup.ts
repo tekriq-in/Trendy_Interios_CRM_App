@@ -5,7 +5,7 @@ import fs from 'fs';
 export const MD_AUTH_FILE = path.join(__dirname, '.auth/md.json');
 export const EMP_AUTH_FILE = path.join(__dirname, '.auth/employee.json');
 
-const BASE = process.env.TEST_BASE_URL ?? 'http://localhost:3002';
+const BASE = process.env.TEST_BASE_URL ?? 'http://localhost:3000';
 
 async function doLogin(page: import('@playwright/test').Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);

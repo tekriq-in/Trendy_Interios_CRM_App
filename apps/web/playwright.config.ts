@@ -7,7 +7,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list'], ['json', { outputFile: 'e2e-results.json' }]],
   use: {
-    baseURL: process.env.TEST_BASE_URL ?? 'http://localhost:3002',
+    baseURL: process.env.TEST_BASE_URL ?? 'http://localhost:3000',
     screenshot: 'only-on-failure',
     video: 'off',
     trace: 'off',

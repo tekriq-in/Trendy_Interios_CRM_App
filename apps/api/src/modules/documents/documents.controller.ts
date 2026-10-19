@@ -4,6 +4,7 @@ import {
   Post,
   Delete,
   Param,
+  Query,
   Body,
   UseGuards,
   UseInterceptors,
@@ -35,6 +36,11 @@ export class DocumentsController {
       meta,
       actor._id,
     );
+  }
+
+  @Get()
+  findByProject(@Query('projectId') projectId: string) {
+    return this.service.findByProject(projectId);
   }
 
   @Get(':id')

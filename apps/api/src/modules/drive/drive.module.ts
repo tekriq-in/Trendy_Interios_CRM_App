@@ -1,21 +1,23 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DRIVE_SERVICE } from './drive.interface';
 import { DriveMockService } from './drive-mock.service';
+import { DriveGoogleService } from './drive-google.service';
 
 @Module({
+  imports: [ConfigModule],
   providers: [
+    DriveGoogleService,
     {
       provide: DRIVE_SERVICE,
-      useFactory: (config: ConfigService) => {
+      useFactory: (config: ConfigService, googleService: DriveGoogleService) => {
         const provider = config.get('DRIVE_PROVIDER', 'mock');
         if (provider === 'google') {
-          // Real Google Drive service would be injected here
-          throw new Error('Google Drive provider not yet implemented — set DRIVE_PROVIDER=mock');
+          return googleService;
         }
         return new DriveMockService();
       },
-      inject: [ConfigService],
+      inject: [ConfigService, DriveGoogleService],
     },
   ],
   exports: [DRIVE_SERVICE],

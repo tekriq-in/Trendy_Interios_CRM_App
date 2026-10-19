@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Circle, Loader2, UserPlus, X, Upload, FileText, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, ExternalLink, Plus, ClipboardList } from 'lucide-react';
+import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 
 interface Dept { _id: string; name: string; order: number; }
 interface TeamMember { _id: string; name: string; email: string; }
@@ -19,7 +20,15 @@ interface Project {
   client?: { name: string; phone?: string; };
   targetDate?: string;
 }
-interface Task { _id: string; title: string; status: string; }
+interface Task {
+  _id: string; title: string; status: string;
+  assignedTo?: { _id: string; name: string } | string;
+  dueDate?: string;
+}
+interface TaskForm {
+  title: string; departmentId: string; assignedToId: string; dueDate: string;
+}
+const EMPTY_TASK: TaskForm = { title: '', departmentId: '', assignedToId: '', dueDate: '' };
 interface TIDocument { _id: string; fileName: string; mimeType: string; driveLink: string; type: string; }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -46,6 +55,10 @@ export default function ProjectDetailPage({ params }: Props) {
   const [drawingUploading, setDrawingUploading] = useState(false);
   const [drawingErr, setDrawingErr] = useState('');
   const drawingInputRef = useRef<HTMLInputElement>(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskForm, setTaskForm] = useState<TaskForm>(EMPTY_TASK);
+  const [taskPhotos, setTaskPhotos] = useState<UploadedFile[]>([]);
+  const [taskErr, setTaskErr] = useState('');
 
   const { data: project, isLoading } = useQuery<Project>({
     queryKey: ['project', id],
@@ -65,7 +78,7 @@ export default function ProjectDetailPage({ params }: Props) {
   const { data: drawings = [], refetch: refetchDrawings } = useQuery<TIDocument[]>({
     queryKey: ['drawings', id],
     queryFn: () =>
-      apiClient.get(`/projects/${id}/documents`).then((r) =>
+      apiClient.get('/documents', { params: { projectId: id } }).then((r) =>
         (r.data as TIDocument[]).filter((d) => d.type === 'drawing_2d' || d.type === 'drawing_3d'),
       ).catch(() => [] as TIDocument[]),
   });
@@ -94,6 +107,38 @@ export default function ProjectDetailPage({ params }: Props) {
       toast('success', 'Team updated.');
     },
     onError: () => toast('error', 'Failed to update team.'),
+  });
+
+  const createTaskMut = useMutation({
+    mutationFn: (form: TaskForm) =>
+      apiClient.post(`/projects/${id}/tasks`, {
+        title: form.title,
+        departmentId: form.departmentId,
+        assignedToId: form.assignedToId,
+        dueDate: form.dueDate || undefined,
+      }),
+    onSuccess: async (res) => {
+      // Attach photos if any
+      for (const photo of taskPhotos) {
+        await apiClient.patch(`/tasks/${res.data._id}`, { photoId: photo._id });
+      }
+      qc.invalidateQueries({ queryKey: ['tasks', id] });
+      toast('success', 'Task created.');
+      setShowTaskModal(false);
+      setTaskForm(EMPTY_TASK);
+      setTaskPhotos([]);
+      setTaskErr('');
+    },
+    onError: (e: unknown) => {
+      setTaskErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to create task.');
+    },
+  });
+
+  const toggleTaskMut = useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: string }) =>
+      apiClient.patch(`/tasks/${taskId}`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', id] }),
+    onError: () => toast('error', 'Failed to update task.'),
   });
 
   if (isLoading) return <div className="flex items-center justify-center h-48"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
@@ -263,18 +308,40 @@ export default function ProjectDetailPage({ params }: Props) {
 
         {/* Tasks */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Tasks</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Tasks</h2>
+            <button
+              onClick={() => { setShowTaskModal(true); setTaskForm(EMPTY_TASK); setTaskPhotos([]); setTaskErr(''); }}
+              className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Task
+            </button>
+          </div>
           {tasks.length === 0 ? (
             <p className="text-sm text-slate-400">No tasks yet.</p>
           ) : (
             <div className="space-y-2">
-              {tasks.map((task) => (
-                <div key={task._id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${TASK_DOT[task.status] ?? 'bg-slate-300'}`} />
-                  <span className="text-sm text-slate-800 flex-1 truncate">{task.title}</span>
-                  <span className="text-xs text-slate-400 capitalize shrink-0">{task.status.replace('_', ' ')}</span>
-                </div>
-              ))}
+              {tasks.map((task) => {
+                const nextStatus = task.status === 'pending' ? 'in_progress' : task.status === 'in_progress' ? 'done' : null;
+                return (
+                  <div key={task._id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                    <button
+                      onClick={() => nextStatus && toggleTaskMut.mutate({ taskId: task._id, status: nextStatus })}
+                      className={`w-4 h-4 rounded-full shrink-0 border-2 flex items-center justify-center transition-colors ${
+                        task.status === 'done' ? 'bg-emerald-500 border-emerald-500' :
+                        task.status === 'in_progress' ? 'border-blue-500' :
+                        task.status === 'blocked' ? 'bg-red-500 border-red-500' :
+                        'border-slate-300 hover:border-indigo-400'
+                      }`}
+                      title={nextStatus ? `Mark as ${nextStatus.replace('_', ' ')}` : undefined}
+                    >
+                      {task.status === 'done' && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    </button>
+                    <span className={`text-sm flex-1 truncate ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
+                    <span className="text-xs text-slate-400 capitalize shrink-0">{task.status.replace('_', ' ')}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -339,6 +406,86 @@ export default function ProjectDetailPage({ params }: Props) {
         <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Team Chat</h2>
         <ProjectChat projectId={id} />
       </div>
+
+      {/* Create Task Modal */}
+      {showTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-12 px-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mb-8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-indigo-600" />
+                <h2 className="text-lg font-semibold text-slate-900">Add Task</h2>
+              </div>
+              <button onClick={() => setShowTaskModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Title *</label>
+                <input
+                  type="text"
+                  value={taskForm.title}
+                  onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder="e.g. Install wall tiles in bedroom"
+                  className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Department *</label>
+                  <select
+                    value={taskForm.departmentId}
+                    onChange={e => setTaskForm(p => ({ ...p, departmentId: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select…</option>
+                    {sortedDepts.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Assign to *</label>
+                  <select
+                    value={taskForm.assignedToId}
+                    onChange={e => setTaskForm(p => ({ ...p, assignedToId: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select…</option>
+                    {(project.assignedTeam ?? []).map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Due date</label>
+                <input
+                  type="date"
+                  value={taskForm.dueDate}
+                  onChange={e => setTaskForm(p => ({ ...p, dueDate: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <FileUpload
+                projectId={id}
+                type="photo"
+                accept="image/*"
+                multiple
+                label="Photos"
+                onUploaded={setTaskPhotos}
+              />
+              {taskErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{taskErr}</p>}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
+              <button onClick={() => setShowTaskModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
+              <button
+                onClick={() => createTaskMut.mutate(taskForm)}
+                disabled={!taskForm.title.trim() || !taskForm.departmentId || !taskForm.assignedToId || createTaskMut.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {createTaskMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {createTaskMut.isPending ? 'Creating…' : 'Create Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Team Members Modal */}
       {showTeamModal && (

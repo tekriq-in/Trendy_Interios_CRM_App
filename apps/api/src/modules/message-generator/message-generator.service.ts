@@ -103,7 +103,7 @@ export class MessageGeneratorService {
         Authorization: `Bearer ${this.groqKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: 'You are a professional customer communication assistant.' },
           { role: 'user', content: prompt },

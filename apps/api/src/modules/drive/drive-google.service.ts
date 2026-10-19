@@ -40,6 +40,7 @@ export class DriveGoogleService implements IDriveService, OnModuleInit {
     const folderId = await this.resolveFolder(folderPath);
 
     const response = await this.drive.files.create({
+      supportsAllDrives: true,
       requestBody: {
         name: fileName,
         parents: [folderId],
@@ -56,6 +57,7 @@ export class DriveGoogleService implements IDriveService, OnModuleInit {
     // Make the file readable by anyone with the link
     await this.drive.permissions.create({
       fileId: file.id!,
+      supportsAllDrives: true,
       requestBody: { role: 'reader', type: 'anyone' },
     });
 
@@ -96,6 +98,8 @@ export class DriveGoogleService implements IDriveService, OnModuleInit {
       const existing = await this.drive.files.list({
         q: `name='${segment}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
         fields: 'files(id)',
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
       });
 
       let folderId: string;
@@ -103,6 +107,7 @@ export class DriveGoogleService implements IDriveService, OnModuleInit {
         folderId = existing.data.files[0].id!;
       } else {
         const created = await this.drive.files.create({
+          supportsAllDrives: true,
           requestBody: {
             name: segment,
             mimeType: 'application/vnd.google-apps.folder',

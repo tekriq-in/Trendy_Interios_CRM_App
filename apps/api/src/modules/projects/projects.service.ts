@@ -5,6 +5,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Project, ProjectDocument } from './schemas/project.schema';
 import { User } from '../users/schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service';
+import { HandoversService } from '../handovers/handovers.service';
 import { PERMISSIONS, DEFAULT_STAGE_WEIGHTS } from '@ti/shared';
 
 export interface CreateProjectDto {
@@ -32,6 +34,8 @@ export class ProjectsService {
     @InjectModel(User.name) private userModel: Model<any>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
+    private chatGroups: ChatGroupsService,
+    private handoversService: HandoversService,
   ) {}
 
   async findAll(user: { _id: string; rolePermissions: string[] }) {
@@ -115,6 +119,14 @@ export class ProjectsService {
       metadata: { title: dto.title },
     });
 
+    // Auto-create project chat group
+    await this.chatGroups.autoCreateForProject(
+      String(project._id),
+      dto.title,
+      [actorId, ...(dto.assignedTeamIds ?? [])],
+      actorId,
+    ).catch(() => {});
+
     return project;
   }
 
@@ -131,7 +143,33 @@ export class ProjectsService {
       update.assignedTeam = dto.assignedTeamIds.map((id) => new Types.ObjectId(id));
     }
 
+    // When closing the project, mark the final open stage as completed so progress reaches 100%
+    if (dto.status === 'completed') {
+      const now = new Date();
+      const openIdx = project.stageHistory.findIndex(
+        (s) => s.stage.toString() === project.currentStage?.toString() && !s.completedAt,
+      );
+      if (openIdx !== -1) {
+        project.stageHistory[openIdx].completedAt = now;
+        await project.save();
+      }
+      const progressPct = await this.computeProgress(project);
+      update.progressPct = progressPct;
+      this.eventEmitter.emit('project.progress_updated', { projectId: id, progressPct });
+    }
+
     await this.projectModel.findByIdAndUpdate(id, update);
+
+    // Sync chat group members when team changes
+    if (dto.assignedTeamIds !== undefined) {
+      const proj = await this.projectModel.findById(id).lean() as unknown as { title: string };
+      await this.chatGroups.autoCreateForProject(
+        id,
+        dto.title ?? proj?.title ?? '',
+        [actorId, ...dto.assignedTeamIds],
+        actorId,
+      ).catch(() => {});
+    }
 
     await this.activityLog.record({
       actor: actorId,
@@ -167,6 +205,7 @@ export class ProjectsService {
       project.stageHistory[currentIdx].completedAt = now;
     }
 
+    const fromStageId = project.currentStage?.toString();
     project.stageHistory.push({ stage: new Types.ObjectId(nextStageId), enteredAt: now });
     project.currentStage = new Types.ObjectId(nextStageId);
 
@@ -174,6 +213,16 @@ export class ProjectsService {
     project.progressPct = progressPct;
 
     await project.save();
+
+    // Auto-create a draft handover so it appears in the Handovers tab
+    if (fromStageId) {
+      await this.handoversService.createDraft({
+        projectId,
+        fromDepartmentId: fromStageId,
+        toDepartmentId: nextStageId,
+        raisedById: actorId,
+      }).catch(() => {});
+    }
 
     await this.activityLog.record({
       actor: actorId,

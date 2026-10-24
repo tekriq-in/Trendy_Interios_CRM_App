@@ -123,6 +123,17 @@ export class MessageGeneratorService {
 
   private mockMessage(dto: GenerateMessageDto): string {
     const kindLabel = KIND_LABELS[dto.updateKind] ?? dto.updateKind;
+    if (dto.language === 'ta') {
+      return `அன்புள்ள ${dto.clientName} அவர்களே,
+
+வணக்கம். "${dto.projectTitle}" திட்டம் தொடர்பாக ஒரு முக்கியமான தகவல் தெரிவிக்க விரும்புகிறோம்.
+
+${dto.rawNotes}
+
+உங்கள் நம்பிக்கைக்கு நன்றி. ஏதேனும் கேள்விகள் இருந்தால் எங்களை தொடர்பு கொள்ளவும்.
+
+— டீம் ட்ரெண்டி இன்டீரியோஸ்`;
+    }
     return `Dear ${dto.clientName},
 
 We hope this message finds you well. We wanted to share a quick update regarding your project "${dto.projectTitle}".

@@ -75,7 +75,7 @@ export default function ProjectDetailPage({ params }: Props) {
     queryFn: () => apiClient.get('/departments').then((r) => r.data),
   });
 
-  const { data: drawings = [], refetch: refetchDrawings } = useQuery<TIDocument[]>({
+  const { data: drawings = [] } = useQuery<TIDocument[]>({
     queryKey: ['drawings', id],
     queryFn: () =>
       apiClient.get('/documents', { params: { projectId: id } }).then((r) =>
@@ -97,6 +97,15 @@ export default function ProjectDetailPage({ params }: Props) {
       toast('success', 'Stage advanced successfully.');
     },
     onError: () => { setAdvancing(false); toast('error', 'Failed to advance stage.'); },
+  });
+
+  const closeProjectMut = useMutation({
+    mutationFn: () => apiClient.patch(`/projects/${id}`, { status: 'completed' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', id] });
+      toast('success', 'Project marked as completed.');
+    },
+    onError: () => toast('error', 'Failed to close project.'),
   });
 
   const updateTeamMut = useMutation({
@@ -161,7 +170,8 @@ export default function ProjectDetailPage({ params }: Props) {
       fd.append('projectId', id);
       fd.append('type', drawingType);
       await apiClient.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      refetchDrawings();
+      await qc.invalidateQueries({ queryKey: ['drawings', id] });
+      await qc.refetchQueries({ queryKey: ['drawings', id] });
       toast('success', 'Drawing uploaded.');
     } catch {
       setDrawingErr('Upload failed. Please try again.');
@@ -186,12 +196,20 @@ export default function ProjectDetailPage({ params }: Props) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900 truncate">{project.title}</h1>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_COLORS[project.status] ?? 'bg-slate-100 text-slate-600'}`}>
-              {project.status.replace('_', ' ')}
+            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_COLORS[project.status ?? 'active'] ?? 'bg-slate-100 text-slate-600'}`}>
+              {(project.status ?? 'active').replace('_', ' ')}
             </span>
           </div>
           {project.client && (
-            <p className="text-sm text-slate-500 mt-0.5">{project.client.name}{project.client.phone ? ` · ${project.client.phone}` : ''}</p>
+            <p className="text-sm text-slate-500 mt-0.5">
+              <button
+                onClick={() => router.push('/dashboard/clients')}
+                className="text-indigo-600 hover:underline font-medium"
+              >
+                {project.client.name}
+              </button>
+              {project.client.phone ? ` · ${project.client.phone}` : ''}
+            </p>
           )}
         </div>
         <div className="text-right shrink-0">
@@ -220,7 +238,17 @@ export default function ProjectDetailPage({ params }: Props) {
             </button>
           )}
           {!nextStage && project.status === 'active' && (
-            <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">Final stage</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">Final stage</span>
+              <button
+                onClick={() => closeProjectMut.mutate()}
+                disabled={closeProjectMut.isPending}
+                className="flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+              >
+                {closeProjectMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Close Project
+              </button>
+            </div>
           )}
         </div>
 
@@ -449,7 +477,7 @@ export default function ProjectDetailPage({ params }: Props) {
                     className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Select…</option>
-                    {(project.assignedTeam ?? []).map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
+                    {allUsers.filter((u) => (u as unknown as { isActive: boolean }).isActive !== false).map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
                   </select>
                 </div>
               </div>

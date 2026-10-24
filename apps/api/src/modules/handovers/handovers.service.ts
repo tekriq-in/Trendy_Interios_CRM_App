@@ -169,4 +169,20 @@ export class HandoversService {
 
     return handover;
   }
+
+  async createDraft(dto: {
+    projectId: string;
+    fromDepartmentId: string;
+    toDepartmentId: string;
+    raisedById: string;
+  }): Promise<void> {
+    await this.handoverModel.create({
+      project: new Types.ObjectId(dto.projectId),
+      fromDepartment: new Types.ObjectId(dto.fromDepartmentId),
+      toDepartment: new Types.ObjectId(dto.toDepartmentId),
+      raisedBy: new Types.ObjectId(dto.raisedById),
+      status: 'draft',
+      createdBy: new Types.ObjectId(dto.raisedById),
+    });
+  }
 }

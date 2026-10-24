@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
-import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2 } from 'lucide-react';
+import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2, UserX } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 interface Client {
   _id: string; name: string; phone: string; email?: string;
   address?: string; leadSource?: string; whatsappOptIn?: boolean; notes?: string;
+  isActive?: boolean;
 }
 interface Dept { _id: string; name: string; order: number; }
 
@@ -31,6 +32,7 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [showInactive, setShowInactive] = useState(false);
 
   // New project after client creation
   const [newClientId, setNewClientId] = useState<string | null>(null);
@@ -38,9 +40,20 @@ export default function ClientsPage() {
   const [projectForm, setProjectForm] = useState({ title: '', firstStageId: '' });
   const [projectSaving, setProjectSaving] = useState(false);
 
+  const deactivateMut = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/clients/${id}/deactivate`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+
   const { data: clients = [], isLoading } = useQuery<Client[]>({
-    queryKey: ['clients', search],
-    queryFn: () => apiClient.get(`/clients${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(r => r.data),
+    queryKey: ['clients', search, showInactive],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      if (showInactive) params.set('includeInactive', 'true');
+      const qs = params.toString();
+      return apiClient.get(`/clients${qs ? `?${qs}` : ''}`).then(r => r.data);
+    },
   });
 
   const { data: departments = [] } = useQuery<Dept[]>({
@@ -138,12 +151,16 @@ export default function ClientsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Clients</h1>
           <p className="text-sm text-slate-500 mt-0.5">All client enquiries and onboarded customers.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name or phone…"
             className="border border-slate-300 rounded-lg px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-56"
           />
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+            Show inactive
+          </label>
           <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
             <UserPlus className="w-4 h-4" /> Add Client
           </button>
@@ -172,10 +189,15 @@ export default function ClientsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {clients.map(c => (
-            <div key={c._id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 hover:border-indigo-300 transition-colors">
+            <div key={c._id} className={`bg-white border rounded-xl p-4 space-y-3 transition-colors ${c.isActive === false ? 'border-slate-200 opacity-60' : 'border-slate-200 hover:border-indigo-300'}`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-semibold text-slate-900">{c.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold text-slate-900">{c.name}</div>
+                    {c.isActive === false && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">Inactive</span>
+                    )}
+                  </div>
                   {c.leadSource && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium capitalize">{c.leadSource}</span>
                   )}
@@ -184,13 +206,24 @@ export default function ClientsPage() {
                   <button onClick={() => openEdit(c)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  <button
-                    onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
-                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                    title="Create project for this client"
-                  >
-                    <FolderPlus className="w-3.5 h-3.5" />
-                  </button>
+                  {c.isActive !== false && (
+                    <button
+                      onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
+                      className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      title="Create project for this client"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {c.isActive !== false && (
+                    <button
+                      onClick={() => deactivateMut.mutate(c._id)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Deactivate client"
+                    >
+                      <UserX className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="space-y-1.5">

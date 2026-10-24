@@ -147,7 +147,7 @@ export default function HandoversPage() {
                     className="flex items-center gap-1 text-xs bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-2 py-1 rounded-md border border-slate-200 transition-colors"
                   >
                     <FileText className="w-3 h-3" />
-                    {f.fileName.length > 20 ? f.fileName.slice(0, 20) + '…' : f.fileName}
+                    {(f.fileName ?? '').length > 20 ? (f.fileName ?? '').slice(0, 20) + '…' : (f.fileName ?? 'file')}
                     <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
                   </a>
                 ))}
@@ -244,7 +244,7 @@ export default function HandoversPage() {
               <h2 className="text-lg font-semibold text-slate-900">Raise Handover</h2>
               <button onClick={() => setShowRaise(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
               <div>
                 <label className={labelCls}>Project *</label>
                 <select value={raiseForm.projectId} onChange={e => setRaiseForm(p => ({ ...p, projectId: e.target.value }))} className={inputCls}>

@@ -210,6 +210,39 @@ export interface Message extends BaseEntity {
   readBy: Array<{ user: ID; readAt: string }>;
 }
 
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+export type ChatGroupType = 'department' | 'project' | 'individual' | 'custom';
+
+export interface UserSummary {
+  _id: string;
+  name: string;
+  email: string;
+}
+
+export interface ChatGroup extends BaseEntity {
+  name: string;
+  type: ChatGroupType;
+  channel: string;
+  members: UserSummary[];
+  projectRef?: { _id: string; title: string };
+  departmentRef?: { _id: string; name: string };
+  isAutoCreated: boolean;
+  isActive: boolean;
+}
+
+export interface ChatMessage extends BaseEntity {
+  channel: string;
+  sender: UserSummary | string;
+  body: string;
+  attachments?: Array<{ _id: string; fileName: string; driveLink: string }>;
+  mentions?: UserSummary[];
+  mediaType?: 'image' | 'video' | 'audio' | 'file' | null;
+  mediaUrl?: string | null;
+  readBy?: Array<{ user: string; readAt: string }>;
+  _sending?: boolean;
+}
+
 export interface SlaSettings extends BaseEntity {
   department: ID | Department;
   defaultHours: number;

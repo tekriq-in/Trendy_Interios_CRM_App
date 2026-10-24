@@ -36,6 +36,9 @@ export class Client {
 
   @Prop({ default: false })
   whatsappOptIn: boolean;
+
+  @Prop({ default: true })
+  isActive: boolean;
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);

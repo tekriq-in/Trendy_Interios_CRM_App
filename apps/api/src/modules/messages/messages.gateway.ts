@@ -13,6 +13,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Message, MessageDocument } from './messages.schema';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { User, UserDocument } from '../users/schemas/user.schema';
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/' })
 export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -21,6 +24,9 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly jwtService: JwtService,
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly chatGroupsService: ChatGroupsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -31,6 +37,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       const payload = this.jwtService.verify(token, { secret: process.env.JWT_SECRET });
       client.data.userId = payload.sub;
       client.data.email = payload.email;
+      client.data.name = payload.name ?? payload.email;
     } catch {
       client.disconnect();
     }
@@ -52,19 +59,72 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('message')
   async handleMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { channel: string; body: string; attachments?: string[] },
+    @MessageBody()
+    payload: {
+      channel: string;
+      body: string;
+      attachments?: string[];
+      mediaType?: string;
+      mediaUrl?: string;
+    },
   ) {
     if (!client.data.userId) return;
+
+    // Parse @mentions: match @Name patterns
+    const mentionHandles = (payload.body.match(/@([\w\s]+?)(?=\s|$|@)/g) ?? [])
+      .map((m) => m.slice(1).trim());
+
+    let mentionedIds: string[] = [];
+    if (mentionHandles.length > 0) {
+      const regex = mentionHandles.map((h) => new RegExp(h, 'i'));
+      const users = await this.userModel
+        .find({ name: { $in: regex }, isActive: true })
+        .select('_id fcmToken name')
+        .lean();
+      mentionedIds = users.map((u) => String(u._id));
+
+      // Priority notifications for mentioned users
+      const fcmTokens = users.map((u) => u.fcmToken).filter(Boolean) as string[];
+      if (fcmTokens.length > 0) {
+        await this.notificationsService.sendToMany(
+          fcmTokens,
+          `@${client.data.name} mentioned you`,
+          payload.body.length > 80 ? payload.body.slice(0, 80) + '…' : payload.body,
+          { type: 'mention', channel: payload.channel, senderId: client.data.userId },
+        );
+      }
+    }
+
     const msg = await this.messageModel.create({
       channel: payload.channel,
       sender: client.data.userId,
       body: payload.body,
-      attachments: payload.attachments || [],
+      attachments: payload.attachments ?? [],
+      mentions: mentionedIds,
+      mediaType: payload.mediaType ?? null,
+      mediaUrl: payload.mediaUrl ?? null,
       createdBy: client.data.userId,
     });
-    const populated = await msg.populate('sender', 'name email');
+
+    const populated = await msg.populate([
+      { path: 'sender', select: 'name email' },
+      { path: 'mentions', select: 'name email' },
+    ]);
+
     this.server.to(payload.channel).emit('message', populated.toObject());
     return populated.toObject();
+  }
+
+  @SubscribeMessage('mark_read')
+  async handleMarkRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channel: string; messageId: string },
+  ) {
+    if (!client.data.userId) return;
+    await this.messageModel.updateMany(
+      { channel: payload.channel, 'readBy.user': { $ne: client.data.userId } },
+      { $push: { readBy: { user: client.data.userId, readAt: new Date() } } },
+    );
   }
 
   emitToChannel(channel: string, event: string, data: unknown) {
@@ -79,5 +139,15 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent('project.progress_updated')
   handleProgressUpdate(payload: { projectId: string; progressPct: number }) {
     this.server.to(`project:${payload.projectId}`).emit('project_progress', payload);
+  }
+
+  @OnEvent('chat_group.member_added')
+  handleMemberAdded(payload: { channel: string; userId: string; groupName: string }) {
+    this.server.to(payload.channel).emit('group_member_added', payload);
+  }
+
+  @OnEvent('chat_group.member_removed')
+  handleMemberRemoved(payload: { channel: string; userId: string }) {
+    this.server.to(payload.channel).emit('group_member_removed', payload);
   }
 }

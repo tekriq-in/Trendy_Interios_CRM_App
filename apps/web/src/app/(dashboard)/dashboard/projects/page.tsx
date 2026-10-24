@@ -8,7 +8,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Plus, X, FolderKanban } from 'lucide-react';
 
-interface Client { _id: string; name: string; }
+interface Client { _id: string; name: string; isActive?: boolean; }
 interface Dept { _id: string; name: string; order: number; }
 interface Project {
   _id: string; title: string; status: string; progressPct: number;
@@ -57,7 +57,7 @@ export default function ProjectsPage() {
   const filteredProjects = projects.filter((p) => {
     const q = search.toLowerCase();
     const titleMatch = p.title.toLowerCase().includes(q);
-    const clientName = typeof p.client === 'object' && p.client ? p.client.name.toLowerCase() : '';
+    const clientName = typeof p.client === 'object' && p.client ? (p.client.name ?? '').toLowerCase() : '';
     const clientMatch = clientName.includes(q);
     const statusMatch = !statusFilter || p.status === statusFilter;
     return (titleMatch || clientMatch) && statusMatch;
@@ -207,7 +207,7 @@ export default function ProjectsPage() {
                 <label className={labelCls}>Client *</label>
                 <select value={form.clientId} onChange={(e) => set('clientId', e.target.value)} className={inputCls('clientId')}>
                   <option value="">Select client…</option>
-                  {clients.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+                  {clients.filter((c) => c.isActive !== false).map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
                 </select>
                 {fieldErr('clientId')}
               </div>

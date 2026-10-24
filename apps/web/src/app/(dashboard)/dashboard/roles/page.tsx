@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { Shield, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Shield, Plus, Pencil, Trash2, X, Search } from 'lucide-react';
 
 interface Role {
   _id: string;
@@ -61,6 +61,8 @@ export default function RolesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
+  const [search, setSearch] = useState('');
+  const [permSearch, setPermSearch] = useState('');
 
   const { data: roles = [], isLoading } = useQuery<Role[]>({
     queryKey: ['roles'],
@@ -76,6 +78,7 @@ export default function RolesPage() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setError('');
+    setPermSearch('');
     setShowModal(true);
   }
 
@@ -83,6 +86,7 @@ export default function RolesPage() {
     setEditing(role);
     setForm({ name: role.name, permissions: [...role.permissions] });
     setError('');
+    setPermSearch('');
     setShowModal(true);
   }
 
@@ -117,21 +121,33 @@ export default function RolesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Roles</h1>
           <p className="text-sm text-slate-500 mt-0.5">Define what each role can access across the system.</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-          <Plus className="w-4 h-4" /> New Role
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search roles…"
+              className="border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44"
+            />
+          </div>
+          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+            <Plus className="w-4 h-4" /> New Role
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
         <p className="text-sm text-slate-400">Loading…</p>
       ) : (
         <div className="grid gap-4">
-          {roles.map((role) => (
+          {roles.filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase())).map((role) => (
             <div key={role._id} className="bg-white border border-slate-200 rounded-xl p-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -227,9 +243,21 @@ export default function RolesPage() {
               </div>
 
               <div>
-                <div className="text-sm font-medium text-slate-700 mb-3">Permissions</div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-medium text-slate-700">Permissions</div>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={permSearch}
+                      onChange={e => setPermSearch(e.target.value)}
+                      placeholder="Filter permissions…"
+                      className="border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-40"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
-                  {PERMISSION_GROUPS.map((group) => (
+                  {PERMISSION_GROUPS.filter(g => !permSearch || g.slugs.some(s => s.includes(permSearch.toLowerCase()) || (SLUG_LABEL[s] ?? '').toLowerCase().includes(permSearch.toLowerCase()))).map((group) => (
                     <div key={group.label}>
                       <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{group.label}</div>
                       <div className="grid grid-cols-2 gap-1.5">

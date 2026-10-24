@@ -27,6 +27,7 @@ import { SeedModule } from './modules/seed/seed.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { ChatGroupsModule } from './modules/chat-groups/chat-groups.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     MessagesModule,
     NotificationsModule,
     WhatsAppModule,
+    ChatGroupsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -9,22 +9,24 @@ import { Message, MessageDocument } from './messages.schema';
 export class MessagesController {
   constructor(@InjectModel(Message.name) private messageModel: Model<MessageDocument>) {}
 
-  @Get(':channel')
+  @Get(':channel(*)')
   async history(
     @Param('channel') channel: string,
     @Query('page') page = '1',
     @Query('limit') limit = '50',
   ) {
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const decodedChannel = decodeURIComponent(channel);
     const [data, total] = await Promise.all([
       this.messageModel
-        .find({ channel })
+        .find({ channel: decodedChannel })
         .populate('sender', 'name email')
+        .populate('mentions', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
-      this.messageModel.countDocuments({ channel }),
+      this.messageModel.countDocuments({ channel: decodedChannel }),
     ]);
     return { data, total, page: parseInt(page), limit: parseInt(limit) };
   }

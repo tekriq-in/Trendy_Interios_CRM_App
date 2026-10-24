@@ -411,7 +411,7 @@ export default function DashboardOverviewPage() {
                       </div>
                       {breaches > 0 && (
                         <Link
-                          href="/dashboard/sla"
+                          href="/dashboard/blockers"
                           className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700"
                         >
                           <AlertTriangle className="h-3 w-3" />

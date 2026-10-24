@@ -23,8 +23,9 @@ export class ClientsService {
     private activityLog: ActivityLogService,
   ) {}
 
-  findAll(query: { search?: string } = {}) {
+  findAll(query: { search?: string; includeInactive?: boolean } = {}) {
     const filter: Record<string, unknown> = {};
+    if (!query.includeInactive) filter.isActive = { $ne: false };
     if (query.search) {
       filter['$or'] = [
         { name: { $regex: query.search, $options: 'i' } },
@@ -32,6 +33,20 @@ export class ClientsService {
       ];
     }
     return this.clientModel.find(filter).sort({ createdAt: -1 }).lean();
+  }
+
+  async deactivate(id: string, actorId: string) {
+    const client = await this.clientModel.findByIdAndUpdate(id, { isActive: false }, { new: true });
+    if (!client) throw new NotFoundException('client.not_found');
+
+    await this.activityLog.record({
+      actor: actorId,
+      action: 'client.deactivated',
+      entity: 'clients',
+      entityId: id,
+    });
+
+    return client;
   }
 
   async findById(id: string) {

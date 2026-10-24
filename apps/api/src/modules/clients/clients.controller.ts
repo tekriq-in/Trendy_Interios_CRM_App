@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, ParseBoolPipe, DefaultValuePipe } from '@nestjs/common';
 import { ClientsService, CreateClientDto } from './clients.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -13,8 +13,17 @@ export class ClientsController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.CLIENTS_READ)
-  findAll(@Query('search') search?: string) {
-    return this.service.findAll({ search });
+  findAll(
+    @Query('search') search?: string,
+    @Query('includeInactive', new DefaultValuePipe(false), ParseBoolPipe) includeInactive?: boolean,
+  ) {
+    return this.service.findAll({ search, includeInactive });
+  }
+
+  @Patch(':id/deactivate')
+  @RequirePermissions(PERMISSIONS.CLIENTS_EDIT)
+  deactivate(@Param('id') id: string, @CurrentUser() actor: { _id: string }) {
+    return this.service.deactivate(id, actor._id);
   }
 
   @Get(':id')

@@ -2,22 +2,27 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DRIVE_SERVICE } from './drive.interface';
 import { DriveMockService } from './drive-mock.service';
-import { DriveGoogleService } from './drive-google.service';
+import { DriveGCSService } from './drive-gcs.service';
+import { DriveCloudinaryService } from './drive-cloudinary.service';
 
 @Module({
   imports: [ConfigModule],
   providers: [
-    DriveGoogleService,
+    DriveGCSService,
+    DriveCloudinaryService,
     {
       provide: DRIVE_SERVICE,
-      useFactory: (config: ConfigService, googleService: DriveGoogleService) => {
+      useFactory: (
+        config: ConfigService,
+        gcsService: DriveGCSService,
+        cloudinaryService: DriveCloudinaryService,
+      ) => {
         const provider = config.get('DRIVE_PROVIDER', 'mock');
-        if (provider === 'google') {
-          return googleService;
-        }
+        if (provider === 'cloudinary') return cloudinaryService;
+        if (provider === 'google') return gcsService;
         return new DriveMockService();
       },
-      inject: [ConfigService, DriveGoogleService],
+      inject: [ConfigService, DriveGCSService, DriveCloudinaryService],
     },
   ],
   exports: [DRIVE_SERVICE],

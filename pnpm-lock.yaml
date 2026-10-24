@@ -23,6 +23,9 @@ importers:
       '@google-cloud/local-auth':
         specifier: ^3.0.1
         version: 3.0.1
+      '@google-cloud/storage':
+        specifier: ^8.4.0
+        version: 8.4.0
       '@nestjs/common':
         specifier: ^10.3.0
         version: 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -71,6 +74,9 @@ importers:
       class-validator:
         specifier: ^0.14.1
         version: 0.14.4
+      cloudinary:
+        specifier: ^2.11.0
+        version: 2.11.0
       firebase-admin:
         specifier: ^14.5.0
         version: 14.5.0
@@ -1138,8 +1144,8 @@ packages:
     resolution: {integrity: sha512-H+Rytzi5zYMyoAmU/zgYLgq7fJ9FY4QQEg4k6gfFx/RY1COJ2xxyIfe8bZ62lqEbWM1DJH7IYETqTFmqNtuUhQ==}
     engines: {node: '>=22'}
 
-  '@google-cloud/storage@8.3.0':
-    resolution: {integrity: sha512-bP1hNxpXiv+BrkvJSlyZrR523X/DTtS8/gkNBghNWDs5Gi7beCX6czTLwztecuTemzejsxaJ2SjIvPkSw2e5jg==}
+  '@google-cloud/storage@8.4.0':
+    resolution: {integrity: sha512-M3kA6UA2Tjp5aznCrgKcm9CzOjiQyRMnquqalqXAeS5wvkqqZxN8wpNjjHafOSYs6lQ82U7f2i8we4eTfIrpkA==}
     engines: {node: '>=22'}
 
   '@grpc/grpc-js@1.14.6':
@@ -3051,6 +3057,10 @@ packages:
   clone@1.0.4:
     resolution: {integrity: sha512-JQHZ2QMW6l3aH/j6xCqQThY/9OH4D/9ls34cgkUBiEeocRTU04tHfKPBsUK1PqZCUQM7GiA0IIXJSuXHI64Kbg==}
     engines: {node: '>=0.8'}
+
+  cloudinary@2.11.0:
+    resolution: {integrity: sha512-o2pAkDDqrzPFE/mn9GCfFjBIGQmPs++Ts6rtkFl4vY528DNHiMovKWjH16HBjeGa9iwI7eAad24aWN2emT0aww==}
+    engines: {node: '>=9'}
 
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
@@ -8533,15 +8543,12 @@ snapshots:
   '@google-cloud/paginator@7.1.0':
     dependencies:
       extend: 3.0.2
-    optional: true
 
-  '@google-cloud/projectify@6.1.0':
-    optional: true
+  '@google-cloud/projectify@6.1.0': {}
 
-  '@google-cloud/promisify@6.1.0':
-    optional: true
+  '@google-cloud/promisify@6.1.0': {}
 
-  '@google-cloud/storage@8.3.0':
+  '@google-cloud/storage@8.4.0':
     dependencies:
       '@google-cloud/paginator': 7.1.0
       '@google-cloud/projectify': 6.1.0
@@ -8559,7 +8566,6 @@ snapshots:
       teeny-request: 11.0.1
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   '@grpc/grpc-js@1.14.6':
     dependencies:
@@ -9060,8 +9066,7 @@ snapshots:
   '@next/swc-win32-x64-msvc@14.2.33':
     optional: true
 
-  '@nodable/entities@3.1.0':
-    optional: true
+  '@nodable/entities@3.1.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -10406,8 +10411,7 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.2
 
-  anynum@1.0.1:
-    optional: true
+  anynum@1.0.1: {}
 
   appdirsjs@1.2.8:
     optional: true
@@ -10525,7 +10529,6 @@ snapshots:
   async-retry@1.3.3:
     dependencies:
       retry: 0.13.1
-    optional: true
 
   asynckit@0.4.0: {}
 
@@ -10962,6 +10965,10 @@ snapshots:
 
   clone@1.0.4: {}
 
+  cloudinary@2.11.0:
+    dependencies:
+      lodash: 4.18.1
+
   clsx@2.1.1: {}
 
   co@4.6.0: {}
@@ -11310,7 +11317,6 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
       stream-shift: 1.0.3
-    optional: true
 
   eastasianwidth@0.2.0: {}
 
@@ -11335,7 +11341,6 @@ snapshots:
   end-of-stream@1.4.5:
     dependencies:
       once: 1.4.0
-    optional: true
 
   engine.io-client@6.6.7:
     dependencies:
@@ -12040,7 +12045,6 @@ snapshots:
     dependencies:
       path-expression-matcher: 1.6.2
       xml-naming: 0.3.0
-    optional: true
 
   fast-xml-parser@4.5.7:
     dependencies:
@@ -12055,7 +12059,6 @@ snapshots:
       path-expression-matcher: 1.6.2
       strnum: 2.4.2
       xml-naming: 0.3.0
-    optional: true
 
   fastq@1.20.3:
     dependencies:
@@ -12166,7 +12169,7 @@ snapshots:
       jwks-rsa: 4.1.0
     optionalDependencies:
       '@google-cloud/firestore': 9.3.1
-      '@google-cloud/storage': 8.3.0
+      '@google-cloud/storage': 8.4.0
     transitivePeerDependencies:
       - '@firebase/app'
       - '@firebase/app-compat'
@@ -12642,8 +12645,7 @@ snapshots:
     dependencies:
       lru-cache: 10.4.3
 
-  html-entities@2.6.0:
-    optional: true
+  html-entities@2.6.0: {}
 
   html-escaper@2.0.2: {}
 
@@ -12667,7 +12669,6 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   https-proxy-agent@5.0.1:
     dependencies:
@@ -12924,8 +12925,7 @@ snapshots:
 
   is-unicode-supported@0.1.0: {}
 
-  is-unsafe@2.0.2:
-    optional: true
+  is-unsafe@2.0.2: {}
 
   is-weakmap@2.0.2: {}
 
@@ -14049,8 +14049,7 @@ snapshots:
   mime@2.6.0:
     optional: true
 
-  mime@3.0.0:
-    optional: true
+  mime@3.0.0: {}
 
   mimic-fn@1.2.0: {}
 
@@ -14466,8 +14465,7 @@ snapshots:
 
   path-exists@4.0.0: {}
 
-  path-expression-matcher@1.6.2:
-    optional: true
+  path-expression-matcher@1.6.2: {}
 
   path-is-absolute@1.0.1: {}
 
@@ -15066,10 +15064,8 @@ snapshots:
   retry-request@9.0.2:
     dependencies:
       extend: 3.0.2
-    optional: true
 
-  retry@0.13.1:
-    optional: true
+  retry@0.13.1: {}
 
   reusify@1.1.0: {}
 
@@ -15395,10 +15391,8 @@ snapshots:
   stream-events@1.0.5:
     dependencies:
       stubs: 3.0.0
-    optional: true
 
-  stream-shift@1.0.3:
-    optional: true
+  stream-shift@1.0.3: {}
 
   streamsearch@1.1.0: {}
 
@@ -15506,7 +15500,6 @@ snapshots:
   strnum@2.4.2:
     dependencies:
       anynum: 1.0.1
-    optional: true
 
   strtok3@10.3.5:
     dependencies:
@@ -15514,8 +15507,7 @@ snapshots:
 
   structured-headers@0.4.1: {}
 
-  stubs@3.0.0:
-    optional: true
+  stubs@3.0.0: {}
 
   styled-jsx@5.1.1(react@18.3.1):
     dependencies:
@@ -15615,7 +15607,6 @@ snapshots:
       stream-events: 1.0.5
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   terminal-link@2.1.1:
     dependencies:
@@ -16171,8 +16162,7 @@ snapshots:
       simple-plist: 1.3.1
       uuid: 7.0.3
 
-  xml-naming@0.3.0:
-    optional: true
+  xml-naming@0.3.0: {}
 
   xml2js@0.6.0:
     dependencies:

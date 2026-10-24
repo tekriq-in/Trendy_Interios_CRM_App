@@ -14,6 +14,7 @@ import {
   Building2,
   Clock,
   ScrollText,
+  MessageSquare,
   LogOut,
   type LucideIcon,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/approvals', label: 'Approvals', icon: CheckSquare },
       { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
       { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
+      { href: '/dashboard/chat', label: 'Chat', icon: MessageSquare },
     ],
   },
   {

@@ -8,8 +8,11 @@ export type MessageDocument = Message & Document;
 export class Message {
   @Prop({ required: true }) channel: string;
   @Prop({ type: Types.ObjectId, ref: 'User', required: true }) sender: Types.ObjectId;
-  @Prop({ required: true }) body: string;
+  @Prop({ required: true, default: '' }) body: string;
   @Prop([{ type: Types.ObjectId, ref: 'Document' }]) attachments: Types.ObjectId[];
+  @Prop([{ type: Types.ObjectId, ref: 'User' }]) mentions: Types.ObjectId[];
+  @Prop({ type: String, enum: ['image', 'video', 'audio', 'file'], default: null }) mediaType: string;
+  @Prop({ type: String, default: null }) mediaUrl: string;
   @Prop([{ user: { type: Types.ObjectId, ref: 'User' }, readAt: Date }])
   readBy: { user: Types.ObjectId; readAt: Date }[];
 }

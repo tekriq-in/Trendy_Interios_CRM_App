@@ -6,6 +6,7 @@ import { Model, Types } from 'mongoose';
 import { SlaSettings, SlaSettingsDocument } from './schemas/sla-settings.schema';
 import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 import { Blocker, BlockerDocument } from '../blockers/schemas/blocker.schema';
+import { Department, DepartmentDocument } from '../departments/schemas/department.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 
@@ -19,6 +20,7 @@ export class SlaService {
     @InjectModel(SlaSettings.name) private slaModel: Model<SlaSettingsDocument>,
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     @InjectModel(Blocker.name) private blockerModel: Model<BlockerDocument>,
+    @InjectModel(Department.name) private departmentModel: Model<DepartmentDocument>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
   ) {}
@@ -129,6 +131,9 @@ export class SlaService {
       },
       { new: true, upsert: true },
     );
+
+    // Keep department.defaultSlaHours in sync so the dashboard pipeline shows current values
+    await this.departmentModel.findByIdAndUpdate(departmentId, { defaultSlaHours: defaultHours });
 
     await this.activityLog.record({
       actor: actor._id,

@@ -24,6 +24,7 @@ export class ApprovalsService {
       .populate('project', 'title')
       .populate('requestedBy', 'name email')
       .populate('approver', 'name')
+      .populate('linkedDocument', 'fileName driveLink mimeType type')
       .sort({ createdAt: -1 })
       .lean();
   }

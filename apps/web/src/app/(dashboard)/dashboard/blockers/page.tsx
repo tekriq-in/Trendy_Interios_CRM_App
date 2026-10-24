@@ -57,7 +57,7 @@ export default function BlockersPage() {
   });
 
   const raise = useMutation({
-    mutationFn: (data: RaiseForm) => apiClient.post('/blockers', { title: data.title, description: data.description, type: data.type, project: data.projectId }),
+    mutationFn: (data: RaiseForm) => apiClient.post('/blockers', { title: data.title, description: data.description, type: data.type, projectId: data.projectId }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['blockers'] }); setShowForm(false); setForm(EMPTY_FORM); },
   });
 

@@ -6,10 +6,17 @@ import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import {
-  CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip,
+  CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip, ExternalLink, FileText,
 } from 'lucide-react';
 
 interface NameObj { name: string }
+interface LinkedDocument {
+  _id: string;
+  fileName: string;
+  driveLink: string;
+  mimeType: string;
+  type?: string;
+}
 interface Approval {
   _id: string;
   status: 'pending' | 'approved' | 'rejected';
@@ -22,6 +29,7 @@ interface Approval {
   rejectionReason?: string;
   createdAt?: string;
   whatsappScheduled?: boolean;
+  linkedDocument?: LinkedDocument;
 }
 
 const KIND_LABELS: Record<string, { label: string; color: string }> = {
@@ -227,6 +235,18 @@ export default function ApprovalsPage() {
                         {a.rawNotes && (
                           <p className="text-xs text-slate-400 mt-1 italic">Notes: "{a.rawNotes}"</p>
                         )}
+                        {a.linkedDocument && (
+                          <a
+                            href={a.linkedDocument.driveLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:underline mt-1"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {a.linkedDocument.fileName}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
                       </div>
                       <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 shrink-0">
                         Pending
@@ -316,28 +336,45 @@ export default function ApprovalsPage() {
                 {resolved.map(a => {
                   const kindInfo = KIND_LABELS[a.kind] ?? { label: a.kind, color: 'bg-slate-100 text-slate-600 ring-slate-200' };
                   return (
-                    <div key={a._id} className="bg-white border border-slate-200 rounded-xl px-5 py-3 flex items-center justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ring-1 ring-inset ${kindInfo.color}`}>
-                            {kindInfo.label}
-                          </span>
-                          <span className="text-sm font-medium text-slate-700">{projectTitle(a.project)}</span>
-                          {a.whatsappScheduled && (
-                            <span className="text-xs text-emerald-600 font-semibold">· WhatsApp sent ✓</span>
+                    <div key={a._id} className="bg-white border border-slate-200 rounded-xl px-5 py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ring-1 ring-inset ${kindInfo.color}`}>
+                              {kindInfo.label}
+                            </span>
+                            <span className="text-sm font-medium text-slate-700">{projectTitle(a.project)}</span>
+                            {a.whatsappScheduled && (
+                              <span className="text-xs text-emerald-600 font-semibold">· WhatsApp sent ✓</span>
+                            )}
+                          </div>
+                          {a.rejectionReason && (
+                            <p className="text-xs text-red-500 mt-1">Rejected: {a.rejectionReason}</p>
+                          )}
+                          {a.generatedMessage && a.status === 'approved' && (
+                            <p className="text-xs text-slate-500 mt-1 italic truncate max-w-md">{a.generatedMessage}</p>
+                          )}
+                          {a.linkedDocument && (
+                            <a
+                              href={a.linkedDocument.driveLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:underline mt-1"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              {a.linkedDocument.fileName}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
                           )}
                         </div>
-                        {a.rejectionReason && (
-                          <p className="text-xs text-red-500 mt-0.5">Rejected: {a.rejectionReason}</p>
-                        )}
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold shrink-0 ${
+                          a.status === 'approved'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-red-50 text-red-600'
+                        }`}>
+                          {a.status}
+                        </span>
                       </div>
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
-                        a.status === 'approved'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-red-50 text-red-600'
-                      }`}>
-                        {a.status}
-                      </span>
                     </div>
                   );
                 })}

@@ -25,8 +25,8 @@ test.describe('Handovers', () => {
 
   test('proof photo field is present in raise handover modal', async ({ page }) => {
     await page.locator('button:has-text("Raise Handover")').first().click();
-    // Use label locator to avoid strict mode — EmptyState description also contains "proof photo"
-    await expect(page.locator('label').filter({ hasText: /proof photo/i }).first()).toBeVisible({ timeout: 3000 });
+    // Use label locator to avoid strict mode — label text is "Proof files"
+    await expect(page.locator('label').filter({ hasText: /proof file/i }).first()).toBeVisible({ timeout: 3000 });
   });
 
   test('Raise Handover modal can be cancelled', async ({ page }) => {

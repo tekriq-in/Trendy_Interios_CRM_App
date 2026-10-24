@@ -57,8 +57,8 @@ test.describe('Roles', () => {
     const firstEditBtn = page.locator('#main-content button[class*="hover:text-indigo"]').first();
     await firstEditBtn.click();
     await expect(page.getByRole('heading', { name: /edit role/i })).toBeVisible({ timeout: 5000 });
-    // Name input should have a value (pre-populated)
-    const nameInput = page.locator('input[placeholder*="Site Supervisor"], input[type="text"]').first();
+    // Name input should have a value (pre-populated) — scope to modal to avoid header search input
+    const nameInput = page.locator('.rounded-2xl input[placeholder*="Site Supervisor"]');
     const val = await nameInput.inputValue();
     expect(val.length).toBeGreaterThan(0);
   });

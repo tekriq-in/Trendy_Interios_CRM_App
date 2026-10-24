@@ -6,6 +6,11 @@ export async function fetchGroups(): Promise<ChatGroup[]> {
   return res.data;
 }
 
+export async function fetchGroupById(groupId: string): Promise<ChatGroup> {
+  const res = await api.get<ChatGroup>(`/chat-groups/${groupId}`);
+  return res.data;
+}
+
 export async function createGroup(dto: { name: string; memberIds: string[] }): Promise<ChatGroup> {
   const res = await api.post<ChatGroup>('/chat-groups', dto);
   return res.data;

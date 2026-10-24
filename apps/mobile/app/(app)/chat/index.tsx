@@ -287,7 +287,9 @@ function ConversationRow({ group, unread, currentUserId, onPress }: Conversation
       <View style={s.rowMid}>
         <Text style={s.rowName} numberOfLines={1}>{displayName}</Text>
         <Text style={s.rowSub} numberOfLines={1}>
-          {group.members.length > 1 ? `${group.members.length} members` : 'Direct message'}
+          {group.lastMessage
+            ? `${group.lastMessage.senderName}: ${group.lastMessage.body}`
+            : group.members.length > 1 ? `${group.members.length} members` : 'Direct message'}
         </Text>
       </View>
       <View style={s.rowRight}>

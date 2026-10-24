@@ -229,6 +229,7 @@ export interface ChatGroup extends BaseEntity {
   departmentRef?: { _id: string; name: string };
   isAutoCreated: boolean;
   isActive: boolean;
+  lastMessage?: { body: string; senderName: string; createdAt: string } | null;
 }
 
 export interface ChatMessage extends BaseEntity {

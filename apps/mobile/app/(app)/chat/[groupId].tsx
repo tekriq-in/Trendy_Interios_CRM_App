@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSocket } from '../../../src/context/socket.context';
 import {
   fetchHistory,
+  fetchGroupById,
   addMember,
   removeMember,
   fetchUsers,
@@ -293,18 +294,18 @@ type ThreadItem =
 function buildItems(messages: ChatMessage[], userId: string): ThreadItem[] {
   const items: ThreadItem[] = [];
   let lastDate = '';
-  for (let i = messages.length - 1; i >= 0; i--) {
+  for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const date = formatDateHeader(msg.createdAt ?? new Date().toISOString());
     if (date !== lastDate) {
       items.push({ kind: 'date', date, _id: `date-${msg._id ?? i}` });
       lastDate = date;
     }
-    const prevMsg = i < messages.length - 1 ? messages[i + 1] : null;
+    const prevMsg = i > 0 ? messages[i - 1] : null;
     const showSender = !prevMsg || senderId(prevMsg) !== senderId(msg);
     items.push({ kind: 'msg', msg, isOwn: senderId(msg) === userId, showSender, _id: msg._id ?? `local-${i}` });
   }
-  return items.reverse();
+  return items;
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -321,6 +322,9 @@ export default function ChatThreadScreen() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const pageRef = useRef(1);
   const [input, setInput] = useState('');
   const [showInfo, setShowInfo] = useState(false);
   const [members, setMembers] = useState<{ _id: string; name: string; email: string }[]>([]);
@@ -330,10 +334,12 @@ export default function ChatThreadScreen() {
   useEffect(() => {
     if (!channel) return;
 
-    // Load history
-    fetchHistory(channel)
+    // Load history (page 1)
+    pageRef.current = 1;
+    fetchHistory(channel, 1, 50)
       .then((res) => {
         setMessages(res.data.reverse());
+        setHasMore(res.total > 50);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -365,13 +371,24 @@ export default function ChatThreadScreen() {
   // Load group members for @mention + group info
   useEffect(() => {
     if (!groupId) return;
-    import('../../../src/services/chat.service').then(({ fetchGroups }) => {
-      fetchGroups().then((groups) => {
-        const g = groups.find((x) => x._id === groupId);
-        if (g) setMembers(g.members);
-      }).catch(() => {});
-    });
+    fetchGroupById(groupId)
+      .then((g) => setMembers(g.members))
+      .catch(() => {});
   }, [groupId]);
+
+  async function loadEarlier() {
+    if (!channel || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const nextPage = pageRef.current + 1;
+    try {
+      const res = await fetchHistory(channel, nextPage, 50);
+      const older = res.data.reverse();
+      setMessages((prev) => [...older, ...prev]);
+      pageRef.current = nextPage;
+      setHasMore(res.total > nextPage * 50);
+    } catch {}
+    setLoadingMore(false);
+  }
 
   function handleSend() {
     const text = input.trim();
@@ -461,6 +478,15 @@ export default function ChatThreadScreen() {
           if (item.kind === 'date') return <DateHeader date={item.date} />;
           return <Bubble msg={item.msg} isOwn={item.isOwn} showSender={item.showSender} />;
         }}
+        ListHeaderComponent={
+          hasMore ? (
+            <TouchableOpacity style={t.loadMoreBtn} onPress={loadEarlier} disabled={loadingMore}>
+              {loadingMore
+                ? <ActivityIndicator size="small" color="#6366F1" />
+                : <Text style={t.loadMoreText}>Load earlier messages</Text>}
+            </TouchableOpacity>
+          ) : undefined
+        }
         ListEmptyComponent={
           <Text style={t.empty}>No messages yet. Say hello! 👋</Text>
         }
@@ -536,4 +562,6 @@ const t = StyleSheet.create({
   },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center' },
   sendBtnOff: { backgroundColor: '#F3F4F6' },
+  loadMoreBtn: { alignItems: 'center', paddingVertical: 10, marginBottom: 8 },
+  loadMoreText: { fontSize: 13, color: '#6366F1', fontWeight: '600' },
 });

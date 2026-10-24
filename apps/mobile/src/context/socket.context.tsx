@@ -35,8 +35,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
-  // Active channel — used to skip incrementing unread when channel is open
   const activeChannelRef = useRef<string | null>(null);
+  // Persistent set of external message handlers — re-attached after every reconnect
+  const messageHandlersRef = useRef<Set<(msg: ChatMessage) => void>>(new Set());
 
   useEffect(() => {
     if (!token) {
@@ -53,14 +54,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       reconnectionDelay: 2000,
     });
 
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
+    function attachHandlers() {
+      // Unread counter (always active)
+      socket.on('message', (msg: ChatMessage) => {
+        const channel = msg.channel;
+        if (channel && channel !== activeChannelRef.current) {
+          setUnreadMap((prev) => ({ ...prev, [channel]: (prev[channel] ?? 0) + 1 }));
+        }
+      });
+      // Re-attach all external handlers registered via onMessage()
+      messageHandlersRef.current.forEach((h) => socket.on('message', h));
+    }
 
-    socket.on('message', (msg: ChatMessage) => {
-      const channel = msg.channel;
-      if (channel && channel !== activeChannelRef.current) {
-        setUnreadMap((prev) => ({ ...prev, [channel]: (prev[channel] ?? 0) + 1 }));
-      }
+    socket.on('connect', () => {
+      setConnected(true);
+      // Re-attach after every reconnect so handlers survive disconnects
+      attachHandlers();
+    });
+    socket.on('disconnect', () => {
+      setConnected(false);
+      // Remove all listeners — they'll be re-added on the next connect event
+      socket.removeAllListeners('message');
     });
 
     socketRef.current = socket;
@@ -96,8 +110,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const onMessage = useCallback((handler: (msg: ChatMessage) => void) => {
-    socketRef.current?.on('message', handler);
+    messageHandlersRef.current.add(handler);
+    // If socket is already connected, attach immediately
+    if (socketRef.current?.connected) {
+      socketRef.current.on('message', handler);
+    }
     return () => {
+      messageHandlersRef.current.delete(handler);
       socketRef.current?.off('message', handler);
     };
   }, []);

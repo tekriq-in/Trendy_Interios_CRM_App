@@ -3,12 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Department, DepartmentDocument } from './schemas/department.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 
 @Injectable()
 export class DepartmentsService {
   constructor(
     @InjectModel(Department.name) private deptModel: Model<DepartmentDocument>,
     private activityLog: ActivityLogService,
+    private chatGroups: ChatGroupsService,
   ) {}
 
   findAll() {
@@ -40,6 +42,9 @@ export class DepartmentsService {
       entity: 'departments',
       entityId: String(dept._id),
     });
+
+    // Auto-create a chat group for every new department
+    await this.chatGroups.autoCreateForDepartment(String(dept._id), dept.name).catch(() => {});
 
     return dept;
   }

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ChatGroup, ChatGroupDocument, ChatGroupType } from './chat-group.schema';
+import { Message } from '../messages/messages.schema';
 
 export interface CreateGroupDto {
   name: string;
@@ -12,16 +13,35 @@ export interface CreateGroupDto {
 export class ChatGroupsService {
   constructor(
     @InjectModel(ChatGroup.name) private groupModel: Model<ChatGroupDocument>,
+    @InjectModel(Message.name) private messageModel: Model<Message & { _id: unknown }>,
   ) {}
 
-  async findForUser(userId: string): Promise<ChatGroupDocument[]> {
-    return this.groupModel
+  async findForUser(userId: string): Promise<(ChatGroupDocument & { lastMessage?: { body: string; senderName: string; createdAt: string } | null })[]> {
+    const groups = await this.groupModel
       .find({ members: new Types.ObjectId(userId), isActive: true })
       .populate('members', 'name email')
       .populate('projectRef', 'title')
       .populate('departmentRef', 'name')
       .sort({ updatedAt: -1 })
       .lean() as unknown as ChatGroupDocument[];
+
+    // Attach the most recent message per group in one bulk query
+    const channels = groups.map((g) => g.channel);
+    const lastMessages = await (this.messageModel as unknown as Model<{ channel: string; body: string; sender: Types.ObjectId; createdAt: Date }>)
+      .aggregate([
+        { $match: { channel: { $in: channels } } },
+        { $sort: { createdAt: -1 } },
+        { $group: { _id: '$channel', body: { $first: '$body' }, sender: { $first: '$sender' }, createdAt: { $first: '$createdAt' } } },
+        { $lookup: { from: 'users', localField: 'sender', foreignField: '_id', as: 'senderUser' } },
+        { $project: { _id: 1, body: 1, createdAt: 1, senderName: { $ifNull: [{ $arrayElemAt: ['$senderUser.name', 0] }, 'Unknown'] } } },
+      ]);
+
+    const lastMsgMap = new Map(lastMessages.map((m: { _id: string; body: string; senderName: string; createdAt: Date }) => [
+      m._id,
+      { body: m.body, senderName: m.senderName, createdAt: m.createdAt?.toISOString?.() ?? String(m.createdAt) },
+    ]));
+
+    return groups.map((g) => Object.assign(g, { lastMessage: lastMsgMap.get(g.channel) ?? null }));
   }
 
   async create(dto: CreateGroupDto, creatorId: string): Promise<ChatGroupDocument> {
@@ -125,6 +145,15 @@ export class ChatGroupsService {
     await this.groupModel.findByIdAndUpdate(groupId, {
       $pull: { members: new Types.ObjectId(userId) },
     });
+  }
+
+  async findById(id: string): Promise<ChatGroupDocument | null> {
+    return this.groupModel
+      .findById(id)
+      .populate('members', 'name email')
+      .populate('projectRef', 'title')
+      .populate('departmentRef', 'name')
+      .lean() as unknown as ChatGroupDocument | null;
   }
 
   async findByChannel(channel: string): Promise<ChatGroupDocument | null> {

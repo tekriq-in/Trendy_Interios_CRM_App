@@ -4,11 +4,13 @@ import { DepartmentsService } from './departments.service';
 import { DepartmentsController } from './departments.controller';
 import { Department, DepartmentSchema } from './schemas/department.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { ChatGroupsModule } from '../chat-groups/chat-groups.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Department.name, schema: DepartmentSchema }]),
     ActivityLogModule,
+    ChatGroupsModule,
   ],
   providers: [DepartmentsService],
   controllers: [DepartmentsController],

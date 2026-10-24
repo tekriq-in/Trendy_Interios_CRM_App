@@ -30,6 +30,7 @@ interface ChatGroup {
   members: { _id: string; name: string; email: string }[];
   projectRef?: { _id: string; title: string };
   departmentRef?: { _id: string; name: string };
+  lastMessage?: { body: string; senderName: string; createdAt: string } | null;
 }
 
 interface ChatMessage {
@@ -98,8 +99,8 @@ function NewGroupModal({
 
   useEffect(() => {
     apiClient
-      .get<{ data: UserSummary[] }>('/users?limit=200')
-      .then((r) => setAllUsers(r.data.data ?? []))
+      .get<UserSummary[]>('/users')
+      .then((r) => setAllUsers(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
   }, []);
 
@@ -235,8 +236,8 @@ export default function ChatPage() {
   // Load all users for @mention and member management
   useEffect(() => {
     apiClient
-      .get<{ data: UserSummary[] }>('/users?limit=200')
-      .then((r) => setAllUsers(r.data.data ?? []))
+      .get<UserSummary[]>('/users')
+      .then((r) => setAllUsers(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
   }, []);
 
@@ -249,7 +250,11 @@ export default function ChatPage() {
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
     socket.on('message', (msg: ChatMessage) => {
-      setMessages((prev) => [...prev, msg]);
+      // Only append to current view — prevChannelRef holds the active channel
+      setMessages((prev) => {
+        if (msg.channel && prevChannelRef.current && msg.channel !== prevChannelRef.current) return prev;
+        return [...prev, msg];
+      });
     });
     socket.on('group_member_added', () => refetchGroups());
     socket.on('group_member_removed', () => refetchGroups());
@@ -291,8 +296,9 @@ export default function ChatPage() {
 
   const insertMention = (user: UserSummary) => {
     const before = body.slice(0, atIndex);
-    const after = body.slice(atIndex + 1 + body.slice(atIndex + 1).length);
-    setBody(`${before}@${user.name} ${after}`);
+    // Replace from @ through the current partial query with the full mention
+    const afterMentionEnd = body.slice(atIndex + 1 + body.slice(atIndex + 1).search(/\s|$/) + (body.slice(atIndex + 1).includes(' ') ? 0 : body.slice(atIndex + 1).length));
+    setBody(`${before}@${user.name} ${afterMentionEnd}`);
   };
 
   const sendMessage = useCallback(() => {
@@ -515,7 +521,9 @@ export default function ChatPage() {
                     {group.name}
                   </p>
                   <p className="text-xs text-gray-400 truncate">
-                    {group.members.length} member{group.members.length !== 1 ? 's' : ''}
+                    {group.lastMessage
+                      ? `${group.lastMessage.senderName}: ${group.lastMessage.body}`
+                      : `${group.members.length} member${group.members.length !== 1 ? 's' : ''}`}
                   </p>
                 </div>
               </button>

@@ -8,6 +8,7 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 import { SlaSettings, SlaSettingsDocument } from '../sla/schemas/sla-settings.schema';
 import { DEFAULT_DEPARTMENTS, DEFAULT_ROLE_PERMISSIONS } from '@ti/shared';
 import { ConfigService } from '@nestjs/config';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 
 @Injectable()
 export class SeedService implements OnApplicationBootstrap {
@@ -19,6 +20,7 @@ export class SeedService implements OnApplicationBootstrap {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(SlaSettings.name) private slaModel: Model<SlaSettingsDocument>,
     private config: ConfigService,
+    private chatGroups: ChatGroupsService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -44,6 +46,7 @@ export class SeedService implements OnApplicationBootstrap {
           { department: created._id, defaultHours: dept.defaultSlaHours },
           { upsert: true },
         );
+        await this.chatGroups.autoCreateForDepartment(String(created._id), dept.name).catch(() => {});
         this.logger.log(`Seeded department: ${dept.name}`);
       }
     }

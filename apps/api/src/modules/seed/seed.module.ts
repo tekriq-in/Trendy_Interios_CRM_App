@@ -5,6 +5,7 @@ import { Department, DepartmentSchema } from '../departments/schemas/department.
 import { Role, RoleSchema } from '../roles/schemas/role.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { SlaSettings, SlaSettingsSchema } from '../sla/schemas/sla-settings.schema';
+import { ChatGroupsModule } from '../chat-groups/chat-groups.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SlaSettings, SlaSettingsSchema } from '../sla/schemas/sla-settings.sche
       { name: User.name, schema: UserSchema },
       { name: SlaSettings.name, schema: SlaSettingsSchema },
     ]),
+    ChatGroupsModule,
   ],
   providers: [SeedService],
 })

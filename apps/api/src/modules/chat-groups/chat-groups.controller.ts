@@ -7,6 +7,7 @@ import {
   Body,
   UseGuards,
   Request,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ChatGroupsService, CreateGroupDto } from './chat-groups.service';
@@ -27,6 +28,15 @@ export class ChatGroupsController {
     @Request() req: { user: { _id: string } },
   ) {
     return this.service.create(dto, req.user._id);
+  }
+
+  @Get(':id')
+  async findOne(
+    @Param('id') id: string,
+  ) {
+    const group = await this.service.findById(id);
+    if (!group) throw new NotFoundException('chat_group.not_found');
+    return group;
   }
 
   @Post('dm/:targetUserId')

@@ -53,7 +53,7 @@ export default function AppLayout() {
         options={{
           title: 'Projects',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="folder-outline" size={size} color={color} />
+            <Ionicons name="folder-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
           ),
         }}
       />
@@ -62,7 +62,7 @@ export default function AppLayout() {
         options={{
           title: 'My Tasks',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkmark-circle-outline" size={size} color={color} />
+            <Ionicons name="checkmark-circle-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
           ),
         }}
       />
@@ -71,7 +71,7 @@ export default function AppLayout() {
         options={{
           title: 'Blockers',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="warning-outline" size={size} color={color} />
+            <Ionicons name="warning-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
           ),
         }}
       />
@@ -80,7 +80,7 @@ export default function AppLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle-outline" size={size} color={color} />
+            <Ionicons name="person-circle-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
           ),
         }}
       />

@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Query, Body, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Query, Body, UseGuards, ForbiddenException, Logger } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ConfigService } from '@nestjs/config';
 import { WebhooksService } from './webhooks.service';
 
@@ -31,5 +32,20 @@ export class WebhooksController {
   async receive(@Body() body: Record<string, unknown>): Promise<{ status: string }> {
     await this.webhooksService.handleInbound(body as never);
     return { status: 'ok' };
+  }
+
+  /** Client reply inbox — authenticated MD/GM endpoint */
+  @UseGuards(JwtAuthGuard)
+  @Get('client-messages')
+  findClientMessages() {
+    return this.webhooksService.findClientMessages();
+  }
+
+  /** Mark a client message as read */
+  @UseGuards(JwtAuthGuard)
+  @Patch('client-messages/:id/read')
+  async markRead(@Param('id') id: string): Promise<{ ok: boolean }> {
+    await this.webhooksService.markMessageRead(id);
+    return { ok: true };
   }
 }

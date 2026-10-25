@@ -55,6 +55,20 @@ export class WebhooksService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
+  async findClientMessages() {
+    return this.clientMessageModel
+      .find()
+      .populate('client', 'name phone')
+      .populate('project', 'title')
+      .populate('linkedApproval', 'kind generatedMessage')
+      .sort({ receivedAt: -1 })
+      .lean();
+  }
+
+  async markMessageRead(id: string): Promise<void> {
+    await this.clientMessageModel.findByIdAndUpdate(id, { isRead: true });
+  }
+
   async handleInbound(body: WaWebhookPayload): Promise<void> {
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {

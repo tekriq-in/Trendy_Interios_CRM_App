@@ -6,7 +6,8 @@ import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import {
-  CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip, ExternalLink, FileText,
+  CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip,
+  ExternalLink, FileText, MessageCircle, Check, CheckCheck, Eye, AlertCircle, Clock,
 } from 'lucide-react';
 
 interface NameObj { name: string }
@@ -29,7 +30,20 @@ interface Approval {
   rejectionReason?: string;
   createdAt?: string;
   whatsappScheduled?: boolean;
+  whatsappDeliveryStatus?: 'sent' | 'delivered' | 'read' | 'failed';
+  customerConfirmed?: boolean;
   linkedDocument?: LinkedDocument;
+}
+
+interface ClientMessage {
+  _id: string;
+  client?: { name: string; phone: string };
+  project?: { title: string };
+  linkedApproval?: { kind: string; generatedMessage?: string };
+  body: string;
+  isRead: boolean;
+  receivedAt?: string;
+  createdAt?: string;
 }
 
 const KIND_LABELS: Record<string, { label: string; color: string }> = {
@@ -37,7 +51,25 @@ const KIND_LABELS: Record<string, { label: string; color: string }> = {
   order_confirmation: { label: 'Order Confirmation', color: 'bg-violet-50 text-violet-700 ring-violet-200' },
   client_update:      { label: 'Client Update',      color: 'bg-amber-50 text-amber-700 ring-amber-200' },
   drawing:            { label: 'Drawing',             color: 'bg-teal-50 text-teal-700 ring-teal-200' },
+  customer_sign_off:  { label: 'Customer Sign-Off',  color: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
 };
+
+function DeliveryChip({ status }: { status?: string }) {
+  if (!status) return null;
+  const cfg: Record<string, { icon: React.ReactNode; label: string; cls: string }> = {
+    sent:      { icon: <Check className="w-3 h-3" />,        label: 'Sent',      cls: 'text-slate-500' },
+    delivered: { icon: <CheckCheck className="w-3 h-3" />,   label: 'Delivered', cls: 'text-slate-600' },
+    read:      { icon: <CheckCheck className="w-3 h-3" />,   label: 'Read',      cls: 'text-blue-600' },
+    failed:    { icon: <AlertCircle className="w-3 h-3" />,  label: 'Failed',    cls: 'text-red-500' },
+  };
+  const c = cfg[status];
+  if (!c) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${c.cls}`}>
+      {c.icon} {c.label}
+    </span>
+  );
+}
 
 function nameOf(v: NameObj | string | undefined) {
   if (!v) return '—';
@@ -50,9 +82,13 @@ function projectTitle(v: Approval['project']) {
   return '—';
 }
 
+type Tab = 'pending' | 'history' | 'replies';
+
 export default function ApprovalsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<Tab>('pending');
 
   // reject state
   const [rejectingId, setRejectingId] = useState<string | null>(null);
@@ -81,6 +117,18 @@ export default function ApprovalsPage() {
     queryKey: ['approvals'],
     queryFn: () => apiClient.get('/approvals').then(r => r.data),
     retry: 1,
+  });
+
+  const { data: clientMessages = [], isLoading: repliesLoading } = useQuery<ClientMessage[]>({
+    queryKey: ['client-messages'],
+    queryFn: () => apiClient.get('/webhooks/client-messages').then(r => r.data),
+    enabled: activeTab === 'replies',
+    refetchInterval: activeTab === 'replies' ? 30_000 : false,
+  });
+
+  const markReadMut = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/webhooks/client-messages/${id}/read`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-messages'] }),
   });
 
   const { data: projects = [] } = useQuery<Array<{ _id: string; title: string }>>({
@@ -176,11 +224,19 @@ export default function ApprovalsPage() {
 
   const pending  = approvals.filter(a => a.status === 'pending');
   const resolved = approvals.filter(a => a.status !== 'pending');
+  const unreadReplies = clientMessages.filter(m => !m.isRead).length;
 
   const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
+  const tabCls = (t: Tab) =>
+    `flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+      activeTab === t
+        ? 'border-indigo-500 text-indigo-600'
+        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+    }`;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Approvals</h1>
@@ -196,6 +252,30 @@ export default function ApprovalsPage() {
         </button>
       </div>
 
+      {/* ── Tab bar ── */}
+      <div className="border-b border-slate-200 flex gap-0 -mb-2">
+        <button className={tabCls('pending')} onClick={() => setActiveTab('pending')}>
+          Pending
+          {pending.length > 0 && (
+            <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+              {pending.length}
+            </span>
+          )}
+        </button>
+        <button className={tabCls('history')} onClick={() => setActiveTab('history')}>
+          History
+        </button>
+        <button className={tabCls('replies')} onClick={() => setActiveTab('replies')}>
+          <MessageCircle className="w-3.5 h-3.5" />
+          Client Replies
+          {unreadReplies > 0 && (
+            <span className="w-5 h-5 rounded-full bg-green-500 text-white text-xs font-bold flex items-center justify-center">
+              {unreadReplies}
+            </span>
+          )}
+        </button>
+      </div>
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -207,21 +287,12 @@ export default function ApprovalsPage() {
         </div>
       ) : (
         <>
-          {/* ── Pending ── */}
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Pending</h2>
-              {pending.length > 0 && (
-                <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
-                  {pending.length}
-                </span>
-              )}
-            </div>
-
+          {/* ── Pending Tab ── */}
+          {activeTab === 'pending' && <section className="space-y-3">
             {pending.length === 0 ? (
               <p className="text-sm text-slate-400 bg-slate-50 rounded-xl px-4 py-8 text-center">No pending approvals.</p>
             ) : (
-              pending.map(a => {
+              pending.map((a) => {
                 const kindInfo = KIND_LABELS[a.kind] ?? { label: a.kind, color: 'bg-slate-100 text-slate-600 ring-slate-200' };
                 const isExpanded = expandedId === a._id;
                 const editedMsg = editedMessages[a._id] ?? a.generatedMessage ?? '';
@@ -335,61 +406,128 @@ export default function ApprovalsPage() {
                 );
               })
             )}
-          </section>
+          </section>}
 
-          {/* ── Resolved ── */}
-          {resolved.length > 0 && (
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">History</h2>
-              <div className="space-y-2 opacity-70">
-                {resolved.map(a => {
-                  const kindInfo = KIND_LABELS[a.kind] ?? { label: a.kind, color: 'bg-slate-100 text-slate-600 ring-slate-200' };
-                  return (
-                    <div key={a._id} className="bg-white border border-slate-200 rounded-xl px-5 py-3">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ring-1 ring-inset ${kindInfo.color}`}>
-                              {kindInfo.label}
+          {/* ── History Tab ── */}
+          {activeTab === 'history' && <section className="space-y-2">
+            {resolved.length === 0 ? (
+              <p className="text-sm text-slate-400 bg-slate-50 rounded-xl px-4 py-8 text-center">No approval history yet.</p>
+            ) : (
+              resolved.map(a => {
+                const kindInfo = KIND_LABELS[a.kind] ?? { label: a.kind, color: 'bg-slate-100 text-slate-600 ring-slate-200' };
+                return (
+                  <div key={a._id} className="bg-white border border-slate-200 rounded-xl px-5 py-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ring-1 ring-inset ${kindInfo.color}`}>
+                            {kindInfo.label}
+                          </span>
+                          <span className="text-sm font-medium text-slate-700">{projectTitle(a.project)}</span>
+                          {a.whatsappScheduled && <DeliveryChip status={a.whatsappDeliveryStatus ?? 'sent'} />}
+                          {a.customerConfirmed && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                              <CheckCircle className="w-3 h-3" /> Client confirmed
                             </span>
-                            <span className="text-sm font-medium text-slate-700">{projectTitle(a.project)}</span>
-                            {a.whatsappScheduled && (
-                              <span className="text-xs text-emerald-600 font-semibold">· WhatsApp sent ✓</span>
-                            )}
-                          </div>
-                          {a.rejectionReason && (
-                            <p className="text-xs text-red-500 mt-1">Rejected: {a.rejectionReason}</p>
-                          )}
-                          {a.generatedMessage && a.status === 'approved' && (
-                            <p className="text-xs text-slate-500 mt-1 italic truncate max-w-md">{a.generatedMessage}</p>
-                          )}
-                          {a.linkedDocument && (
-                            <a
-                              href={a.linkedDocument.driveLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:underline mt-1"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              {a.linkedDocument.fileName}
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
                           )}
                         </div>
-                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold shrink-0 ${
-                          a.status === 'approved'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-red-50 text-red-600'
-                        }`}>
-                          {a.status}
-                        </span>
+                        {a.rejectionReason && (
+                          <p className="text-xs text-red-500 mt-1">Rejected: {a.rejectionReason}</p>
+                        )}
+                        {a.generatedMessage && a.status === 'approved' && (
+                          <p className="text-xs text-slate-500 mt-1 italic truncate max-w-md">{a.generatedMessage}</p>
+                        )}
+                        {a.linkedDocument && (
+                          <a href={a.linkedDocument.driveLink} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:underline mt-1"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {a.linkedDocument.fileName}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold shrink-0 ${
+                        a.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+                      }`}>
+                        {a.status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </section>}
+
+          {/* ── Client Replies Tab ── */}
+          {activeTab === 'replies' && <section className="space-y-3">
+            <p className="text-xs text-slate-400">
+              Inbound WhatsApp replies from clients. Confirmations are automatically applied to their linked approval.
+            </p>
+            {repliesLoading ? (
+              <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}</div>
+            ) : clientMessages.length === 0 ? (
+              <div className="bg-slate-50 rounded-xl px-5 py-10 text-center">
+                <MessageCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">No client replies yet.</p>
+                <p className="text-xs text-slate-400 mt-1">Replies will appear here when clients respond to WhatsApp messages.</p>
+              </div>
+            ) : (
+              clientMessages.map(m => {
+                const ts = m.receivedAt ?? m.createdAt;
+                return (
+                  <div key={m._id} className={`bg-white border rounded-xl px-5 py-4 ${m.isRead ? 'border-slate-200 opacity-75' : 'border-green-300 shadow-sm'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="text-sm font-semibold text-slate-800">{m.client?.name ?? 'Client'}</span>
+                          {m.project && (
+                            <span className="text-xs text-slate-400">· {m.project.title}</span>
+                          )}
+                          {!m.isRead && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-semibold ring-1 ring-inset ring-green-200">
+                              Unread
+                            </span>
+                          )}
+                        </div>
+                        {m.linkedApproval && (
+                          <p className="text-xs text-slate-400 mb-1">
+                            Re: {KIND_LABELS[m.linkedApproval.kind]?.label ?? m.linkedApproval.kind}
+                            {m.linkedApproval.generatedMessage && (
+                              <span className="italic"> — "{m.linkedApproval.generatedMessage.slice(0, 60)}…"</span>
+                            )}
+                          </p>
+                        )}
+                        <p className="text-sm text-slate-700 bg-green-50 rounded-lg px-3 py-2 inline-block max-w-md">
+                          {m.body}
+                        </p>
+                        {ts && (
+                          <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(ts).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        {m.client?.phone && (
+                          <span className="text-xs text-slate-400">{m.client.phone}</span>
+                        )}
+                        {!m.isRead && (
+                          <button
+                            onClick={() => markReadMut.mutate(m._id)}
+                            disabled={markReadMut.isPending}
+                            className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Mark read
+                          </button>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+                  </div>
+                );
+              })
+            )}
+          </section>}
         </>
       )}
 

@@ -16,6 +16,10 @@ import {
   Paperclip,
   ImageIcon,
   Mic,
+  UserPlus,
+  LogIn,
+  LogOut,
+  ChevronDown,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth.store';
@@ -204,6 +208,80 @@ function NewGroupModal({
   );
 }
 
+// ─── New DM Modal ─────────────────────────────────────────────────────────────
+
+function NewDMModal({
+  currentUserId,
+  onClose,
+  onOpened,
+}: {
+  currentUserId: string;
+  onClose: () => void;
+  onOpened: (g: ChatGroup) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [allUsers, setAllUsers] = useState<UserSummary[]>([]);
+
+  useEffect(() => {
+    apiClient
+      .get<UserSummary[]>('/users')
+      .then((r) => setAllUsers(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {});
+  }, []);
+
+  const openDMMut = useMutation({
+    mutationFn: (userId: string) =>
+      apiClient.post<ChatGroup>(`/chat-groups/dm/${userId}`).then((r) => r.data),
+    onSuccess: (group) => onOpened(group),
+  });
+
+  const filtered = allUsers.filter(
+    (u) => u._id !== currentUserId && u.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-gray-900">New Direct Message</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <input
+          autoFocus
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
+          placeholder="Search employee by name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="max-h-56 overflow-y-auto border border-gray-100 rounded-lg">
+          {filtered.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-6">No employees found.</p>
+          ) : (
+            filtered.slice(0, 20).map((u) => (
+              <button
+                key={u._id}
+                onClick={() => openDMMut.mutate(u._id)}
+                disabled={openDMMut.isPending}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-indigo-50 transition-colors disabled:opacity-50"
+              >
+                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  {u.name[0]}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{u.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Chat Page ──────────────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -217,7 +295,10 @@ export default function ChatPage() {
   const [body, setBody] = useState('');
   const [connected, setConnected] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
+  const [showNewDM, setShowNewDM] = useState(false);
+  const [showNewMenu, setShowNewMenu] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
+  const newMenuRef = useRef<HTMLDivElement>(null);
   const [addMemberSearch, setAddMemberSearch] = useState('');
   const [allUsers, setAllUsers] = useState<UserSummary[]>([]);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -225,6 +306,17 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevChannelRef = useRef<string>('');
+
+  // Close the + dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setShowNewMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Load all groups
   const { data: groupsData, refetch: refetchGroups } = useQuery({
@@ -358,6 +450,21 @@ export default function ChatPage() {
     onSuccess: () => refetchGroups(),
   });
 
+  const joinMut = useMutation({
+    mutationFn: (groupId: string) =>
+      apiClient.patch(`/chat-groups/${groupId}/join`).then((r) => r.data),
+    onSuccess: () => refetchGroups(),
+  });
+
+  const leaveMut = useMutation({
+    mutationFn: (groupId: string) =>
+      apiClient.patch(`/chat-groups/${groupId}/leave`).then((r) => r.data),
+    onSuccess: () => {
+      refetchGroups();
+      if (activeGroup && leaveMut.variables === activeGroup._id) setActiveGroup(null);
+    },
+  });
+
   const filteredGroups = groups
     .filter((g) => g.type === activeTab)
     .filter((g) =>
@@ -434,14 +541,31 @@ export default function ChatPage() {
         <div className="px-4 py-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900 text-sm">Chat</h2>
-            <div className="flex gap-1.5">
+            <div className="relative" ref={newMenuRef}>
               <button
-                title="New group"
-                onClick={() => setShowNewGroup(true)}
-                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                title="New conversation"
+                onClick={() => setShowNewMenu((v) => !v)}
+                className="flex items-center gap-0.5 p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-gray-700"
               >
                 <Plus className="w-4 h-4" />
+                <ChevronDown className="w-3 h-3" />
               </button>
+              {showNewMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px] py-1">
+                  <button
+                    onClick={() => { setShowNewDM(true); setShowNewMenu(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> New DM
+                  </button>
+                  <button
+                    onClick={() => { setShowNewGroup(true); setShowNewMenu(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                  >
+                    <Users className="w-3.5 h-3.5" /> New Group
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <div className="relative">
@@ -486,47 +610,66 @@ export default function ChatPage() {
           {filteredGroups.length === 0 && (
             <p className="text-xs text-gray-400 text-center mt-6 px-4">
               {activeTab === 'department'
-                ? 'No department groups yet.'
+                ? 'No department groups found. Ask your admin to create departments.'
                 : activeTab === 'project'
                 ? 'No project chats yet. Create a project to get started.'
                 : activeTab === 'individual'
-                ? 'No direct messages yet.'
-                : 'No custom groups. Click + to create one.'}
+                ? 'No direct messages yet. Click + → New DM to start one.'
+                : 'No custom groups yet. Click + → New Group to create one.'}
             </p>
           )}
           {filteredGroups.map((group) => {
             const active = activeGroup?._id === group._id;
             const Icon = TAB_ICONS[group.type];
+            const isMember = group.members.some((m) => m._id === currentUser?.id);
             return (
-              <button
+              <div
                 key={group._id}
-                onClick={() => setActiveGroup(group)}
-                className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
+                className={`w-full flex items-start gap-3 px-4 py-3 transition-colors ${
                   active ? 'bg-indigo-50' : 'hover:bg-gray-100'
                 }`}
               >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold ${
-                    active ? 'bg-indigo-500' : 'bg-gray-400'
-                  }`}
+                <button
+                  onClick={() => setActiveGroup(group)}
+                  className="flex items-start gap-3 flex-1 min-w-0 text-left"
                 >
-                  <Icon className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <p
-                    className={`text-sm font-medium truncate ${
-                      active ? 'text-indigo-700' : 'text-gray-800'
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold ${
+                      active ? 'bg-indigo-500' : isMember ? 'bg-indigo-400' : 'bg-gray-300'
                     }`}
                   >
-                    {group.name}
-                  </p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {group.lastMessage
-                      ? `${group.lastMessage.senderName}: ${group.lastMessage.body}`
-                      : `${group.members.length} member${group.members.length !== 1 ? 's' : ''}`}
-                  </p>
-                </div>
-              </button>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p
+                      className={`text-sm font-medium truncate ${
+                        active ? 'text-indigo-700' : 'text-gray-800'
+                      }`}
+                    >
+                      {group.name}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {group.lastMessage
+                        ? `${group.lastMessage.senderName}: ${group.lastMessage.body}`
+                        : `${group.members.length} member${group.members.length !== 1 ? 's' : ''}`}
+                    </p>
+                  </div>
+                </button>
+                {group.type === 'department' && (
+                  <button
+                    onClick={() => isMember ? leaveMut.mutate(group._id) : joinMut.mutate(group._id)}
+                    disabled={joinMut.isPending || leaveMut.isPending}
+                    title={isMember ? 'Leave group' : 'Join group'}
+                    className={`shrink-0 p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
+                      isMember
+                        ? 'text-red-400 hover:bg-red-50 hover:text-red-600'
+                        : 'text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700'
+                    }`}
+                  >
+                    {isMember ? <LogOut className="w-3.5 h-3.5" /> : <LogIn className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -560,10 +703,14 @@ export default function ChatPage() {
                 </p>
               </div>
             </div>
-            {(activeGroup.type === 'custom' || activeGroup.type === 'project') && (
+            {activeGroup.type !== 'individual' && (
               <button
-                onClick={() => setShowAddMember(true)}
-                className="flex items-center gap-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50"
+                onClick={() => setShowAddMember((v) => !v)}
+                className={`flex items-center gap-1.5 text-xs border rounded-lg px-3 py-1.5 transition-colors ${
+                  showAddMember
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                    : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                }`}
               >
                 <Users className="w-3.5 h-3.5" />
                 Members
@@ -740,12 +887,12 @@ export default function ChatPage() {
             </div>
           </div>
 
-          {activeGroup.type === 'custom' && (
+          {(activeGroup.type === 'custom' || activeGroup.type === 'project' || activeGroup.type === 'department') && (
             <div className="p-3 border-t border-gray-100">
               <p className="text-xs font-medium text-gray-600 mb-2">Add Member</p>
               <input
                 className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs"
-                placeholder="Search…"
+                placeholder="Search employees…"
                 value={addMemberSearch}
                 onChange={(e) => setAddMemberSearch(e.target.value)}
               />
@@ -765,12 +912,29 @@ export default function ChatPage() {
                           addMemberMut.mutate(u._id);
                           setAddMemberSearch('');
                         }}
-                        className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50"
+                        disabled={addMemberMut.isPending}
+                        className="w-full text-left px-2 py-1.5 text-xs hover:bg-indigo-50 disabled:opacity-50 flex items-center gap-2"
                       >
-                        {u.name}
+                        <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[9px] font-bold shrink-0">
+                          {u.name[0]}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate">{u.name}</p>
+                          <p className="text-gray-400 truncate">{u.email}</p>
+                        </div>
                       </button>
                     ))}
+                  {allUsers.filter(
+                    (u) =>
+                      u.name.toLowerCase().includes(addMemberSearch.toLowerCase()) &&
+                      !activeGroup.members.some((m) => m._id === u._id),
+                  ).length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-3">No employees found.</p>
+                  )}
                 </div>
+              )}
+              {addMemberMut.isSuccess && (
+                <p className="text-[10px] text-green-600 mt-1">Member added!</p>
               )}
             </div>
           )}
@@ -786,6 +950,20 @@ export default function ChatPage() {
             setShowNewGroup(false);
             setActiveGroup(g);
             setActiveTab('custom');
+          }}
+        />
+      )}
+
+      {/* ── New DM modal ─────────────────────────────────────────────────── */}
+      {showNewDM && (
+        <NewDMModal
+          currentUserId={currentUser?.id ?? ''}
+          onClose={() => setShowNewDM(false)}
+          onOpened={(g) => {
+            refetchGroups();
+            setShowNewDM(false);
+            setActiveGroup(g);
+            setActiveTab('individual');
           }}
         />
       )}

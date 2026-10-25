@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Patch,
   Param,
   Body,
   UseGuards,
@@ -63,5 +64,21 @@ export class ChatGroupsController {
     @Request() req: { user: { _id: string } },
   ) {
     return this.service.removeMember(id, userId, req.user._id);
+  }
+
+  @Patch(':id/join')
+  join(
+    @Param('id') id: string,
+    @Request() req: { user: { _id: string } },
+  ) {
+    return this.service.joinGroup(id, req.user._id);
+  }
+
+  @Patch(':id/leave')
+  leave(
+    @Param('id') id: string,
+    @Request() req: { user: { _id: string } },
+  ) {
+    return this.service.leaveGroup(id, req.user._id);
   }
 }

@@ -17,9 +17,18 @@ export class ChatGroupsService {
   ) {}
 
   async findForUser(userId: string): Promise<(ChatGroupDocument & { lastMessage?: { body: string; senderName: string; createdAt: string } | null })[]> {
-    // Use aggregation so member names are always populated regardless of lean/populate quirks
+    // Department groups are common channels — return all of them regardless of membership.
+    // For all other types (project, individual, custom) return only groups the user belongs to.
     const groups = await this.groupModel.aggregate([
-      { $match: { members: new Types.ObjectId(userId), isActive: true } },
+      {
+        $match: {
+          isActive: true,
+          $or: [
+            { members: new Types.ObjectId(userId) },
+            { type: 'department' },
+          ],
+        },
+      },
       { $sort: { updatedAt: -1 } },
       {
         $lookup: {
@@ -200,7 +209,9 @@ export class ChatGroupsService {
   async addMember(groupId: string, userId: string, actorId: string): Promise<ChatGroupDocument> {
     const group = await this.groupModel.findById(groupId);
     if (!group) throw new NotFoundException('chat_group.not_found');
-    if (group.type !== 'custom' && !group.members.some((m) => String(m) === actorId)) {
+    // Department groups: anyone can add themselves (self-join). Others: must already be a member.
+    const isSelfJoin = userId === actorId;
+    if (!isSelfJoin && group.type !== 'custom' && !group.members.some((m) => String(m) === actorId)) {
       throw new ForbiddenException('chat_group.not_member');
     }
     await this.groupModel.findByIdAndUpdate(groupId, {
@@ -215,12 +226,23 @@ export class ChatGroupsService {
   async removeMember(groupId: string, userId: string, actorId: string): Promise<void> {
     const group = await this.groupModel.findById(groupId);
     if (!group) throw new NotFoundException('chat_group.not_found');
-    if (group.type !== 'custom' && !group.members.some((m) => String(m) === actorId)) {
+    // Members can remove themselves from any group type (self-leave).
+    // Removing others requires being a member of a custom group.
+    const isSelfLeave = userId === actorId;
+    if (!isSelfLeave && group.type !== 'custom' && !group.members.some((m) => String(m) === actorId)) {
       throw new ForbiddenException('chat_group.not_member');
     }
     await this.groupModel.findByIdAndUpdate(groupId, {
       $pull: { members: new Types.ObjectId(userId) },
     });
+  }
+
+  async joinGroup(groupId: string, userId: string): Promise<ChatGroupDocument> {
+    return this.addMember(groupId, userId, userId);
+  }
+
+  async leaveGroup(groupId: string, userId: string): Promise<void> {
+    return this.removeMember(groupId, userId, userId);
   }
 
   async findById(id: string): Promise<ChatGroupDocument | null> {

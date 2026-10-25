@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { UserPlus, Pencil, UserX, X, Users } from 'lucide-react';
+import { UserPlus, Pencil, UserX, UserCheck, X, Users } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -82,6 +82,11 @@ export default function UsersPage() {
   const deactivateMut = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/users/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setConfirmDeactivate(null); },
+  });
+
+  const reactivateMut = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/users/${id}`, { isActive: true }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 
   function openCreate() {
@@ -251,12 +256,20 @@ export default function UsersPage() {
                       >
                         <Pencil className="w-3.5 h-3.5" /> Edit
                       </button>
-                      {u.isActive && (
+                      {u.isActive ? (
                         <button
                           onClick={() => setConfirmDeactivate(u)}
                           className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors"
                         >
                           <UserX className="w-3.5 h-3.5" /> Deactivate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => reactivateMut.mutate(u._id)}
+                          disabled={reactivateMut.isPending}
+                          className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" /> Activate
                         </button>
                       )}
                     </div>

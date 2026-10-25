@@ -9,11 +9,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 
 interface NameObj { name: string; }
+interface ProjectObj { _id: string; title: string; }
 interface ProofFile { _id: string; fileName: string; driveLink: string; mimeType: string; }
 interface Handover {
   _id: string;
   status: 'draft' | 'confirmed' | 'accepted' | 'rejected';
-  project?: NameObj | string;
+  project?: ProjectObj | string;
   fromDepartment?: NameObj | string;
   toDepartment?: NameObj | string;
   raisedBy?: NameObj | string;
@@ -21,6 +22,12 @@ interface Handover {
   rejectionReason?: string;
   proofFiles?: ProofFile[];
   createdAt?: string;
+}
+
+function projectName(v: ProjectObj | string | undefined) {
+  if (!v) return '—';
+  if (typeof v === 'object' && 'title' in v) return v.title;
+  return '—';
 }
 interface Dept { _id: string; name: string; order: number; }
 interface Project { _id: string; title: string; currentStage?: { _id: string } | string; }
@@ -128,7 +135,7 @@ export default function HandoversPage() {
         {/* Top row */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-semibold text-slate-900 text-sm">{nameOf(h.project)}</div>
+            <div className="font-semibold text-slate-900 text-sm">{projectName(h.project)}</div>
             <div className="flex items-center gap-1.5 mt-1 text-sm text-slate-500">
               <span>{nameOf(h.fromDepartment)}</span>
               <ArrowRight className="w-3.5 h-3.5 text-slate-400" />

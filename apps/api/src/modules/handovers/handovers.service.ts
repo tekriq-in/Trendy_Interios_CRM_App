@@ -20,19 +20,79 @@ export class HandoversService {
   ) {}
 
   async findAll(projectId?: string) {
-    const filter: Record<string, unknown> = {};
-    if (projectId) filter.project = new Types.ObjectId(projectId);
-    return this.handoverModel
-      .find(filter)
-      .populate('project', 'title')
-      .populate('fromDepartment', 'name')
-      .populate('toDepartment', 'name')
-      .populate('raisedBy', 'name email')
-      .populate('confirmedBy', 'name')
-      .populate('acceptedBy', 'name')
-      .populate('proofFiles', 'fileName driveLink mimeType type')
-      .sort({ createdAt: -1 })
-      .lean();
+    const matchStage = projectId
+      ? { $match: { project: new Types.ObjectId(projectId) } }
+      : { $match: {} };
+
+    return this.handoverModel.aggregate([
+      matchStage,
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: 'projects',
+          let: { pid: '$project' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$pid'] } } },
+            { $project: { _id: 1, title: 1 } },
+          ],
+          as: 'projectArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'departments',
+          let: { fid: '$fromDepartment' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$fid'] } } },
+            { $project: { _id: 1, name: 1 } },
+          ],
+          as: 'fromDepartmentArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'departments',
+          let: { tid: '$toDepartment' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$tid'] } } },
+            { $project: { _id: 1, name: 1 } },
+          ],
+          as: 'toDepartmentArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          let: { uid: '$raisedBy' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$uid'] } } },
+            { $project: { _id: 1, name: 1, email: 1 } },
+          ],
+          as: 'raisedByArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'tidocuments',
+          let: { pfids: '$proofFiles' },
+          pipeline: [
+            { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$pfids', []] }] } } },
+            { $project: { _id: 1, fileName: 1, driveLink: 1, mimeType: 1, type: 1 } },
+          ],
+          as: 'proofFilesArr',
+        },
+      },
+      {
+        $addFields: {
+          project: { $arrayElemAt: ['$projectArr', 0] },
+          fromDepartment: { $arrayElemAt: ['$fromDepartmentArr', 0] },
+          toDepartment: { $arrayElemAt: ['$toDepartmentArr', 0] },
+          raisedBy: { $arrayElemAt: ['$raisedByArr', 0] },
+          proofFiles: '$proofFilesArr',
+        },
+      },
+      { $unset: ['projectArr', 'fromDepartmentArr', 'toDepartmentArr', 'raisedByArr', 'proofFilesArr'] },
+    ]);
   }
 
   async raise(

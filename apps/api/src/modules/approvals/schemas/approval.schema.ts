@@ -11,7 +11,7 @@ export class Approval {
 
   @Prop({
     type: String,
-    enum: ['quotation', 'order_confirmation', 'client_update', 'drawing'],
+    enum: ['quotation', 'order_confirmation', 'client_update', 'drawing', 'customer_sign_off'],
     required: true,
   })
   kind: string;
@@ -46,6 +46,26 @@ export class Approval {
 
   @Prop({ default: false })
   whatsappScheduled: boolean;
+
+  // Phase A — template language and delivery tracking
+  @Prop({ type: String, enum: ['en', 'ta'], default: 'en' })
+  language: string;
+
+  @Prop({ trim: true })
+  whatsappMessageId: string;
+
+  @Prop({ type: String, enum: ['sent', 'delivered', 'read', 'failed'] })
+  whatsappDeliveryStatus: string;
+
+  // Phase B — customer confirmation
+  @Prop({ default: false })
+  customerConfirmed: boolean;
+
+  @Prop()
+  customerConfirmedAt: Date;
+
+  @Prop({ trim: true })
+  customerReplyText: string;
 }
 
 export const ApprovalSchema = SchemaFactory.createForClass(Approval);

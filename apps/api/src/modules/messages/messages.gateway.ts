@@ -16,6 +16,8 @@ import { Message, MessageDocument } from './messages.schema';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
+import { Role, RoleDocument } from '../roles/schemas/role.schema';
+import { PERMISSIONS } from '@ti/shared';
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/' })
 export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -25,6 +27,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly jwtService: JwtService,
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Role.name) private roleModel: Model<RoleDocument>,
     private readonly chatGroupsService: ChatGroupsService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -38,6 +41,15 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       client.data.userId = payload.sub;
       client.data.email = payload.email;
       client.data.name = payload.name ?? payload.email;
+
+      // Auto-join approver room so client.replied notifications reach MD/GM
+      const user = await this.userModel.findById(payload.sub).select('role').lean();
+      if (user?.role) {
+        const role = await this.roleModel.findById(user.role).select('permissions').lean();
+        if (role?.permissions?.includes(PERMISSIONS.APPROVALS_DECIDE)) {
+          client.join('role:approver');
+        }
+      }
     } catch {
       client.disconnect();
     }
@@ -149,5 +161,22 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent('chat_group.member_removed')
   handleMemberRemoved(payload: { channel: string; userId: string }) {
     this.server.to(payload.channel).emit('group_member_removed', payload);
+  }
+
+  @OnEvent('client.replied')
+  handleClientReply(payload: {
+    clientId: string;
+    clientName: string;
+    projectId: string | null;
+    approvalId: string | null;
+    body: string;
+    isConfirmation: boolean;
+    isRejection: boolean;
+  }) {
+    this.server.to('role:approver').emit('notification', {
+      type: 'client_reply',
+      message: `${payload.clientName} replied to a project update`,
+      ...payload,
+    });
   }
 }

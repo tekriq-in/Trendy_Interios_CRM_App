@@ -28,6 +28,7 @@ import { MessagesModule } from './modules/messages/messages.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { ChatGroupsModule } from './modules/chat-groups/chat-groups.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { ChatGroupsModule } from './modules/chat-groups/chat-groups.module';
     NotificationsModule,
     WhatsAppModule,
     ChatGroupsModule,
+    WebhooksModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

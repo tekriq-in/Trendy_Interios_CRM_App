@@ -161,7 +161,15 @@ export class ApprovalsService {
       metadata: { kind: approval.kind },
     });
 
-    if (approval.kind === 'client_update') {
+    const TEMPLATE_MAP: Record<string, string> = {
+      client_update: 'project_update',
+      quotation: 'quotation_ready',
+      order_confirmation: 'order_confirmed',
+      drawing: 'drawing_ready',
+      customer_sign_off: 'customer_sign_off',
+    };
+
+    if (TEMPLATE_MAP[approval.kind]) {
       await approval.populate({
         path: 'project',
         populate: { path: 'client', select: 'phone name whatsappOptIn' },
@@ -171,12 +179,30 @@ export class ApprovalsService {
         client: { phone: string; name: string; whatsappOptIn: boolean };
       };
 
-      if (project?.client?.phone) {
-        const messageBody = approval.generatedMessage?.trim() ||
-          `Dear ${project.client.name}, your project "${project.title}" has an update from the team. — Team Trendy Interios`;
+      if (project?.client?.phone && project.client.whatsappOptIn !== false) {
+        const { name: clientName, phone } = project.client;
+        const templateName = TEMPLATE_MAP[approval.kind];
+        const language = approval.language ?? 'en';
 
-        await this.whatsapp.sendMessage(project.client.phone, messageBody);
+        let params: string[];
+        if (approval.kind === 'client_update') {
+          params = [clientName, project.title, approval.generatedMessage?.trim() ?? ''];
+        } else if (approval.kind === 'quotation') {
+          params = [clientName, project.title, approval.generatedMessage?.trim() ?? ''];
+        } else if (approval.kind === 'drawing') {
+          params = [clientName, project.title, ''];
+        } else if (approval.kind === 'customer_sign_off') {
+          params = [clientName, project.title, ''];
+        } else {
+          params = [clientName, project.title];
+        }
+
+        const wamid = await this.whatsapp.sendTemplate(phone, templateName, params, language);
         approval.whatsappScheduled = true;
+        if (wamid) {
+          approval.whatsappMessageId = wamid;
+          approval.whatsappDeliveryStatus = 'sent';
+        }
         await approval.save();
       }
     }

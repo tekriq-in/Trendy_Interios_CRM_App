@@ -8,12 +8,14 @@ import { MessagesController } from './messages.controller';
 import { ChatGroupsModule } from '../chat-groups/chat-groups.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { Role, RoleSchema } from '../roles/schemas/role.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
       { name: User.name, schema: UserSchema },
+      { name: Role.name, schema: RoleSchema },
     ]),
     JwtModule.registerAsync({
       inject: [ConfigService],

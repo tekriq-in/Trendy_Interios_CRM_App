@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsPositive, Min, Max, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsPositive, Min, Max, MaxLength, MinLength } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class CreateDepartmentDto {
@@ -53,4 +53,9 @@ export class UpdateDepartmentDto {
   @Max(8760)
   @Type(() => Number)
   defaultSlaHours?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true')
+  isActive?: boolean;
 }

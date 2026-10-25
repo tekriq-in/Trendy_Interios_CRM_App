@@ -14,8 +14,9 @@ export class DepartmentsService {
     private chatGroups: ChatGroupsService,
   ) {}
 
-  findAll() {
-    return this.deptModel.find({ isActive: true }).sort({ order: 1 }).lean();
+  findAll(includeInactive = false) {
+    const filter = includeInactive ? {} : { isActive: true };
+    return this.deptModel.find(filter).sort({ order: 1 }).lean();
   }
 
   async findById(id: string) {

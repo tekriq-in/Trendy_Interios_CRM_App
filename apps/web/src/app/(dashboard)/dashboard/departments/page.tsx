@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, Building2 } from 'lucide-react';
+import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, Building2, ToggleLeft, ToggleRight, CheckCircle2 } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -24,10 +24,14 @@ export default function DepartmentsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [reassigning, setReassigning] = useState<{ employee: Employee; toDeptId: string } | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState<Department | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
 
   const { data: departments = [], isLoading } = useQuery<Department[]>({
-    queryKey: ['departments'],
-    queryFn: () => apiClient.get('/departments').then((r) => r.data),
+    queryKey: ['departments', showInactive],
+    queryFn: () =>
+      apiClient
+        .get(`/departments${showInactive ? '?includeInactive=true' : ''}`)
+        .then((r) => r.data),
   });
 
   const { data: employees = [] } = useQuery<Employee[]>({
@@ -46,6 +50,11 @@ export default function DepartmentsPage() {
 
   const deactivateMut = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/departments/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departments'] }),
+  });
+
+  const reactivateMut = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/departments/${id}`, { isActive: true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['departments'] }),
   });
 
@@ -107,9 +116,22 @@ export default function DepartmentsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Departments</h1>
           <p className="text-sm text-slate-500 mt-0.5">Production stages and their assigned staff.</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-          <Plus className="w-4 h-4" /> New Department
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className={`flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
+              showInactive
+                ? 'bg-slate-100 text-slate-700 border-slate-300'
+                : 'text-slate-500 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {showInactive ? <ToggleRight className="w-4 h-4 text-indigo-600" /> : <ToggleLeft className="w-4 h-4" />}
+            {showInactive ? 'Showing inactive' : 'Show inactive'}
+          </button>
+          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+            <Plus className="w-4 h-4" /> New Department
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -131,7 +153,7 @@ export default function DepartmentsPage() {
             const members = employeesInDept(d._id);
             const isOpen = expanded === d._id;
             return (
-              <div key={d._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <div key={d._id} className={`border rounded-xl overflow-hidden ${d.isActive ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-200 opacity-75'}`}>
                 {/* Department row */}
                 <div className="flex items-center gap-3 px-5 py-4">
                   <button onClick={() => setExpanded(isOpen ? null : d._id)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0">
@@ -162,12 +184,20 @@ export default function DepartmentsPage() {
                     >
                       <Pencil className="w-3.5 h-3.5" /> Edit
                     </button>
-                    {d.isActive && (
+                    {d.isActive ? (
                       <button
                         onClick={() => setConfirmDeactivate(d)}
                         className="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors"
                       >
                         Deactivate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => reactivateMut.mutate(d._id)}
+                        disabled={reactivateMut.isPending}
+                        className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Activate
                       </button>
                     )}
                   </div>

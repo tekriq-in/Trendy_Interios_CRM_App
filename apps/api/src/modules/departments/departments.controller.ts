@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { DepartmentsService } from './departments.service';
 import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -14,8 +14,8 @@ export class DepartmentsController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.DEPARTMENTS_READ)
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query('includeInactive') includeInactive?: string) {
+    return this.service.findAll(includeInactive === 'true');
   }
 
   @Get(':id')

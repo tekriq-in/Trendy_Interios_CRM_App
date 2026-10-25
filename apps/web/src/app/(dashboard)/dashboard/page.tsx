@@ -30,6 +30,11 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
 } from 'recharts';
 
 interface Project {
@@ -551,10 +556,110 @@ export default function DashboardOverviewPage() {
           Behind the progress
         </h2>
         <div className="grid gap-5 xl:grid-cols-2">
+
+          {/* ── Chart 1: Project Status Distribution ── */}
+          <div className={`${panel} min-w-0 p-5 sm:p-6`}>
+            <h3 className="text-sm font-semibold text-slate-900">Project status</h3>
+            <p className="mb-4 mt-1 text-xs text-slate-500">
+              How projects are spread across pipeline stages.
+            </p>
+            <DataState
+              pending={board.isPending || departments.isPending}
+              error={board.isError || departments.isError}
+              empty={!allProjects.length}
+              emptyText="Project distribution will appear once projects are in the pipeline."
+            >
+              {(() => {
+                const stageData = sortedDepts
+                  .map((d, i) => ({
+                    name: d.name,
+                    value: board.data?.[d.name]?.length ?? 0,
+                    color: DEPT_COLORS[i % DEPT_COLORS.length],
+                  }))
+                  .filter((d) => d.value > 0);
+                return (
+                  <div className="flex items-center gap-4">
+                    <ResponsiveContainer width={160} height={160}>
+                      <PieChart>
+                        <Pie
+                          data={stageData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={72}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {stageData.map((entry, i) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(v, _n, props) => [
+                            `${v} project${Number(v) !== 1 ? 's' : ''}`,
+                            props.payload.name,
+                          ]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex-1 space-y-1.5 overflow-hidden">
+                      {stageData.map((d) => (
+                        <div key={d.name} className="flex items-center gap-2 text-xs">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                          <span className="flex-1 truncate text-slate-600">{d.name}</span>
+                          <span className="font-semibold text-slate-800">{d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </DataState>
+          </div>
+
+          {/* ── Chart 2: SLA Performance ── */}
+          <div className={`${panel} min-w-0 p-5 sm:p-6`}>
+            <h3 className="text-sm font-semibold text-slate-900">SLA performance</h3>
+            <p className="mb-4 mt-1 text-xs text-slate-500">
+              On-time vs breached projects per stage.
+            </p>
+            <DataState
+              pending={slaReport.isPending}
+              error={slaReport.isError}
+              empty={!slaReport.data?.length}
+              emptyText="SLA data will appear after the first stage completes."
+            >
+              {(() => {
+                const byStage: Record<string, { stage: string; onTime: number; breached: number }> = {};
+                (slaReport.data ?? []).forEach((r) => {
+                  if (!byStage[r.stageName]) byStage[r.stageName] = { stage: r.stageName, onTime: 0, breached: 0 };
+                  if (r.breached) byStage[r.stageName].breached++;
+                  else byStage[r.stageName].onTime++;
+                });
+                const data = Object.values(byStage);
+                return (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={data} margin={{ top: 4, right: 0, left: -24, bottom: 4 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="stage" tick={chartTick} axisLine={false} tickLine={false} tickMargin={8} />
+                      <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                      <Bar dataKey="onTime" name="On time" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} maxBarSize={28} />
+                      <Bar dataKey="breached" name="Breached" stackId="a" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                );
+              })()}
+            </DataState>
+          </div>
+
+          {/* ── Chart 3: Team Workload ── */}
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
             <h3 className="text-sm font-semibold text-slate-900">Team workload</h3>
-            <p className="mb-6 mt-1 text-xs text-slate-500">
-              Open tasks and work already in motion.
+            <p className="mb-4 mt-1 text-xs text-slate-500">
+              Open tasks and work already in motion per person.
             </p>
             <DataState
               pending={workload.isPending}
@@ -562,82 +667,78 @@ export default function DashboardOverviewPage() {
               empty={!workload.data?.length}
               emptyText="Team workload will appear as tasks are assigned."
             >
-              <ResponsiveContainer width="100%" height={230}>
+              <ResponsiveContainer width="100%" height={200}>
                 <BarChart
                   accessibilityLayer
                   data={workload.data}
                   margin={{ top: 4, right: 0, left: -24, bottom: 4 }}
+                  barCategoryGap="30%"
                 >
                   <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="userName"
-                    tick={chartTick}
-                    axisLine={false}
-                    tickLine={false}
-                    tickMargin={10}
-                  />
+                  <XAxis dataKey="userName" tick={chartTick} axisLine={false} tickLine={false} tickMargin={8} />
                   <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={tooltipStyle} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                  <Bar
-                    dataKey="totalTasks"
-                    name="Open tasks"
-                    fill="#6366f1"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={24}
-                  />
-                  <Bar
-                    dataKey="inProgress"
-                    name="In progress"
-                    fill="#a5b4fc"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={24}
-                  />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  <Bar dataKey="totalTasks" name="Total tasks" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={20} />
+                  <Bar dataKey="inProgress" name="In progress" fill="#a5b4fc" radius={[4, 4, 0, 0]} maxBarSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             </DataState>
           </div>
+
+          {/* ── Chart 4: Project Completion Trend ── */}
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
-            <h3 className="text-sm font-semibold text-slate-900">Time across stages</h3>
-            <p className="mb-6 mt-1 text-xs text-slate-500">
-              Average hours spent in completed stages.
+            <h3 className="text-sm font-semibold text-slate-900">Project completion trend</h3>
+            <p className="mb-4 mt-1 text-xs text-slate-500">
+              How many projects sit at each completion milestone.
             </p>
             <DataState
-              pending={stageDurations.isPending}
-              error={stageDurations.isError}
-              empty={!stageDurations.data?.length}
-              emptyText="Stage insights will appear after the first stage is completed."
+              pending={board.isPending}
+              error={board.isError}
+              empty={!allProjects.length}
+              emptyText="Completion data will appear once projects are active."
             >
-              <ResponsiveContainer width="100%" height={230}>
-                <BarChart
-                  accessibilityLayer
-                  data={stageDurations.data}
-                  margin={{ top: 4, right: 0, left: -24, bottom: 4 }}
-                >
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="stageName"
-                    tick={chartTick}
-                    axisLine={false}
-                    tickLine={false}
-                    tickMargin={10}
-                  />
-                  <YAxis tick={chartTick} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(v) => [`${v} hours`, 'Average duration']}
-                  />
-                  <Bar
-                    dataKey="avgHours"
-                    name="Average hours"
-                    fill="#14b8a6"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={32}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              {(() => {
+                const buckets = [
+                  { label: '0–25%', projects: allProjects.filter((p) => (p.progressPct ?? 0) <= 25).length },
+                  { label: '26–50%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 25 && (p.progressPct ?? 0) <= 50).length },
+                  { label: '51–75%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 50 && (p.progressPct ?? 0) <= 75).length },
+                  { label: '76–99%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 75 && (p.progressPct ?? 0) < 100).length },
+                  { label: '100%', projects: allProjects.filter((p) => (p.progressPct ?? 0) >= 100).length },
+                ];
+                return (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={buckets} margin={{ top: 4, right: 8, left: -24, bottom: 4 }}>
+                      <defs>
+                        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.18} />
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="label" tick={chartTick} axisLine={false} tickLine={false} tickMargin={8} />
+                      <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(v) => [`${v} project${Number(v) !== 1 ? 's' : ''}`, 'Count']}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="projects"
+                        name="Projects"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        fill="url(#areaGrad)"
+                        dot={{ r: 4, fill: '#6366f1', strokeWidth: 0 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                );
+              })()}
             </DataState>
           </div>
+
         </div>
       </section>
       <p className="text-center text-[11px] text-slate-500">

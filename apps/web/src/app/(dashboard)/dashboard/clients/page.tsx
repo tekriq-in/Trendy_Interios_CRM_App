@@ -95,9 +95,19 @@ export default function ClientsPage() {
 
   async function handleSave() {
     const errors: Partial<Record<keyof FormState, string>> = {};
-    if (!form.name.trim()) errors.name = 'Client name is required.';
-    if (!form.phone.trim()) errors.phone = 'Phone number is required.';
-    else if (!/^[0-9+\s\-()]{7,15}$/.test(form.phone.trim())) errors.phone = 'Enter a valid phone number.';
+    if (!form.name.trim()) {
+      errors.name = 'Client name is required.';
+    } else if (form.name.trim().length < 2) {
+      errors.name = 'Name must be at least 2 characters.';
+    }
+    if (!form.phone.trim()) {
+      errors.phone = 'Phone number is required.';
+    } else if (!/^\+?[0-9\s\-()]{7,15}$/.test(form.phone.trim())) {
+      errors.phone = 'Enter a valid phone number (7–15 digits).';
+    }
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      errors.email = 'Enter a valid email address.';
+    }
     if (Object.keys(errors).length) { setFieldErrors(errors); return; }
     setSaving(true); setErr(''); setFieldErrors({});
     try {
@@ -121,7 +131,8 @@ export default function ClientsPage() {
         setShowProjectModal(true);
       }
     } catch (e: unknown) {
-      setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to save.');
+      const raw = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setErr(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to save.'));
     } finally { setSaving(false); }
   }
 
@@ -286,7 +297,8 @@ export default function ClientsPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Email</label>
-                  <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="raj@example.com" className={inputCls()} />
+                  <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="raj@example.com" autoComplete="off" className={inputCls('email')} />
+                  {fieldErr('email')}
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Address</label>

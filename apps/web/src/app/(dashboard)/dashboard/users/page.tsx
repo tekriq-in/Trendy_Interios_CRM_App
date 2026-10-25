@@ -322,14 +322,14 @@ export default function UsersPage() {
 
                 <div className="col-span-2">
                   <label className={labelCls}>Email address *</label>
-                  <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="ravi@trendyinteriors.in" disabled={!!editing} className={`${inputCls('email')} disabled:bg-slate-50 disabled:text-slate-400`} />
+                  <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="Enter email address" autoComplete="off" disabled={!!editing} className={`${inputCls('email')} disabled:bg-slate-50 disabled:text-slate-400`} />
                   {fieldErr('email')}
                 </div>
 
                 {!editing && (
                   <div className="col-span-2">
                     <label className={labelCls}>Password *</label>
-                    <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Min 8 chars, uppercase, lowercase & number" className={inputCls('password')} />
+                    <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Enter password" autoComplete="new-password" className={inputCls('password')} />
                     {fieldErr('password')}
                   </div>
                 )}

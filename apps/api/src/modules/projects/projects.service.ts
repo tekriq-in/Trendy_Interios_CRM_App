@@ -9,22 +9,8 @@ import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 import { HandoversService } from '../handovers/handovers.service';
 import { PERMISSIONS, DEFAULT_STAGE_WEIGHTS } from '@ti/shared';
 
-export interface CreateProjectDto {
-  clientId: string;
-  title: string;
-  firstStageId?: string;
-  targetDate?: Date;
-  assignedTeamIds?: string[];
-  requiresDrawing?: boolean;
-}
-
-export interface UpdateProjectDto {
-  title?: string;
-  targetDate?: Date;
-  assignedTeamIds?: string[];
-  status?: string;
-  stageWeights?: Record<string, number>;
-}
+import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+export { CreateProjectDto, UpdateProjectDto };
 
 @Injectable()
 export class ProjectsService {

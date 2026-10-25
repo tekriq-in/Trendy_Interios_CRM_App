@@ -57,7 +57,12 @@ export default function BlockersPage() {
   });
 
   const raise = useMutation({
-    mutationFn: (data: RaiseForm) => apiClient.post('/blockers', { title: data.title, description: data.description, type: data.type, projectId: data.projectId }),
+    mutationFn: (data: RaiseForm) => apiClient.post('/blockers', {
+      title: data.title.trim(),
+      description: data.description.trim() || undefined,
+      type: data.type,
+      projectId: data.projectId,
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['blockers'] }); setShowForm(false); setForm(EMPTY_FORM); },
   });
 
@@ -138,7 +143,15 @@ export default function BlockersPage() {
               >
                 {raise.isPending ? 'Submitting…' : 'Submit Blocker'}
               </Button>
-              {raise.isError && <p className="text-sm text-red-600 mt-2">Something went wrong. Please try again.</p>}
+              {raise.isError && (
+                <p className="text-sm text-red-600 mt-2">
+                  {(() => {
+                    const msg = (raise.error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+                    if (!msg) return 'Failed to submit blocker. Check all required fields and try again.';
+                    return Array.isArray(msg) ? msg.join(', ') : msg;
+                  })()}
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { BlockersService } from './blockers.service';
+import { RaiseBlockerDto } from './dto/blocker.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -18,7 +19,7 @@ export class BlockersController {
 
   @Post()
   raise(
-    @Body() dto: { projectId: string; title: string; description: string; type: string },
+    @Body() dto: RaiseBlockerDto,
     @CurrentUser() actor: { _id: string; rolePermissions: string[] },
   ) {
     return this.service.raise(dto, actor);

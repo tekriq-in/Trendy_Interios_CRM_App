@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Department, DepartmentDocument } from './schemas/department.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
+import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
 
 @Injectable()
 export class DepartmentsService {
@@ -23,10 +24,7 @@ export class DepartmentsService {
     return dept;
   }
 
-  async create(
-    dto: { name: string; description?: string; order: number; defaultSlaHours?: number },
-    actorId: string,
-  ) {
+  async create(dto: CreateDepartmentDto, actorId: string) {
     const existing = await this.deptModel.findOne({ name: dto.name });
     if (existing) throw new ConflictException('department.name_taken');
 
@@ -49,12 +47,8 @@ export class DepartmentsService {
     return dept;
   }
 
-  async update(
-    id: string,
-    dto: { name?: string; description?: string; order?: number; defaultSlaHours?: number },
-    actorId: string,
-  ) {
-    const dept = await this.deptModel.findByIdAndUpdate(id, dto, { new: true });
+  async update(id: string, dto: UpdateDepartmentDto, actorId: string) {
+    const dept = await this.deptModel.findByIdAndUpdate(id, { $set: dto }, { new: true });
     if (!dept) throw new NotFoundException('department.not_found');
 
     await this.activityLog.record({
@@ -62,7 +56,7 @@ export class DepartmentsService {
       action: 'department.updated',
       entity: 'departments',
       entityId: id,
-      metadata: dto,
+      metadata: { ...dto },
     });
 
     return dept;

@@ -15,8 +15,8 @@ export class Blocker {
   @Prop({ required: true, trim: true })
   title: string;
 
-  @Prop({ required: true, trim: true })
-  description: string;
+  @Prop({ trim: true })
+  description?: string;
 
   @Prop({ type: String, enum: ['internal', 'client_side'], required: true })
   type: string;

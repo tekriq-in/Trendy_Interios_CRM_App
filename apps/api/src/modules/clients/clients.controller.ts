@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, ParseBoolPipe, DefaultValuePipe } from '@nestjs/common';
-import { ClientsService, CreateClientDto } from './clients.service';
+import { ClientsService, CreateClientDto, UpdateClientDto } from './clients.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -48,7 +48,7 @@ export class ClientsController {
   @RequirePermissions(PERMISSIONS.CLIENTS_EDIT)
   update(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateClientDto>,
+    @Body() dto: UpdateClientDto,
     @CurrentUser() actor: { _id: string },
   ) {
     return this.service.update(id, dto, actor._id);

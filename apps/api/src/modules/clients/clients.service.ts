@@ -3,18 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Client, ClientDocument } from './schemas/client.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
-
-export interface CreateClientDto {
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
-  leadSource?: string;
-  referredBy?: string;
-  notes?: string;
-  location?: { coordinates: [number, number] };
-  whatsappOptIn?: boolean;
-}
+import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+export { CreateClientDto, UpdateClientDto };
 
 @Injectable()
 export class ClientsService {

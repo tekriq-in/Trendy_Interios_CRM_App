@@ -28,7 +28,7 @@ export class BlockersService {
   }
 
   async raise(
-    dto: { projectId: string; title: string; description: string; type: string },
+    dto: { projectId: string; title: string; description?: string; type: string },
     actor: { _id: string; rolePermissions: string[] },
   ) {
     if (!actor.rolePermissions.includes(PERMISSIONS.BLOCKERS_RAISE)) {

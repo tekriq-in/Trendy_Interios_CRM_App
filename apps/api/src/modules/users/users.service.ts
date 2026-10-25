@@ -9,28 +9,8 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
-
-export interface CreateUserDto {
-  name: string;
-  email: string;
-  phone?: string;
-  password: string;
-  roleId: string;
-  departmentId?: string;
-  reportsToId?: string;
-  preferredLanguage?: 'en' | 'ta';
-}
-
-export interface UpdateUserDto {
-  name?: string;
-  phone?: string;
-  roleId?: string;
-  departmentId?: string;
-  reportsToId?: string;
-  preferredLanguage?: 'en' | 'ta';
-  isActive?: boolean;
-  fcmToken?: string;
-}
+import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+export { CreateUserDto, UpdateUserDto };
 
 @Injectable()
 export class UsersService {

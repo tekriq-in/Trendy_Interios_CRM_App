@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { DepartmentsService } from './departments.service';
+import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -25,10 +26,7 @@ export class DepartmentsController {
 
   @Post()
   @RequirePermissions(PERMISSIONS.DEPARTMENTS_CREATE)
-  create(
-    @Body() dto: { name: string; description?: string; order: number; defaultSlaHours?: number },
-    @CurrentUser() actor: { _id: string },
-  ) {
+  create(@Body() dto: CreateDepartmentDto, @CurrentUser() actor: { _id: string }) {
     return this.service.create(dto, actor._id);
   }
 
@@ -36,7 +34,7 @@ export class DepartmentsController {
   @RequirePermissions(PERMISSIONS.DEPARTMENTS_EDIT)
   update(
     @Param('id') id: string,
-    @Body() dto: { name?: string; description?: string; order?: number; defaultSlaHours?: number },
+    @Body() dto: UpdateDepartmentDto,
     @CurrentUser() actor: { _id: string },
   ) {
     return this.service.update(id, dto, actor._id);

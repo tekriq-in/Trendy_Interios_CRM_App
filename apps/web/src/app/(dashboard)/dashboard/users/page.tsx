@@ -61,6 +61,7 @@ export default function UsersPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
@@ -83,14 +84,11 @@ export default function UsersPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setConfirmDeactivate(null); },
   });
 
-  function set(key: keyof FormState, value: string) {
-    setForm((p) => ({ ...p, [key]: value }));
-  }
-
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setErr('');
+    setFieldErrors({});
     setShowModal(true);
   }
 
@@ -107,35 +105,62 @@ export default function UsersPage() {
       preferredLanguage: u.preferredLanguage ?? 'en',
     });
     setErr('');
+    setFieldErrors({});
     setShowModal(true);
   }
 
+  function set(key: keyof FormState, value: string) {
+    setForm((p) => ({ ...p, [key]: value }));
+    if (fieldErrors[key]) setFieldErrors((p) => ({ ...p, [key]: undefined }));
+  }
+
+  function validateForm(): boolean {
+    const errors: Partial<Record<keyof FormState, string>> = {};
+    if (!form.name.trim() || form.name.trim().length < 2) {
+      errors.name = 'Full name is required (at least 2 characters).';
+    }
+    if (!editing) {
+      if (!form.email.trim()) {
+        errors.email = 'Email is required.';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+        errors.email = 'Enter a valid email address.';
+      }
+      if (!form.password.trim()) {
+        errors.password = 'Password is required for new employees.';
+      } else if (form.password.length < 8) {
+        errors.password = 'Password must be at least 8 characters.';
+      } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.password)) {
+        errors.password = 'Password must include an uppercase letter, a lowercase letter, and a number.';
+      }
+    }
+    if (form.phone.trim() && !/^\+?[0-9\s\-()]{7,15}$/.test(form.phone.trim())) {
+      errors.phone = 'Enter a valid phone number (7–15 digits).';
+    }
+    if (!form.roleId) {
+      errors.roleId = 'Please select a role.';
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
   async function handleSave() {
-    if (!form.name.trim() || !form.email.trim() || !form.roleId) {
-      setErr('Name, email, and role are required.');
-      return;
-    }
-    if (!editing && !form.password.trim()) {
-      setErr('Password is required for new employees.');
-      return;
-    }
+    if (!validateForm()) return;
     setSaving(true);
     setErr('');
     try {
       if (editing) {
-        const payload: Record<string, unknown> = {
-          name: form.name,
-          phone: form.phone || undefined,
+        await apiClient.patch(`/users/${editing._id}`, {
+          name: form.name.trim(),
+          phone: form.phone.trim() || undefined,
           roleId: form.roleId,
           departmentId: form.departmentId || undefined,
           preferredLanguage: form.preferredLanguage,
-        };
-        await apiClient.patch(`/users/${editing._id}`, payload);
+        });
       } else {
         await apiClient.post('/users', {
-          name: form.name,
-          email: form.email,
-          phone: form.phone || undefined,
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          phone: form.phone.trim() || undefined,
           password: form.password,
           roleId: form.roleId,
           departmentId: form.departmentId || undefined,
@@ -145,15 +170,20 @@ export default function UsersPage() {
       qc.invalidateQueries({ queryKey: ['users'] });
       setShowModal(false);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setErr(msg ?? 'Failed to save.');
+      const raw = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setErr(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to save. Please try again.'));
     } finally {
       setSaving(false);
     }
   }
 
-  const inputCls = 'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  const inputCls = (field?: keyof FormState) =>
+    `w-full border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+      field && fieldErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-300'
+    }`;
   const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5';
+  const fieldErr = (field: keyof FormState) =>
+    fieldErrors[field] ? <p className="text-xs text-red-500 mt-1">{fieldErrors[field]}</p> : null;
 
   return (
     <div className="space-y-6">
@@ -285,30 +315,34 @@ export default function UsersPage() {
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className={labelCls}>Full name</label>
-                  <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ravi Kumar" className={inputCls} />
+                  <label className={labelCls}>Full name *</label>
+                  <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ravi Kumar" className={inputCls('name')} />
+                  {fieldErr('name')}
                 </div>
 
                 <div className="col-span-2">
-                  <label className={labelCls}>Email address</label>
-                  <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="ravi@trendyinteriors.in" disabled={!!editing} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-400`} />
+                  <label className={labelCls}>Email address *</label>
+                  <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="ravi@trendyinteriors.in" disabled={!!editing} className={`${inputCls('email')} disabled:bg-slate-50 disabled:text-slate-400`} />
+                  {fieldErr('email')}
                 </div>
 
                 {!editing && (
                   <div className="col-span-2">
-                    <label className={labelCls}>Password</label>
-                    <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="••••••••" className={inputCls} />
+                    <label className={labelCls}>Password *</label>
+                    <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Min 8 chars, uppercase, lowercase & number" className={inputCls('password')} />
+                    {fieldErr('password')}
                   </div>
                 )}
 
                 <div>
                   <label className={labelCls}>Phone</label>
-                  <input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+91 98765 43210" className={inputCls} />
+                  <input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+91 98765 43210" className={inputCls('phone')} />
+                  {fieldErr('phone')}
                 </div>
 
                 <div>
                   <label className={labelCls}>Language</label>
-                  <select value={form.preferredLanguage} onChange={(e) => set('preferredLanguage', e.target.value)} className={inputCls}>
+                  <select value={form.preferredLanguage} onChange={(e) => set('preferredLanguage', e.target.value)} className={inputCls()}>
                     <option value="en">English</option>
                     <option value="ta">Tamil</option>
                   </select>
@@ -316,15 +350,16 @@ export default function UsersPage() {
 
                 <div>
                   <label className={labelCls}>Role *</label>
-                  <select value={form.roleId} onChange={(e) => set('roleId', e.target.value)} className={inputCls}>
+                  <select value={form.roleId} onChange={(e) => set('roleId', e.target.value)} className={inputCls('roleId')}>
                     <option value="">Select role…</option>
                     {roles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
                   </select>
+                  {fieldErr('roleId')}
                 </div>
 
                 <div>
                   <label className={labelCls}>Department</label>
-                  <select value={form.departmentId} onChange={(e) => set('departmentId', e.target.value)} className={inputCls}>
+                  <select value={form.departmentId} onChange={(e) => set('departmentId', e.target.value)} className={inputCls()}>
                     <option value="">None</option>
                     {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                   </select>

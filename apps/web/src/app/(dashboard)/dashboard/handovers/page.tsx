@@ -138,7 +138,7 @@ export default function HandoversPage() {
             {h.rejectionReason && <div className="text-xs text-red-500 mt-1">Rejected: {h.rejectionReason}</div>}
             {(h.proofFiles ?? []).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {(h.proofFiles ?? []).map((f) => (
+                {(h.proofFiles ?? []).filter(Boolean).map((f) => (
                   <a
                     key={f._id}
                     href={f.driveLink}

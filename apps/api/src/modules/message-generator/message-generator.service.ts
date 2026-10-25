@@ -9,6 +9,11 @@ export interface GenerateMessageDto {
   language?: 'en' | 'ta';
 }
 
+export interface GenerateMessageResult {
+  message: string;
+  translatedNotes?: string;
+}
+
 const KIND_LABELS: Record<string, string> = {
   quotation: 'quotation ready for review',
   order_confirmation: 'order confirmed',
@@ -51,27 +56,51 @@ export class MessageGeneratorService {
     this.groqKey = config.get<string>('GROQ_API_KEY', '');
   }
 
-  async generate(dto: GenerateMessageDto): Promise<string> {
+  async generate(dto: GenerateMessageDto): Promise<GenerateMessageResult> {
     const prompt = buildPrompt(dto);
+    let message: string;
 
     if (this.provider === 'gemini' && this.geminiKey) {
-      try { return await this.callGemini(prompt); } catch (e) {
-        this.logger.warn(`Gemini failed, falling back to mock: ${(e as Error).message}`);
+      try { message = await this.callGemini(prompt); }
+      catch (e) {
+        this.logger.warn(`Gemini failed, falling back: ${(e as Error).message}`);
+        message = this.mockMessage(dto);
       }
+    } else if (this.provider === 'groq' && this.groqKey) {
+      try { message = await this.callGroq(prompt); }
+      catch (e) {
+        this.logger.warn(`Groq failed, falling back: ${(e as Error).message}`);
+        message = this.mockMessage(dto);
+      }
+    } else if (this.geminiKey && this.provider !== 'mock') {
+      try { message = await this.callGemini(prompt); }
+      catch { message = this.mockMessage(dto); }
+    } else {
+      message = this.mockMessage(dto);
     }
 
+    if (dto.language !== 'ta') {
+      return { message };
+    }
+
+    const translatedNotes = await this.translateNotes(dto.rawNotes);
+    return { message, translatedNotes };
+  }
+
+  private async translateNotes(text: string): Promise<string> {
+    const prompt = `Translate the following interior design project staff note from English to Tamil. Return only the translated text, nothing else.\n\n${text}`;
+
+    if (this.provider === 'gemini' && this.geminiKey) {
+      try { return await this.callGemini(prompt); } catch { /* fall through */ }
+    }
     if (this.provider === 'groq' && this.groqKey) {
-      try { return await this.callGroq(prompt); } catch (e) {
-        this.logger.warn(`Groq failed, falling back to mock: ${(e as Error).message}`);
-      }
+      try { return await this.callGroq(prompt); } catch { /* fall through */ }
     }
-
-    // auto-fallback to Gemini if key present regardless of provider setting
     if (this.geminiKey && this.provider !== 'mock') {
       try { return await this.callGemini(prompt); } catch { /* fall through */ }
     }
-
-    return this.mockMessage(dto);
+    // mock: return text as-is with a Tamil marker so the UI still shows something
+    return `(தமிழ்) ${text}`;
   }
 
   private async callGemini(prompt: string): Promise<string> {
@@ -121,7 +150,7 @@ export class MessageGeneratorService {
     return data.choices[0].message.content.trim();
   }
 
-  private mockMessage(dto: GenerateMessageDto): string {
+  private mockMessage(dto: GenerateMessageDto): string {  // returns only the WhatsApp message string
     const kindLabel = KIND_LABELS[dto.updateKind] ?? dto.updateKind;
     if (dto.language === 'ta') {
       return `அன்புள்ள ${dto.clientName} அவர்களே,

@@ -196,6 +196,14 @@ export class ProjectsService {
     if (!project) throw new NotFoundException('project.not_found');
     if (project.status !== 'active') throw new BadRequestException('project.not_active');
 
+    const nextDept = await this.projectModel.db
+      .model('Department')
+      .findById(nextStageId)
+      .select('isActive')
+      .lean() as { isActive?: boolean } | null;
+    if (!nextDept) throw new NotFoundException('department.not_found');
+    if (nextDept.isActive === false) throw new BadRequestException('department.deactivated');
+
     const now = new Date();
     const currentIdx = project.stageHistory.findIndex(
       (s) => s.stage.toString() === project.currentStage?.toString() && !s.completedAt,

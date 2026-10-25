@@ -49,6 +49,20 @@ export class ClientsService {
     return client;
   }
 
+  async reactivate(id: string, actorId: string) {
+    const client = await this.clientModel.findByIdAndUpdate(id, { isActive: true }, { new: true });
+    if (!client) throw new NotFoundException('client.not_found');
+
+    await this.activityLog.record({
+      actor: actorId,
+      action: 'client.reactivated',
+      entity: 'clients',
+      entityId: id,
+    });
+
+    return client;
+  }
+
   async findById(id: string) {
     const client = await this.clientModel.findById(id).lean();
     if (!client) throw new NotFoundException('client.not_found');

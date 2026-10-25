@@ -17,13 +17,51 @@ export class ChatGroupsService {
   ) {}
 
   async findForUser(userId: string): Promise<(ChatGroupDocument & { lastMessage?: { body: string; senderName: string; createdAt: string } | null })[]> {
-    const groups = await this.groupModel
-      .find({ members: new Types.ObjectId(userId), isActive: true })
-      .populate('members', 'name email')
-      .populate('projectRef', 'title')
-      .populate('departmentRef', 'name')
-      .sort({ updatedAt: -1 })
-      .lean() as unknown as ChatGroupDocument[];
+    // Use aggregation so member names are always populated regardless of lean/populate quirks
+    const groups = await this.groupModel.aggregate([
+      { $match: { members: new Types.ObjectId(userId), isActive: true } },
+      { $sort: { updatedAt: -1 } },
+      {
+        $lookup: {
+          from: 'users',
+          let: { mids: '$members' },
+          pipeline: [
+            { $match: { $expr: { $in: ['$_id', '$$mids'] } } },
+            { $project: { _id: 1, name: 1, email: 1 } },
+          ],
+          as: 'members',
+        },
+      },
+      {
+        $lookup: {
+          from: 'projects',
+          let: { pid: '$projectRef' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$pid'] } } },
+            { $project: { _id: 1, title: 1 } },
+          ],
+          as: 'projectRefArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'departments',
+          let: { did: '$departmentRef' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$did'] } } },
+            { $project: { _id: 1, name: 1 } },
+          ],
+          as: 'departmentRefArr',
+        },
+      },
+      {
+        $addFields: {
+          projectRef: { $arrayElemAt: ['$projectRefArr', 0] },
+          departmentRef: { $arrayElemAt: ['$departmentRefArr', 0] },
+        },
+      },
+      { $unset: ['projectRefArr', 'departmentRefArr'] },
+    ]) as unknown as ChatGroupDocument[];
 
     // Attach the most recent message per group in one bulk query
     const channels = groups.map((g) => g.channel);
@@ -31,17 +69,53 @@ export class ChatGroupsService {
       .aggregate([
         { $match: { channel: { $in: channels } } },
         { $sort: { createdAt: -1 } },
-        { $group: { _id: '$channel', body: { $first: '$body' }, sender: { $first: '$sender' }, createdAt: { $first: '$createdAt' } } },
-        { $lookup: { from: 'users', localField: 'sender', foreignField: '_id', as: 'senderUser' } },
-        { $project: { _id: 1, body: 1, createdAt: 1, senderName: { $ifNull: [{ $arrayElemAt: ['$senderUser.name', 0] }, 'Unknown'] } } },
+        { $group: { _id: '$channel', body: { $first: '$body' }, sender: { $first: '$sender' }, senderId: { $first: { $toString: '$sender' } }, createdAt: { $first: '$createdAt' } } },
+        // Pipeline lookup handles both ObjectId and string sender values
+        {
+          $lookup: {
+            from: 'users',
+            let: { sid: '$sender' },
+            pipeline: [
+              { $match: { $expr: { $eq: ['$_id', '$$sid'] } } },
+              { $project: { name: 1, _id: 0 } },
+            ],
+            as: 'senderUser',
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            body: 1,
+            createdAt: 1,
+            senderId: 1,
+            senderName: {
+              $ifNull: [{ $arrayElemAt: ['$senderUser.name', 0] }, { $ifNull: ['$senderId', 'Unknown'] }],
+            },
+          },
+        },
       ]);
 
-    const lastMsgMap = new Map(lastMessages.map((m: { _id: string; body: string; senderName: string; createdAt: Date }) => [
+    const lastMsgMap = new Map(lastMessages.map((m: { _id: string; body: string; senderName: string; senderId: string; createdAt: Date }) => [
       m._id,
-      { body: m.body, senderName: m.senderName, createdAt: m.createdAt?.toISOString?.() ?? String(m.createdAt) },
+      {
+        body: m.body,
+        senderName: m.senderId === userId ? 'You' : (m.senderName || 'Unknown'),
+        createdAt: m.createdAt?.toISOString?.() ?? String(m.createdAt),
+      },
     ]));
 
-    return groups.map((g) => Object.assign(g, { lastMessage: lastMsgMap.get(g.channel) ?? null }));
+    return groups.map((g) => {
+      let displayName: string | undefined;
+      if (g.type === 'individual') {
+        const members = g.members as unknown as Array<{ _id: unknown; name?: string }>;
+        const other = members.find((m) => String(m._id) !== userId);
+        displayName = other?.name ?? members[0]?.name;
+      }
+      return Object.assign(g, {
+        lastMessage: lastMsgMap.get(g.channel) ?? null,
+        ...(displayName ? { displayName } : {}),
+      });
+    });
   }
 
   async create(dto: CreateGroupDto, creatorId: string): Promise<ChatGroupDocument> {
@@ -65,14 +139,16 @@ export class ChatGroupsService {
     const existing = await this.groupModel.findOne({ channel }).populate('members', 'name email');
     if (existing) return existing as unknown as ChatGroupDocument;
 
-    return this.groupModel.create({
+    const created = await this.groupModel.create({
       name: `DM`,
       type: 'individual' as ChatGroupType,
       channel,
       members: [new Types.ObjectId(userId1), new Types.ObjectId(userId2)],
       isAutoCreated: true,
       createdBy: new Types.ObjectId(userId1),
-    }) as unknown as ChatGroupDocument;
+    });
+    await created.populate('members', 'name email');
+    return created as unknown as ChatGroupDocument;
   }
 
   async autoCreateForProject(

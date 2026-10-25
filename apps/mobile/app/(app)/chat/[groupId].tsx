@@ -29,8 +29,9 @@ import type { RootState } from '../../../src/store';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function initials(name: string) {
-  return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+function initials(name?: string) {
+  if (!name) return '?';
+  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase() || '?';
 }
 
 function formatTime(iso: string) {
@@ -48,8 +49,8 @@ function formatDateHeader(iso: string) {
 }
 
 function senderName(msg: ChatMessage): string {
-  if (typeof msg.sender === 'object' && msg.sender) return msg.sender.name;
-  return 'Unknown';
+  if (typeof msg.sender === 'object' && msg.sender && msg.sender.name) return msg.sender.name;
+  return '';
 }
 
 function senderId(msg: ChatMessage): string {

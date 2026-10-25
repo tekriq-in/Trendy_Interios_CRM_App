@@ -27,13 +27,9 @@ import type { RootState } from '../../../src/store';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function initials(name: string) {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+function initials(name?: string) {
+  if (!name) return '?';
+  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase() || '?';
 }
 
 function relativeTime(iso?: string) {
@@ -107,7 +103,7 @@ function NewChatModal({ visible, onClose, currentUserId }: NewChatModalProps) {
       resetAndClose();
       router.push({
         pathname: '/(app)/chat/[groupId]',
-        params: { groupId: group._id, channel: group.channel, name: group.members.find(m => m._id !== currentUserId)?.name ?? 'Chat', type: 'individual' },
+        params: { groupId: group._id, channel: group.channel, name: group.members.find(m => String(m._id) !== currentUserId)?.name ?? 'Chat', type: 'individual' },
       });
     } catch {}
     setCreating(false);
@@ -276,7 +272,7 @@ function ConversationRow({ group, unread, currentUserId, onPress }: Conversation
   const iconName = TYPE_ICONS[group.type] as keyof typeof Ionicons.glyphMap;
   const displayName =
     group.type === 'individual'
-      ? group.members.find((m) => m._id !== currentUserId)?.name ?? group.name
+      ? group.displayName ?? group.name
       : group.name;
 
   return (
@@ -345,7 +341,7 @@ export default function ChatListScreen() {
 
   function navigateToThread(group: ChatGroup) {
     const name = group.type === 'individual'
-      ? group.members.find((m) => m._id !== userId)?.name ?? group.name
+      ? group.displayName ?? group.name
       : group.name;
     router.push({
       pathname: '/(app)/chat/[groupId]',

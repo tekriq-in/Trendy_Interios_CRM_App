@@ -23,6 +23,14 @@ import { PERMISSIONS } from '@ti/shared';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  // Lightweight endpoint — any logged-in user can fetch colleagues for chat
+  @Get('for-chat')
+  findForChat() {
+    return this.usersService.findAll({ isActive: true }).then((users) =>
+      users.map((u) => ({ _id: u._id, name: u.name, email: u.email })),
+    );
+  }
+
   @Get()
   @RequirePermissions(PERMISSIONS.USERS_READ)
   findAll(@Query('departmentId') departmentId?: string, @Query('isActive') isActive?: string) {

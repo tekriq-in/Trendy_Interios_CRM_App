@@ -57,7 +57,7 @@ export class DocumentsService {
 
   async findByProject(projectId: string) {
     return this.docModel
-      .find({ project: projectId, isDeleted: { $ne: true } })
+      .find({ project: new Types.ObjectId(projectId), isDeleted: { $ne: true } })
       .sort({ createdAt: -1 })
       .lean();
   }

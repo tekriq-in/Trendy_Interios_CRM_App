@@ -16,6 +16,15 @@ import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
 import { Toast, useToast } from '../src/components/Toast';
 
+function decodeJwtSub(token: string): string | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginScreen() {
   const { t } = useTranslation();
   const dispatch = useDispatch();
@@ -42,7 +51,7 @@ export default function LoginScreen() {
         setMfaRequired(true);
         setUserId(res.data.userId!);
       } else {
-        dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken! }));
+        dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken!, userId: decodeJwtSub(res.data.accessToken!) ?? undefined }));
         // expo-notifications is native-only — skip on web
         if (Platform.OS !== 'web') {
           import('../src/services/notifications.service').then(({ registerForPushNotifications }) => {
@@ -78,7 +87,7 @@ export default function LoginScreen() {
         '/auth/mfa/verify',
         { userId, token: mfaToken },
       );
-      dispatch(setAuth({ accessToken: res.data.accessToken, refreshToken: res.data.refreshToken }));
+      dispatch(setAuth({ accessToken: res.data.accessToken, refreshToken: res.data.refreshToken, userId: decodeJwtSub(res.data.accessToken) ?? undefined }));
       router.replace('/(app)/projects');
     } catch {
       showToast('Invalid MFA token. Please try again.', 'error');

@@ -26,6 +26,12 @@ export class ClientsController {
     return this.service.deactivate(id, actor._id);
   }
 
+  @Patch(':id/reactivate')
+  @RequirePermissions(PERMISSIONS.CLIENTS_EDIT)
+  reactivate(@Param('id') id: string, @CurrentUser() actor: { _id: string }) {
+    return this.service.reactivate(id, actor._id);
+  }
+
   @Get(':id')
   @RequirePermissions(PERMISSIONS.CLIENTS_READ)
   findOne(@Param('id') id: string) {

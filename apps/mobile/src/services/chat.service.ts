@@ -43,6 +43,6 @@ export async function removeMember(groupId: string, userId: string): Promise<voi
 }
 
 export async function fetchUsers(): Promise<{ _id: string; name: string; email: string }[]> {
-  const res = await api.get<{ _id: string; name: string; email: string }[]>('/users');
+  const res = await api.get<{ _id: string; name: string; email: string }[]>('/users/for-chat');
   return res.data;
 }

@@ -6,7 +6,7 @@ import { Approval, ApprovalDocument } from './schemas/approval.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 import { WHATSAPP_SERVICE, IWhatsAppService } from '../whatsapp/whatsapp.interface';
-import { MessageGeneratorService, GenerateMessageDto } from '../message-generator/message-generator.service';
+import { MessageGeneratorService, GenerateMessageDto, GenerateMessageResult } from '../message-generator/message-generator.service';
 
 @Injectable()
 export class ApprovalsService {
@@ -19,14 +19,62 @@ export class ApprovalsService {
   ) {}
 
   findAll() {
-    return this.approvalModel
-      .find()
-      .populate('project', 'title')
-      .populate('requestedBy', 'name email')
-      .populate('approver', 'name')
-      .populate('linkedDocument', 'fileName driveLink mimeType type')
-      .sort({ createdAt: -1 })
-      .lean();
+    return this.approvalModel.aggregate([
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: 'projects',
+          let: { pid: '$project' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$pid'] } } },
+            { $project: { _id: 1, title: 1 } },
+          ],
+          as: 'projectArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          let: { uid: '$requestedBy' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$uid'] } } },
+            { $project: { _id: 1, name: 1, email: 1 } },
+          ],
+          as: 'requestedByArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          let: { aid: '$approver' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$aid'] } } },
+            { $project: { _id: 1, name: 1 } },
+          ],
+          as: 'approverArr',
+        },
+      },
+      {
+        $lookup: {
+          from: 'tidocuments',
+          let: { did: '$linkedDocument' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$did'] } } },
+            { $project: { _id: 1, fileName: 1, driveLink: 1, mimeType: 1, type: 1 } },
+          ],
+          as: 'linkedDocumentArr',
+        },
+      },
+      {
+        $addFields: {
+          project: { $arrayElemAt: ['$projectArr', 0] },
+          requestedBy: { $arrayElemAt: ['$requestedByArr', 0] },
+          approver: { $arrayElemAt: ['$approverArr', 0] },
+          linkedDocument: { $arrayElemAt: ['$linkedDocumentArr', 0] },
+        },
+      },
+      { $unset: ['projectArr', 'requestedByArr', 'approverArr', 'linkedDocumentArr'] },
+    ]);
   }
 
   findPending() {
@@ -38,9 +86,8 @@ export class ApprovalsService {
       .lean();
   }
 
-  async generateMessage(dto: GenerateMessageDto) {
-    const message = await this.messageGenerator.generate(dto);
-    return { message };
+  async generateMessage(dto: GenerateMessageDto): Promise<GenerateMessageResult> {
+    return this.messageGenerator.generate(dto);
   }
 
   async request(

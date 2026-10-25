@@ -29,7 +29,7 @@ function AppTabs() {
       }}
     >
       <Tabs.Screen
-        name="projects/index"
+        name="projects"
         options={{
           title: 'Projects',
           tabBarIcon: ({ color, size }) => (
@@ -47,7 +47,7 @@ function AppTabs() {
         }}
       />
       <Tabs.Screen
-        name="chat/index"
+        name="chat"
         options={{
           title: 'Chat',
           tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
@@ -74,9 +74,6 @@ function AppTabs() {
           ),
         }}
       />
-      <Tabs.Screen name="projects/[id]/index" options={{ href: null }} />
-      <Tabs.Screen name="projects/[id]/chat" options={{ href: null }} />
-      <Tabs.Screen name="chat/[groupId]" options={{ href: null }} />
     </Tabs>
   );
 }

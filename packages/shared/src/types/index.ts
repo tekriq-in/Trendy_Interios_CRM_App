@@ -222,6 +222,7 @@ export interface UserSummary {
 
 export interface ChatGroup extends BaseEntity {
   name: string;
+  displayName?: string;
   type: ChatGroupType;
   channel: string;
   members: UserSummary[];

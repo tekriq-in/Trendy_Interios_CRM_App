@@ -69,6 +69,7 @@ export default function ApprovalsPage() {
   });
   const [generating, setGenerating] = useState(false);
   const [generatedMsg, setGeneratedMsg] = useState('');
+  const [translatedNotes, setTranslatedNotes] = useState('');
   const [reqSaving, setReqSaving] = useState(false);
   const [reqErr, setReqErr] = useState('');
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -76,9 +77,10 @@ export default function ApprovalsPage() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: approvals = [], isLoading } = useQuery<Approval[]>({
+  const { data: approvals = [], isLoading, isError } = useQuery<Approval[]>({
     queryKey: ['approvals'],
     queryFn: () => apiClient.get('/approvals').then(r => r.data),
+    retry: 1,
   });
 
   const { data: projects = [] } = useQuery<Array<{ _id: string; title: string }>>({
@@ -131,7 +133,7 @@ export default function ApprovalsPage() {
     const proj = projects.find(p => p._id === reqForm.projectId);
     setGenerating(true); setReqErr('');
     try {
-      const res = await apiClient.post<{ message: string }>('/approvals/generate-message', {
+      const res = await apiClient.post<{ message: string; translatedNotes?: string }>('/approvals/generate-message', {
         rawNotes: reqForm.rawNotes,
         clientName: 'Valued Client',
         projectTitle: proj?.title ?? 'your project',
@@ -139,6 +141,7 @@ export default function ApprovalsPage() {
         language: reqForm.language,
       });
       setGeneratedMsg(res.data.message);
+      setTranslatedNotes(res.data.translatedNotes ?? '');
     } catch {
       setReqErr('Failed to generate message. You can type one manually.');
     } finally { setGenerating(false); }
@@ -154,7 +157,7 @@ export default function ApprovalsPage() {
       await apiClient.post('/approvals', {
         projectId: reqForm.projectId,
         kind: reqForm.kind,
-        rawNotes: reqForm.rawNotes,
+        rawNotes: reqForm.language === 'ta' && translatedNotes ? translatedNotes : reqForm.rawNotes,
         generatedMessage: generatedMsg,
         ...(uploadedDocId ? { linkedDocumentId: uploadedDocId } : {}),
       });
@@ -163,6 +166,7 @@ export default function ApprovalsPage() {
       setShowRequest(false);
       setReqForm({ projectId: '', kind: 'client_update', rawNotes: '', language: 'en' });
       setGeneratedMsg('');
+      setTranslatedNotes('');
       setAttachedFile(null);
       setUploadedDocId(null);
     } catch (e: unknown) {
@@ -195,6 +199,11 @@ export default function ApprovalsPage() {
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      ) : isError ? (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-6 text-center">
+          <p className="text-sm font-semibold text-red-700">Failed to load approvals.</p>
+          <p className="text-xs text-red-500 mt-1">You may not have permission to view this page, or the server returned an error.</p>
         </div>
       ) : (
         <>
@@ -390,7 +399,7 @@ export default function ApprovalsPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mb-8">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <h2 className="text-lg font-semibold text-slate-900">Request Approval</h2>
-              <button onClick={() => setShowRequest(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
+              <button onClick={() => { setShowRequest(false); setTranslatedNotes(''); }} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -433,11 +442,22 @@ export default function ApprovalsPage() {
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Staff notes (raw)</label>
                     <textarea
                       value={reqForm.rawNotes}
-                      onChange={e => setReqForm(p => ({ ...p, rawNotes: e.target.value }))}
+                      onChange={e => { setReqForm(p => ({ ...p, rawNotes: e.target.value })); setTranslatedNotes(''); }}
                       rows={3}
                       placeholder="e.g. Tiles arrived, work resumes Thursday, slight 2-day delay from supplier"
                       className={`${inputCls} resize-none`}
                     />
+                    {reqForm.language === 'ta' && translatedNotes && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-medium text-slate-500">Tamil translation (stored as staff notes):</p>
+                        <textarea
+                          value={translatedNotes}
+                          onChange={e => setTranslatedNotes(e.target.value)}
+                          rows={3}
+                          className={`${inputCls} resize-none bg-amber-50 border-amber-200 text-slate-800`}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3">

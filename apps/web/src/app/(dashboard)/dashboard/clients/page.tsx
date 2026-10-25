@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
-import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2, UserX } from 'lucide-react';
+import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2, UserX, UserCheck } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 interface Client {
@@ -42,6 +42,11 @@ export default function ClientsPage() {
 
   const deactivateMut = useMutation({
     mutationFn: (id: string) => apiClient.patch(`/clients/${id}/deactivate`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+
+  const reactivateMut = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/clients/${id}/reactivate`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
   });
 
@@ -206,22 +211,30 @@ export default function ClientsPage() {
                   <button onClick={() => openEdit(c)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  {c.isActive !== false && (
+                  {c.isActive !== false ? (
+                    <>
+                      <button
+                        onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                        title="Create project for this client"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deactivateMut.mutate(c._id)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Deactivate client"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
+                      onClick={() => reactivateMut.mutate(c._id)}
                       className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                      title="Create project for this client"
+                      title="Reactivate client"
                     >
-                      <FolderPlus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {c.isActive !== false && (
-                    <button
-                      onClick={() => deactivateMut.mutate(c._id)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Deactivate client"
-                    >
-                      <UserX className="w-3.5 h-3.5" />
+                      <UserCheck className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>

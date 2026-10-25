@@ -32,7 +32,7 @@ export class Approval {
   @Prop({ trim: true })
   rejectionReason: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Document' })
+  @Prop({ type: Types.ObjectId, ref: 'TIDocument' })
   linkedDocument: Types.ObjectId;
 
   @Prop({ trim: true })

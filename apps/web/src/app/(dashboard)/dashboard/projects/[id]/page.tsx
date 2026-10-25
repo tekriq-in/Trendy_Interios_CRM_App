@@ -80,7 +80,7 @@ export default function ProjectDetailPage({ params }: Props) {
     queryFn: () =>
       apiClient.get('/documents', { params: { projectId: id } }).then((r) =>
         (r.data as TIDocument[]).filter((d) => d.type === 'drawing_2d' || d.type === 'drawing_3d'),
-      ).catch(() => [] as TIDocument[]),
+      ),
   });
 
   const { data: allUsers = [] } = useQuery<TeamMember[]>({
@@ -158,7 +158,15 @@ export default function ProjectDetailPage({ params }: Props) {
 
   const sortedDepts = [...departments].sort((a, b) => a.order - b.order);
   const currentIdx = sortedDepts.findIndex((d) => d._id === currentStageId);
-  const nextStage = currentIdx >= 0 && currentIdx < sortedDepts.length - 1 ? sortedDepts[currentIdx + 1] : null;
+
+  // When current stage is deactivated it won't appear in sortedDepts (active only).
+  // Fall back to the first active dept whose order is greater than the current stage's order.
+  const currentStageOrder = typeof project.currentStage === 'object' ? project.currentStage?.order ?? -1 : -1;
+  const nextStage: Dept | null = currentIdx >= 0 && currentIdx < sortedDepts.length - 1
+    ? sortedDepts[currentIdx + 1]
+    : currentIdx === -1 && currentStageOrder >= 0
+      ? sortedDepts.find((d) => d.order > currentStageOrder) ?? null
+      : null;
 
   const teamIds = new Set((project.assignedTeam ?? []).map((m) => m._id));
 
@@ -171,7 +179,6 @@ export default function ProjectDetailPage({ params }: Props) {
       fd.append('type', drawingType);
       await apiClient.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       await qc.invalidateQueries({ queryKey: ['drawings', id] });
-      await qc.refetchQueries({ queryKey: ['drawings', id] });
       toast('success', 'Drawing uploaded.');
     } catch {
       setDrawingErr('Upload failed. Please try again.');

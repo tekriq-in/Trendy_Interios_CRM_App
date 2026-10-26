@@ -74,7 +74,8 @@ export class AuthService {
     await this.userModel.findByIdAndUpdate(userId, { mfaSecret: secret.base32 });
 
     const qrUrl = await qrcode.toDataURL(secret.otpauth_url!);
-    return { secret: secret.base32, qrCode: qrUrl };
+    // Return only the QR code — never expose the raw TOTP secret over the wire
+    return { qrCode: qrUrl };
   }
 
   async confirmMfaSetup(userId: string, token: string) {
@@ -138,8 +139,9 @@ export class AuthService {
       },
     );
 
+    // Keep only the 10 most recent refresh tokens to prevent unbounded array growth
     await this.userModel.findByIdAndUpdate(sub, {
-      $push: { refreshTokens: refreshToken },
+      $push: { refreshTokens: { $each: [refreshToken], $slice: -10 } },
     });
 
     return { accessToken, refreshToken };

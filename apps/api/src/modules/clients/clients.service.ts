@@ -17,9 +17,11 @@ export class ClientsService {
     const filter: Record<string, unknown> = {};
     if (!query.includeInactive) filter.isActive = { $ne: false };
     if (query.search) {
+      // Escape regex special chars to prevent ReDoS
+      const escaped = query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter['$or'] = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { phone: { $regex: query.search, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
+        { phone: { $regex: escaped, $options: 'i' } },
       ];
     }
     return this.clientModel.find(filter).sort({ createdAt: -1 }).lean();

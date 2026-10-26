@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Param, Query, Body, UseGuards, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Query, Body, Headers, RawBodyRequest, Req, UseGuards, ForbiddenException, Logger } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ConfigService } from '@nestjs/config';
 import { WebhooksService } from './webhooks.service';
@@ -29,7 +30,23 @@ export class WebhooksController {
 
   /** Inbound messages and delivery status updates from Meta */
   @Post('whatsapp')
-  async receive(@Body() body: Record<string, unknown>): Promise<{ status: string }> {
+  async receive(
+    @Headers('x-hub-signature-256') sig: string,
+    @Req() req: RawBodyRequest<{ rawBody?: Buffer }>,
+    @Body() body: Record<string, unknown>,
+  ): Promise<{ status: string }> {
+    const appSecret = this.config.get<string>('META_APP_SECRET');
+    if (appSecret) {
+      if (!sig) throw new ForbiddenException('Missing signature');
+      const rawBody = req.rawBody;
+      if (!rawBody) throw new ForbiddenException('Raw body unavailable');
+      const expected = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex');
+      const sigBuf = Buffer.from(sig);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+        throw new ForbiddenException('Invalid signature');
+      }
+    }
     await this.webhooksService.handleInbound(body as never);
     return { status: 'ok' };
   }

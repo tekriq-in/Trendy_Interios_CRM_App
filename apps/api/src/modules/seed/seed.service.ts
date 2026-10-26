@@ -27,7 +27,10 @@ export class SeedService implements OnApplicationBootstrap {
     await this.seedDepartments();
     await this.seedRoles();
     await this.seedMdUser();
-    await this.seedDemoUsers();
+    // Demo users only in non-production or when explicitly enabled
+    if (process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_USERS === 'true') {
+      await this.seedDemoUsers();
+    }
     this.logger.log('Seed complete');
   }
 

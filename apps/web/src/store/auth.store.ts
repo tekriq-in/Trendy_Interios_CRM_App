@@ -4,6 +4,8 @@ import { persist } from 'zustand/middleware';
 interface UserInfo { id?: string; name: string; email: string; role: string; initials: string; }
 
 interface AuthState {
+  // Tokens live in memory only — never serialised to localStorage (XSS protection).
+  // Only non-sensitive user info is persisted.
   accessToken: string | null;
   refreshToken: string | null;
   user: UserInfo | null;
@@ -21,6 +23,10 @@ export const useAuthStore = create<AuthState>()(
         set({ accessToken, refreshToken, ...(user ? { user } : {}) }),
       clearAuth: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
-    { name: 'ti-auth' },
+    {
+      name: 'ti-auth',
+      // Persist only user profile — tokens stay in memory and are re-fetched on tab reload
+      partialize: (state) => ({ user: state.user }),
+    },
   ),
 );

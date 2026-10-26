@@ -29,6 +29,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { ChatGroupsModule } from './modules/chat-groups/chat-groups.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     WhatsAppModule,
     ChatGroupsModule,
     WebhooksModule,
+    HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

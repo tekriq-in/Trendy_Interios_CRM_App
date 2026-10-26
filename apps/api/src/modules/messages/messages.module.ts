@@ -9,6 +9,7 @@ import { ChatGroupsModule } from '../chat-groups/chat-groups.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Role, RoleSchema } from '../roles/schemas/role.schema';
+import { ChatGroup, ChatGroupSchema } from '../chat-groups/chat-group.schema';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { Role, RoleSchema } from '../roles/schemas/role.schema';
       { name: Message.name, schema: MessageSchema },
       { name: User.name, schema: UserSchema },
       { name: Role.name, schema: RoleSchema },
+      { name: ChatGroup.name, schema: ChatGroupSchema },
     ]),
     JwtModule.registerAsync({
       inject: [ConfigService],

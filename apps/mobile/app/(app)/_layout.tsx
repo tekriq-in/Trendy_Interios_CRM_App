@@ -6,6 +6,7 @@ import { Redirect } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
 import { syncOfflineQueue } from '../../src/services/sync.service';
+import { registerForPushNotifications } from '../../src/services/notifications.service';
 import type { RootState } from '../../src/store';
 import { SocketProvider, useSocket } from '../../src/context/socket.context';
 
@@ -82,6 +83,10 @@ export default function AppLayout() {
   const token = useSelector((s: RootState) => s.auth.accessToken);
   const wasConnected = useRef<boolean | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(true);
+
+  useEffect(() => {
+    registerForPushNotifications().catch(() => {});
+  }, []);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {

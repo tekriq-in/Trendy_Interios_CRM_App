@@ -161,9 +161,14 @@ export default function ProjectDetailScreen() {
           <Text style={s.projectTitle}>{project?.title ?? '…'}</Text>
           {currentDept && <Text style={s.stageName}>{currentDept.name}</Text>}
         </View>
-        <TouchableOpacity style={s.chatBtn} onPress={() => router.push(`/projects/${id}/chat` as never)}>
-          <Text style={s.chatBtnText}>💬 Chat</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8, flexShrink: 0 }}>
+          <TouchableOpacity style={s.chatBtn} onPress={() => router.push(`/projects/${id}/purchase-items` as never)}>
+            <Text style={s.chatBtnText}>🛒 Items</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.chatBtn} onPress={() => router.push(`/projects/${id}/chat` as never)}>
+            <Text style={s.chatBtnText}>💬 Chat</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Progress bar */}

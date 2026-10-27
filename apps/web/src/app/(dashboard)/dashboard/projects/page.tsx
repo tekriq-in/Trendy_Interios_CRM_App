@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Plus, X, FolderKanban } from 'lucide-react';
+import { Plus, X, FolderKanban, LayoutList, Columns3 } from 'lucide-react';
 
 interface Client { _id: string; name: string; isActive?: boolean; }
 interface Dept { _id: string; name: string; order: number; }
@@ -26,9 +26,12 @@ const STATUS_COLORS: Record<string, string> = {
 const EMPTY_FORM = { clientId: '', title: '', firstStageId: '', targetDate: '' };
 type FormState = typeof EMPTY_FORM;
 
+type ViewMode = 'list' | 'board';
+
 export default function ProjectsPage() {
   const router = useRouter();
   const qc = useQueryClient();
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -123,6 +126,23 @@ export default function ProjectsPage() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-2.5 py-2 transition-colors ${viewMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              title="List view"
+            >
+              <LayoutList className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`px-2.5 py-2 transition-colors ${viewMode === 'board' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              title="Board view"
+            >
+              <Columns3 className="w-4 h-4" />
+            </button>
+          </div>
           <button onClick={() => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
             <Plus className="w-4 h-4" /> New Project
           </button>
@@ -142,7 +162,7 @@ export default function ProjectsPage() {
             action={{ label: '+ New Project', onClick: () => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); } }}
           />
         </div>
-      ) : (
+      ) : viewMode === 'list' ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -193,6 +213,67 @@ export default function ProjectsPage() {
             </tbody>
           </table>
         </div>
+      ) : (
+        /* Board / Kanban view — grouped by current stage */
+        (() => {
+          const stageGroups = new Map<string, { label: string; projects: Project[] }>();
+          const noStage = { label: 'No Stage', projects: [] as Project[] };
+
+          for (const p of filteredProjects) {
+            const stageName = typeof p.currentStage === 'object' && p.currentStage ? p.currentStage.name : null;
+            if (!stageName) { noStage.projects.push(p); continue; }
+            if (!stageGroups.has(stageName)) stageGroups.set(stageName, { label: stageName, projects: [] });
+            stageGroups.get(stageName)!.projects.push(p);
+          }
+
+          const columns = [...sortedDepts.map((d) => stageGroups.get(d.name) ?? { label: d.name, projects: [] })];
+          if (noStage.projects.length > 0) columns.push(noStage);
+
+          return (
+            <div className="overflow-x-auto pb-4">
+              <div className="flex gap-4 min-w-max items-start">
+                {columns.filter((col) => col.projects.length > 0 || sortedDepts.some((d) => d.name === col.label)).map((col) => (
+                  <div key={col.label} className="w-64 shrink-0">
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{col.label}</span>
+                      <span className="text-xs bg-slate-100 text-slate-500 font-semibold rounded-full px-1.5 py-0.5">{col.projects.length}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {col.projects.length === 0 && (
+                        <div className="border-2 border-dashed border-slate-200 rounded-xl h-20 flex items-center justify-center">
+                          <span className="text-xs text-slate-300">Empty</span>
+                        </div>
+                      )}
+                      {col.projects.map((p) => (
+                        <div
+                          key={p._id}
+                          onClick={() => router.push(`/dashboard/projects/${p._id}`)}
+                          className="bg-white border border-slate-200 rounded-xl p-3.5 cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all space-y-2.5"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900 leading-snug">{p.title}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {typeof p.client === 'object' && p.client ? p.client.name : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${p.progressPct ?? 0}%` }} />
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">{p.progressPct ?? 0}%</span>
+                          </div>
+                          <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLORS[p.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {p.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {showModal && (

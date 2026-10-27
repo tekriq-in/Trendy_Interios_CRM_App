@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 
 interface Dept { _id: string; name: string; order: number; }
@@ -30,6 +30,13 @@ interface TaskForm {
 }
 const EMPTY_TASK: TaskForm = { title: '', departmentId: '', assignedToId: '', dueDate: '' };
 interface TIDocument { _id: string; fileName: string; mimeType: string; driveLink: string; type: string; }
+interface PurchaseItem {
+  _id: string; item: string; description?: string; quantity: number; unit?: string; supplier?: string;
+  status: 'pending' | 'ordered' | 'received';
+}
+const EMPTY_PI = { item: '', description: '', quantity: 1, unit: '', supplier: '' };
+interface AdditionalWork { description: string; amount: number; drawingRequired?: boolean; notifiedClient?: boolean; }
+const EMPTY_AW = { description: '', amount: 0, drawingRequired: false };
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700',
@@ -60,6 +67,16 @@ export default function ProjectDetailPage({ params }: Props) {
   const [taskPhotos, setTaskPhotos] = useState<UploadedFile[]>([]);
   const [taskErr, setTaskErr] = useState('');
 
+  // Purchase Items
+  const [showPIModal, setShowPIModal] = useState(false);
+  const [piForm, setPiForm] = useState(EMPTY_PI);
+  const [piErr, setPiErr] = useState('');
+
+  // Additional Work
+  const [showAWModal, setShowAWModal] = useState(false);
+  const [awForm, setAwForm] = useState(EMPTY_AW);
+  const [awErr, setAwErr] = useState('');
+
   const { data: project, isLoading } = useQuery<Project>({
     queryKey: ['project', id],
     queryFn: () => apiClient.get(`/projects/${id}`).then((r) => r.data),
@@ -86,6 +103,16 @@ export default function ProjectDetailPage({ params }: Props) {
   const { data: allUsers = [] } = useQuery<TeamMember[]>({
     queryKey: ['users'],
     queryFn: () => apiClient.get('/users').then((r) => r.data),
+  });
+
+  const { data: purchaseItems = [] } = useQuery<PurchaseItem[]>({
+    queryKey: ['purchase-items', id],
+    queryFn: () => apiClient.get(`/projects/${id}/purchase-items`).then((r) => r.data),
+  });
+
+  const { data: projectFull } = useQuery<{ additionalWork?: AdditionalWork[] }>({
+    queryKey: ['project-full', id],
+    queryFn: () => apiClient.get(`/projects/${id}`).then((r) => r.data),
   });
 
   const advanceMut = useMutation({
@@ -157,6 +184,49 @@ export default function ProjectDetailPage({ params }: Props) {
       toast('success', 'Drawing removed.');
     },
     onError: () => toast('error', 'Failed to delete drawing.'),
+  });
+
+  const createPIMut = useMutation({
+    mutationFn: (form: typeof EMPTY_PI) =>
+      apiClient.post(`/projects/${id}/purchase-items`, {
+        item: form.item.trim(),
+        description: form.description || undefined,
+        quantity: Number(form.quantity),
+        unit: form.unit || undefined,
+        supplier: form.supplier || undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-items', id] });
+      toast('success', 'Purchase item added.');
+      setShowPIModal(false);
+      setPiForm(EMPTY_PI);
+      setPiErr('');
+    },
+    onError: () => setPiErr('Failed to add item.'),
+  });
+
+  const updatePIStatusMut = useMutation({
+    mutationFn: ({ itemId, status }: { itemId: string; status: string }) =>
+      apiClient.patch(`/purchase-items/${itemId}`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase-items', id] }),
+    onError: () => toast('error', 'Failed to update status.'),
+  });
+
+  const addAWMut = useMutation({
+    mutationFn: (form: typeof EMPTY_AW) =>
+      apiClient.post(`/projects/${id}/additional-work`, {
+        description: form.description.trim(),
+        amount: Number(form.amount),
+        drawingRequired: form.drawingRequired,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-full', id] });
+      toast('success', 'Additional work logged.');
+      setShowAWModal(false);
+      setAwForm(EMPTY_AW);
+      setAwErr('');
+    },
+    onError: () => setAwErr('Failed to log additional work.'),
   });
 
   if (isLoading) return <div className="flex items-center justify-center h-48"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
@@ -461,6 +531,94 @@ export default function ProjectDetailPage({ params }: Props) {
         )}
       </div>
 
+      {/* Purchase Items */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+            <ShoppingCart className="w-4 h-4 text-slate-400" /> Purchase Items
+          </h2>
+          <button
+            onClick={() => { setShowPIModal(true); setPiForm(EMPTY_PI); setPiErr(''); }}
+            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Item
+          </button>
+        </div>
+        {purchaseItems.length === 0 ? (
+          <p className="text-sm text-slate-400">No purchase items yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-slate-400 uppercase">
+                  <th className="text-left py-2 pr-3 font-semibold">Item</th>
+                  <th className="text-left py-2 pr-3 font-semibold">Qty</th>
+                  <th className="text-left py-2 pr-3 font-semibold">Supplier</th>
+                  <th className="text-left py-2 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {purchaseItems.map((pi) => (
+                  <tr key={pi._id}>
+                    <td className="py-2.5 pr-3">
+                      <p className="font-medium text-slate-800">{pi.item}</p>
+                      {pi.description && <p className="text-xs text-slate-400">{pi.description}</p>}
+                    </td>
+                    <td className="py-2.5 pr-3 text-slate-600">{pi.quantity}{pi.unit ? ` ${pi.unit}` : ''}</td>
+                    <td className="py-2.5 pr-3 text-slate-500">{pi.supplier ?? '—'}</td>
+                    <td className="py-2.5">
+                      <select
+                        value={pi.status}
+                        onChange={(e) => updatePIStatusMut.mutate({ itemId: pi._id, status: e.target.value })}
+                        className={`text-xs font-semibold rounded-full px-2.5 py-1 border-0 focus:ring-2 focus:ring-indigo-500 cursor-pointer ${
+                          pi.status === 'received' ? 'bg-emerald-50 text-emerald-700' :
+                          pi.status === 'ordered' ? 'bg-blue-50 text-blue-700' :
+                          'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="ordered">Ordered</option>
+                        <option value="received">Received</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Additional Work */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-slate-400" /> Additional Work
+          </h2>
+          <button
+            onClick={() => { setShowAWModal(true); setAwForm(EMPTY_AW); setAwErr(''); }}
+            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Log Work
+          </button>
+        </div>
+        {(projectFull?.additionalWork ?? []).length === 0 ? (
+          <p className="text-sm text-slate-400">No additional work logged.</p>
+        ) : (
+          <div className="space-y-2">
+            {(projectFull?.additionalWork ?? []).map((aw, i) => (
+              <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800">{aw.description}</p>
+                  {aw.drawingRequired && <span className="text-xs text-amber-600 font-semibold">Drawing required</span>}
+                </div>
+                <span className="text-sm font-bold text-slate-700 shrink-0">₹{aw.amount.toLocaleString('en-IN')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Chat */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
         <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Team Chat</h2>
@@ -541,6 +699,100 @@ export default function ProjectDetailPage({ params }: Props) {
               >
                 {createTaskMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {createTaskMut.isPending ? 'Creating…' : 'Create Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Item Modal */}
+      {showPIModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900">Add Purchase Item</h2>
+              <button onClick={() => setShowPIModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Item name *</label>
+                <input type="text" value={piForm.item} onChange={(e) => setPiForm((p) => ({ ...p, item: e.target.value }))}
+                  placeholder="e.g. Laminate sheets" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+                <input type="text" value={piForm.description} onChange={(e) => setPiForm((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="Optional details" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Quantity *</label>
+                  <input type="number" min={1} value={piForm.quantity} onChange={(e) => setPiForm((p) => ({ ...p, quantity: Number(e.target.value) }))}
+                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Unit</label>
+                  <input type="text" value={piForm.unit} onChange={(e) => setPiForm((p) => ({ ...p, unit: e.target.value }))}
+                    placeholder="pcs, sqft…" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Supplier</label>
+                <input type="text" value={piForm.supplier} onChange={(e) => setPiForm((p) => ({ ...p, supplier: e.target.value }))}
+                  placeholder="Vendor name" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              {piErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{piErr}</p>}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
+              <button onClick={() => setShowPIModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
+              <button
+                onClick={() => createPIMut.mutate(piForm)}
+                disabled={!piForm.item.trim() || createPIMut.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {createPIMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Add Item
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Additional Work Modal */}
+      {showAWModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900">Log Additional Work</h2>
+              <button onClick={() => setShowAWModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description *</label>
+                <input type="text" value={awForm.description} onChange={(e) => setAwForm((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="e.g. Extra wardrobe in master bedroom" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Amount (₹) *</label>
+                <input type="number" min={0} value={awForm.amount} onChange={(e) => setAwForm((p) => ({ ...p, amount: Number(e.target.value) }))}
+                  placeholder="0" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={awForm.drawingRequired} onChange={(e) => setAwForm((p) => ({ ...p, drawingRequired: e.target.checked }))}
+                  className="w-4 h-4 accent-indigo-600" />
+                <span className="text-sm text-slate-700">Drawing required for this work</span>
+              </label>
+              {awErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{awErr}</p>}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
+              <button onClick={() => setShowAWModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
+              <button
+                onClick={() => addAWMut.mutate(awForm)}
+                disabled={!awForm.description.trim() || addAWMut.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {addAWMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Log Work
               </button>
             </div>
           </div>

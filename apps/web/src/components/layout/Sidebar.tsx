@@ -15,6 +15,7 @@ import {
   Clock,
   ScrollText,
   MessageSquare,
+  GitBranch,
   LogOut,
   type LucideIcon,
 } from 'lucide-react';
@@ -52,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'MANAGEMENT',
     items: [
       { href: '/dashboard/users', label: 'Employees', icon: Users },
+      { href: '/dashboard/org-chart', label: 'Org Chart', icon: GitBranch },
       { href: '/dashboard/roles', label: 'Roles', icon: Shield },
       { href: '/dashboard/departments', label: 'Departments', icon: Building2 },
       { href: '/dashboard/sla', label: 'SLA Settings', icon: Clock },

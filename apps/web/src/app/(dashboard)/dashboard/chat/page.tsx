@@ -587,7 +587,14 @@ export default function ChatPage() {
             return (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  // Auto-select first group in the tab if nothing is selected or current group is a different type
+                  const tabGroups = groups.filter((g) => g.type === tab);
+                  if (tabGroups.length > 0 && (!activeGroup || activeGroup.type !== tab)) {
+                    setActiveGroup(tabGroups[0]);
+                  }
+                }}
                 className={`flex items-center gap-1 px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
                   activeTab === tab
                     ? 'border-indigo-500 text-indigo-600'
@@ -595,8 +602,9 @@ export default function ChatPage() {
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{TAB_LABELS[tab]}</span>
                 {count > 0 && (
-                  <span className="ml-0.5 bg-gray-200 text-gray-600 rounded-full px-1.5 py-0 text-[10px]">
+                  <span className="bg-gray-200 text-gray-600 rounded-full px-1.5 py-0 text-[10px]">
                     {count}
                   </span>
                 )}

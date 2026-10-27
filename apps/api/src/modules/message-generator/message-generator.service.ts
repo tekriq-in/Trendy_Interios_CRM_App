@@ -99,8 +99,8 @@ export class MessageGeneratorService {
     if (this.geminiKey && this.provider !== 'mock') {
       try { return await this.callGemini(prompt); } catch { /* fall through */ }
     }
-    // mock: return text as-is with a Tamil marker so the UI still shows something
-    return `(தமிழ்) ${text}`;
+    // mock: indicate that a real LLM key is needed for actual Tamil translation
+    return `[Tamil translation unavailable — set GROQ_API_KEY or GEMINI_API_KEY for live translation]\n\nOriginal: ${text}`;
   }
 
   private async callGemini(prompt: string): Promise<string> {

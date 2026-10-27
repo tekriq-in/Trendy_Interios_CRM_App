@@ -25,8 +25,9 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'ti-auth',
-      // Persist only user profile — tokens stay in memory and are re-fetched on tab reload
-      partialize: (state) => ({ user: state.user }),
+      // accessToken is memory-only (short-lived, XSS protection).
+      // refreshToken + user profile are persisted so the session survives a page reload.
+      partialize: (state) => ({ refreshToken: state.refreshToken, user: state.user }),
     },
   ),
 );

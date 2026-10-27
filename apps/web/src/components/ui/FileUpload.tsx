@@ -146,16 +146,18 @@ export function FileUpload({
                 <FileText className="w-4 h-4 text-slate-400 shrink-0" />
               )}
               <span className="text-sm text-slate-700 flex-1 truncate">{f.fileName}</span>
-              <a
-                href={f.driveLink}
-                target="_blank"
-                rel="noreferrer"
-                className="p-1 text-slate-400 hover:text-indigo-600 shrink-0"
-                title="Open in Drive"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              {f.driveLink?.startsWith('http') && (
+                <a
+                  href={f.driveLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-1 text-slate-400 hover:text-indigo-600 shrink-0"
+                  title="Open in Drive"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => removeFile(f._id)}

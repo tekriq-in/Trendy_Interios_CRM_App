@@ -124,11 +124,12 @@ export default function UsersPage() {
     if (!form.name.trim() || form.name.trim().length < 2) {
       errors.name = 'Full name is required (at least 2 characters).';
     }
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!editing) {
       if (!form.email.trim()) {
         errors.email = 'Email is required.';
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-        errors.email = 'Enter a valid email address.';
+      } else if (!emailRegex.test(form.email.trim())) {
+        errors.email = 'Enter a valid email address (e.g. name@example.com).';
       }
       if (!form.password.trim()) {
         errors.password = 'Password is required for new employees.';
@@ -137,9 +138,16 @@ export default function UsersPage() {
       } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.password)) {
         errors.password = 'Password must include an uppercase letter, a lowercase letter, and a number.';
       }
+    } else {
+      if (form.email.trim() && !emailRegex.test(form.email.trim())) {
+        errors.email = 'Enter a valid email address (e.g. name@example.com).';
+      }
     }
-    if (form.phone.trim() && !/^\+?[0-9\s\-()]{7,15}$/.test(form.phone.trim())) {
-      errors.phone = 'Enter a valid phone number (7–15 digits).';
+    if (form.phone.trim()) {
+      const digits = form.phone.replace(/\D/g, '');
+      if (digits.length < 8 || digits.length > 15) {
+        errors.phone = 'Enter a valid phone number (8–15 digits).';
+      }
     }
     if (!form.roleId) {
       errors.roleId = 'Please select a role.';

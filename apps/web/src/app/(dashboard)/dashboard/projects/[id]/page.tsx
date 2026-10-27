@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, ExternalLink, Plus, ClipboardList } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 
 interface Dept { _id: string; name: string; order: number; }
@@ -150,6 +150,15 @@ export default function ProjectDetailPage({ params }: Props) {
     onError: () => toast('error', 'Failed to update task.'),
   });
 
+  const deleteDrawingMut = useMutation({
+    mutationFn: (docId: string) => apiClient.delete(`/documents/${docId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drawings', id] });
+      toast('success', 'Drawing removed.');
+    },
+    onError: () => toast('error', 'Failed to delete drawing.'),
+  });
+
   if (isLoading) return <div className="flex items-center justify-center h-48"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
   if (!project) return <p className="text-sm text-red-500">Project not found.</p>;
 
@@ -162,11 +171,15 @@ export default function ProjectDetailPage({ params }: Props) {
   // When current stage is deactivated it won't appear in sortedDepts (active only).
   // Fall back to the first active dept whose order is greater than the current stage's order.
   const currentStageOrder = typeof project.currentStage === 'object' ? project.currentStage?.order ?? -1 : -1;
-  const nextStage: Dept | null = currentIdx >= 0 && currentIdx < sortedDepts.length - 1
-    ? sortedDepts[currentIdx + 1]
-    : currentIdx === -1 && currentStageOrder >= 0
-      ? sortedDepts.find((d) => d.order > currentStageOrder) ?? null
-      : null;
+  const depsLoaded = departments.length > 0;
+  const isAtFinalStage = depsLoaded && currentIdx === sortedDepts.length - 1;
+  const nextStage: Dept | null = !depsLoaded
+    ? null
+    : currentIdx >= 0 && currentIdx < sortedDepts.length - 1
+      ? sortedDepts[currentIdx + 1]
+      : currentIdx === -1 && currentStageOrder >= 0
+        ? sortedDepts.find((d) => d.order > currentStageOrder) ?? null
+        : null;
 
   const teamIds = new Set((project.assignedTeam ?? []).map((m) => m._id));
 
@@ -244,7 +257,7 @@ export default function ProjectDetailPage({ params }: Props) {
               Advance to {nextStage.name}
             </button>
           )}
-          {!nextStage && project.status === 'active' && (
+          {isAtFinalStage && project.status === 'active' && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">Final stage</span>
               <button
@@ -372,7 +385,14 @@ export default function ProjectDetailPage({ params }: Props) {
                     >
                       {task.status === 'done' && <CheckCircle2 className="w-3 h-3 text-white" />}
                     </button>
-                    <span className={`text-sm flex-1 truncate ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className={`text-sm block truncate ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
+                      {task.assignedTo && (
+                        <span className="text-xs text-slate-400 truncate">
+                          {typeof task.assignedTo === 'object' ? task.assignedTo.name : ''}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-xs text-slate-400 capitalize shrink-0">{task.status.replace('_', ' ')}</span>
                   </div>
                 );
@@ -426,10 +446,15 @@ export default function ProjectDetailPage({ params }: Props) {
               <div key={d._id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
                 <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                 <span className="text-sm text-slate-800 flex-1 truncate">{d.fileName}</span>
-                <span className="text-xs text-slate-400 shrink-0 uppercase">{d.type.replace('drawing_', '')}</span>
-                <a href={d.driveLink} target="_blank" rel="noreferrer" className="p-1 text-slate-400 hover:text-indigo-600 shrink-0">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium uppercase shrink-0">{d.type.replace('drawing_', '')}</span>
+                <button
+                  onClick={() => deleteDrawingMut.mutate(d._id)}
+                  disabled={deleteDrawingMut.isPending}
+                  className="p-1 text-slate-300 hover:text-red-500 shrink-0 transition-colors disabled:opacity-50"
+                  title="Delete drawing"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             ))}
           </div>

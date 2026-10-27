@@ -102,11 +102,14 @@ export default function ClientsPage() {
     }
     if (!form.phone.trim()) {
       errors.phone = 'Phone number is required.';
-    } else if (!/^\+?[0-9\s\-()]{7,15}$/.test(form.phone.trim())) {
-      errors.phone = 'Enter a valid phone number (7–15 digits).';
+    } else {
+      const digits = form.phone.replace(/\D/g, '');
+      if (digits.length < 8 || digits.length > 15) {
+        errors.phone = 'Enter a valid phone number (8–15 digits).';
+      }
     }
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      errors.email = 'Enter a valid email address.';
+    if (form.email.trim() && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(form.email.trim())) {
+      errors.email = 'Enter a valid email address (e.g. name@example.com).';
     }
     if (Object.keys(errors).length) { setFieldErrors(errors); return; }
     setSaving(true); setErr(''); setFieldErrors({});

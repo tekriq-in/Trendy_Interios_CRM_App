@@ -104,8 +104,8 @@ export default function ClientsPage() {
       errors.phone = 'Phone number is required.';
     } else {
       const digits = form.phone.replace(/\D/g, '');
-      if (digits.length < 8 || digits.length > 15) {
-        errors.phone = 'Enter a valid phone number (8–15 digits).';
+      if (digits.length !== 10) {
+        errors.phone = 'Phone number must be exactly 10 digits.';
       }
     }
     if (form.email.trim() && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(form.email.trim())) {

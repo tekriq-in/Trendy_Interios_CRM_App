@@ -145,8 +145,8 @@ export default function UsersPage() {
     }
     if (form.phone.trim()) {
       const digits = form.phone.replace(/\D/g, '');
-      if (digits.length < 8 || digits.length > 15) {
-        errors.phone = 'Enter a valid phone number (8–15 digits).';
+      if (digits.length !== 10) {
+        errors.phone = 'Phone number must be exactly 10 digits.';
       }
     }
     if (!form.roleId) {

@@ -465,11 +465,18 @@ export default function ChatPage() {
     },
   });
 
+  // For DMs, display the other member's name instead of the stored group name
+  const dmDisplayName = (group: ChatGroup) => {
+    if (group.type !== 'individual') return group.name;
+    const other = group.members.find((m) => m._id !== currentUser?.id);
+    return other?.name ?? group.name;
+  };
+
   const filteredGroups = groups
     .filter((g) => g.type === activeTab)
     .filter((g) =>
       sidebarSearch
-        ? g.name.toLowerCase().includes(sidebarSearch.toLowerCase())
+        ? dmDisplayName(g).toLowerCase().includes(sidebarSearch.toLowerCase())
         : true,
     );
 
@@ -654,7 +661,7 @@ export default function ChatPage() {
                         active ? 'text-indigo-700' : 'text-gray-800'
                       }`}
                     >
-                      {group.name}
+                      {dmDisplayName(group)}
                     </p>
                     <p className="text-xs text-gray-400 truncate">
                       {group.lastMessage
@@ -701,7 +708,7 @@ export default function ChatPage() {
                 })()}
               </div>
               <div>
-                <p className="font-semibold text-gray-900 text-sm">{activeGroup.name}</p>
+                <p className="font-semibold text-gray-900 text-sm">{dmDisplayName(activeGroup)}</p>
                 <p className="text-xs text-gray-400">
                   {activeGroup.members.length} member{activeGroup.members.length !== 1 ? 's' : ''}
                   {' · '}
@@ -825,7 +832,7 @@ export default function ChatPage() {
               <textarea
                 rows={1}
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm resize-none focus:ring-2 focus:ring-indigo-400 focus:outline-none"
-                placeholder={`Message ${activeGroup.name}… (type @ to mention)`}
+                placeholder={`Message ${dmDisplayName(activeGroup)}… (type @ to mention)`}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 onKeyDown={(e) => {

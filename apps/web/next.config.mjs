@@ -39,7 +39,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://res.cloudinary.com https://storage.googleapis.com",
               "font-src 'self' data:",
-              "connect-src 'self' ws: wss:",
+              "connect-src 'self' http://localhost:3001 ws://localhost:3001 ws: wss:",
               "frame-ancestors 'none'",
             ].join('; '),
           },

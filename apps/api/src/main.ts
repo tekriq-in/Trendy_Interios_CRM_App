@@ -30,7 +30,15 @@ async function bootstrap() {
     rawBody: true, // needed for webhook HMAC signature verification
   });
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Allow cross-origin resource loading so browser fetch/XHR to this API
+      // isn't blocked when the web app runs on a different port in development.
+      crossOriginResourcePolicy: process.env.NODE_ENV === 'production'
+        ? { policy: 'same-origin' }
+        : false,
+    }),
+  );
   app.useWebSocketAdapter(new IoAdapter(app));
   app.setGlobalPrefix('api/v1', {
     exclude: ['health'], // health check has no prefix
@@ -51,7 +59,7 @@ async function bootstrap() {
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(origin)) {
+      if (process.env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
         return callback(null, true);
       }
       if (allowedOrigins.includes(origin)) return callback(null, true);

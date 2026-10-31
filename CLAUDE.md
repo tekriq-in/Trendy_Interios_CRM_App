@@ -153,3 +153,11 @@ EXPO_PUBLIC_WS_URL=http://localhost:3001
 | `apps/api/test/permission-scoping.spec.ts` | Employee JWT cannot fetch un-assigned projects |
 | `apps/api/test/approval-gate.spec.ts` | WhatsApp service not called without approved approval |
 | `apps/api/test/handover-rules.spec.ts` | Handover POST without proofFiles → 400 |
+
+---
+
+## Git Rules
+
+- **Never add `Co-Authored-By: Claude` (or any Claude authorship line) to commit messages.** Commits are authored by the developer only.
+- Commit messages follow Conventional Commits (`feat:`, `fix:`, `security:`, `docs:`, `refactor:`, `chore:`).
+- Never commit `.env` files or secrets.

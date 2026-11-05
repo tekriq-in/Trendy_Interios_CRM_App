@@ -92,7 +92,25 @@ export default function ProjectsPage() {
       setShowModal(false);
       router.push(`/dashboard/projects/${res.data._id}`);
     } catch (e: unknown) {
-      setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to create project.');
+      const error = e as {
+        message?: string;
+        code?: string;
+        response?: { status?: number; data?: { message?: unknown; error?: string } };
+      };
+      const apiMessage = error.response?.data?.message;
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.filter((part): part is string => typeof part === 'string').join(' ')
+        : typeof apiMessage === 'string'
+          ? apiMessage
+          : error.response?.data?.error;
+      setErr(
+        message ||
+          (error.response?.status
+            ? `Project creation failed (HTTP ${error.response.status}).`
+            : error.code === 'ERR_NETWORK'
+              ? 'Could not reach the API. Check that the API server is running and disk space is available.'
+              : error.message || 'Failed to create project.'),
+      );
     } finally { setSaving(false); }
   }
 

@@ -33,6 +33,9 @@ export default function DepartmentsPage() {
         .get(`/departments${showInactive ? '?includeInactive=true' : ''}`)
         .then((r) => r.data),
   });
+  const visibleDepartments = departments.filter((department) =>
+    showInactive ? !department.isActive : department.isActive,
+  );
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['users'],
@@ -139,18 +142,20 @@ export default function DepartmentsPage() {
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
         </div>
-      ) : departments.length === 0 ? (
+      ) : visibleDepartments.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200">
           <EmptyState
             icon={Building2}
-            title="No departments yet"
-            description="Departments define the production stages for every project. Create your first department to get started."
-            action={{ label: 'New Department', onClick: openCreate }}
+            title={showInactive ? 'No inactive departments' : 'No departments yet'}
+            description={showInactive
+              ? 'There are no inactive departments to show.'
+              : 'Departments define the production stages for every project. Create your first department to get started.'}
+            action={showInactive ? undefined : { label: 'New Department', onClick: openCreate }}
           />
         </div>
       ) : (
         <div className="space-y-2">
-          {departments.map((d) => {
+          {visibleDepartments.map((d) => {
             const members = employeesInDept(d._id);
             const isOpen = expanded === d._id;
             return (

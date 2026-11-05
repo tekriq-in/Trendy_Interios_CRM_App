@@ -5,8 +5,6 @@ import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth.store';
-import { PERMISSIONS } from '@ti/shared';
-import { usePermissions } from '@/lib/usePermissions';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -56,15 +54,6 @@ interface ApprovalsSummary {
     project?: { title: string };
     requestedBy?: { name: string };
   }>;
-}
-interface MyApprovalRequest {
-  _id: string;
-  kind: string;
-  status: 'pending' | 'approved' | 'rejected';
-  createdAt?: string;
-  rejectionReason?: string;
-  project?: { title: string };
-  approver?: { name: string };
 }
 interface BlockerSummary {
   _id: string;
@@ -120,14 +109,12 @@ const panel =
 const chartTick = { fontSize: 10, fill: '#64748b' };
 const tooltipStyle = { borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 };
 
-function useDashboardData<T>(key: string[], url: string, enabled = true, refetchInterval?: number) {
-  return useQuery<T>({ queryKey: key, queryFn: () => apiClient.get<T>(url).then((r) => r.data), enabled, refetchInterval });
+function useDashboardData<T>(key: string[], url: string) {
+  return useQuery<T>({ queryKey: key, queryFn: () => apiClient.get<T>(url).then((r) => r.data) });
 }
 
 export default function DashboardOverviewPage() {
   const user = useAuthStore((s) => s.user);
-  const { hasPermission } = usePermissions();
-  const canRequestApproval = hasPermission(PERMISSIONS.APPROVALS_REQUEST);
   const [attentionTab, setAttentionTab] = useState<'approvals' | 'blockers'>('approvals');
   const [selectedDept, setSelectedDept] = useState<{
     dept: Dept;
@@ -140,12 +127,6 @@ export default function DashboardOverviewPage() {
   const approvals = useDashboardData<ApprovalsSummary>(
     ['dashboard-approvals'],
     '/dashboard/approvals-pending',
-  );
-  const myApprovalRequests = useDashboardData<MyApprovalRequest[]>(
-    ['my-approval-requests'],
-    '/approvals/mine',
-    canRequestApproval,
-    30_000,
   );
   const blockers = useDashboardData<BlockerSummary[]>(
     ['dashboard-blockers'],
@@ -170,7 +151,6 @@ export default function DashboardOverviewPage() {
     employees,
     clients,
     slaReport,
-    myApprovalRequests,
   ];
   const failed = queries.filter((q) => q.isError);
   const refreshing = queries.some((q) => q.isFetching);
@@ -211,43 +191,6 @@ export default function DashboardOverviewPage() {
           {refreshing ? 'Refreshing…' : 'Refresh overview'}
         </button>
       </div>
-
-      {canRequestApproval && (
-        <section aria-labelledby="my-approval-requests-heading" className={`${panel} overflow-hidden`}>
-          <div className="flex items-start justify-between gap-4 p-5">
-            <div>
-              <h2 id="my-approval-requests-heading" className="font-semibold text-slate-900">My approval requests</h2>
-              <p className="mt-1 text-xs text-slate-500">Track the status of approvals you submitted.</p>
-            </div>
-          </div>
-          <div className="px-5 pb-5">
-            {myApprovalRequests.isPending ? (
-              <p className="py-3 text-sm text-slate-400">Loading your requests…</p>
-            ) : myApprovalRequests.isError ? (
-              <p role="alert" className="py-3 text-sm text-red-600">Couldn’t load your approval requests.</p>
-            ) : (myApprovalRequests.data ?? []).length === 0 ? (
-              <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">You haven’t submitted any approval requests yet.</p>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {myApprovalRequests.data!.map((request) => (
-                  <div key={request._id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-800">{request.project?.title ?? 'Project approval'}</p>
-                      <p className="mt-0.5 text-xs capitalize text-slate-500">{request.kind.replace(/_/g, ' ')}{request.createdAt ? ` · ${new Date(request.createdAt).toLocaleDateString('en-IN')}` : ''}</p>
-                      {request.status === 'rejected' && request.rejectionReason && <p className="mt-1 text-xs text-red-600">Reason: {request.rejectionReason}</p>}
-                      {request.status === 'approved' && request.approver?.name && <p className="mt-1 text-xs text-emerald-700">Approved by {request.approver.name}</p>}
-                    </div>
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${request.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : request.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                      {request.status === 'pending' && <Clock3 className="h-3 w-3" />}
-                      {request.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {failed.length > 0 && (
         <div

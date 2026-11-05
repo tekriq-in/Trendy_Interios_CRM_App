@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, Building2, ToggleLeft, ToggleRight, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, UserMinus, Building2, ToggleLeft, ToggleRight, CheckCircle2 } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -40,8 +40,8 @@ export default function DepartmentsPage() {
   });
 
   const reassignMut = useMutation({
-    mutationFn: ({ id, deptId }: { id: string; deptId: string }) =>
-      apiClient.patch(`/users/${id}`, { departmentId: deptId || undefined }),
+    mutationFn: ({ id, deptId }: { id: string; deptId: string | null }) =>
+      apiClient.patch(`/users/${id}`, { departmentId: deptId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
       setReassigning(null);
@@ -60,6 +60,7 @@ export default function DepartmentsPage() {
 
   function employeesInDept(deptId: string) {
     return employees.filter((e) => {
+      if (!e.isActive) return false;
       const d = e.department;
       if (!d) return false;
       return typeof d === 'object' ? d._id === deptId : d === deptId;
@@ -226,6 +227,16 @@ export default function DepartmentsPage() {
                                 <option key={dept._id} value={dept._id}>{dept.name}</option>
                               ))}
                             </select>
+                            <button
+                              type="button"
+                              onClick={() => reassignMut.mutate({ id: emp._id, deptId: null })}
+                              disabled={reassignMut.isPending}
+                              aria-label={`Remove ${emp.name} from ${d.name}`}
+                              title="Remove from department"
+                              className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <UserMinus className="h-4 w-4" />
+                            </button>
                           </div>
                         ))}
                       </div>

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 
 interface Dept { _id: string; name: string; order: number; }
@@ -35,6 +35,7 @@ interface PurchaseItem {
   status: 'pending' | 'ordered' | 'received';
 }
 const EMPTY_PI = { item: '', description: '', quantity: 1, unit: '', supplier: '' };
+const PURCHASE_ITEM_UNITS = ['pieces', 'square feet', 'meters', 'kilograms', 'liters', 'sets', 'boxes', 'sheets'];
 interface AdditionalWork { description: string; amount: number; drawingRequired?: boolean; notifiedClient?: boolean; }
 const EMPTY_AW = { description: '', amount: 0, drawingRequired: false };
 
@@ -69,6 +70,7 @@ export default function ProjectDetailPage({ params }: Props) {
 
   // Purchase Items
   const [showPIModal, setShowPIModal] = useState(false);
+  const [editingPI, setEditingPI] = useState<PurchaseItem | null>(null);
   const [piForm, setPiForm] = useState(EMPTY_PI);
   const [piErr, setPiErr] = useState('');
 
@@ -210,6 +212,26 @@ export default function ProjectDetailPage({ params }: Props) {
       apiClient.patch(`/purchase-items/${itemId}`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase-items', id] }),
     onError: () => toast('error', 'Failed to update status.'),
+  });
+
+  const updatePIMut = useMutation({
+    mutationFn: ({ itemId, form }: { itemId: string; form: typeof EMPTY_PI }) =>
+      apiClient.patch(`/purchase-items/${itemId}`, {
+        item: form.item.trim(),
+        description: form.description.trim(),
+        quantity: Number(form.quantity),
+        unit: form.unit,
+        supplier: form.supplier.trim(),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-items', id] });
+      toast('success', 'Purchase item updated.');
+      setShowPIModal(false);
+      setEditingPI(null);
+      setPiForm(EMPTY_PI);
+      setPiErr('');
+    },
+    onError: () => setPiErr('Failed to update item.'),
   });
 
   const addAWMut = useMutation({
@@ -538,7 +560,7 @@ export default function ProjectDetailPage({ params }: Props) {
             <ShoppingCart className="w-4 h-4 text-slate-400" /> Purchase Items
           </h2>
           <button
-            onClick={() => { setShowPIModal(true); setPiForm(EMPTY_PI); setPiErr(''); }}
+            onClick={() => { setEditingPI(null); setShowPIModal(true); setPiForm(EMPTY_PI); setPiErr(''); }}
             className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Add Item
@@ -555,6 +577,7 @@ export default function ProjectDetailPage({ params }: Props) {
                   <th className="text-left py-2 pr-3 font-semibold">Qty</th>
                   <th className="text-left py-2 pr-3 font-semibold">Supplier</th>
                   <th className="text-left py-2 font-semibold">Status</th>
+                  <th className="text-right py-2 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -580,6 +603,22 @@ export default function ProjectDetailPage({ params }: Props) {
                         <option value="ordered">Ordered</option>
                         <option value="received">Received</option>
                       </select>
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <button
+                        type="button"
+                        aria-label={`Edit ${pi.item}`}
+                        title="Edit purchase item"
+                        onClick={() => {
+                          setEditingPI(pi);
+                          setPiForm({ item: pi.item, description: pi.description ?? '', quantity: pi.quantity, unit: pi.unit ?? '', supplier: pi.supplier ?? '' });
+                          setPiErr('');
+                          setShowPIModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -710,7 +749,7 @@ export default function ProjectDetailPage({ params }: Props) {
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-              <h2 className="text-lg font-semibold text-slate-900">Add Purchase Item</h2>
+              <h2 className="text-lg font-semibold text-slate-900">{editingPI ? 'Edit Purchase Item' : 'Add Purchase Item'}</h2>
               <button onClick={() => setShowPIModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="px-6 py-5 space-y-4">
@@ -732,8 +771,12 @@ export default function ProjectDetailPage({ params }: Props) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Unit</label>
-                  <input type="text" value={piForm.unit} onChange={(e) => setPiForm((p) => ({ ...p, unit: e.target.value }))}
-                    placeholder="pcs, sqft…" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <select value={piForm.unit} onChange={(e) => setPiForm((p) => ({ ...p, unit: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">Select unit</option>
+                    {piForm.unit && !PURCHASE_ITEM_UNITS.includes(piForm.unit) && <option value={piForm.unit}>{piForm.unit}</option>}
+                    {PURCHASE_ITEM_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                  </select>
                 </div>
               </div>
               <div>
@@ -746,12 +789,12 @@ export default function ProjectDetailPage({ params }: Props) {
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
               <button onClick={() => setShowPIModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
               <button
-                onClick={() => createPIMut.mutate(piForm)}
-                disabled={!piForm.item.trim() || createPIMut.isPending}
+                onClick={() => editingPI ? updatePIMut.mutate({ itemId: editingPI._id, form: piForm }) : createPIMut.mutate(piForm)}
+                disabled={!piForm.item.trim() || Number(piForm.quantity) <= 0 || createPIMut.isPending || updatePIMut.isPending}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                {createPIMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Add Item
+                {(createPIMut.isPending || updatePIMut.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingPI ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {editingPI ? 'Save Changes' : 'Add Item'}
               </button>
             </div>
           </div>

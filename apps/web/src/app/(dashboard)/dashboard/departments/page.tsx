@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { PERMISSIONS } from '@ti/shared';
+import { usePermissions } from '@/lib/usePermissions';
 import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, UserMinus, Building2, ToggleLeft, ToggleRight, CheckCircle2 } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -15,6 +17,8 @@ const EMPTY_FORM = { name: '', description: '', order: '', defaultSlaHours: '48'
 type FormState = typeof EMPTY_FORM;
 
 export default function DepartmentsPage() {
+  const { hasPermission } = usePermissions();
+  const canCreateDepartment = hasPermission(PERMISSIONS.DEPARTMENTS_CREATE);
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
@@ -132,9 +136,11 @@ export default function DepartmentsPage() {
             {showInactive ? <ToggleRight className="w-4 h-4 text-indigo-600" /> : <ToggleLeft className="w-4 h-4" />}
             {showInactive ? 'Showing inactive' : 'Show inactive'}
           </button>
-          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-            <Plus className="w-4 h-4" /> New Department
-          </button>
+          {canCreateDepartment && (
+            <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+              <Plus className="w-4 h-4" /> New Department
+            </button>
+          )}
         </div>
       </div>
 
@@ -150,7 +156,7 @@ export default function DepartmentsPage() {
             description={showInactive
               ? 'There are no inactive departments to show.'
               : 'Departments define the production stages for every project. Create your first department to get started.'}
-            action={showInactive ? undefined : { label: 'New Department', onClick: openCreate }}
+            action={!showInactive && canCreateDepartment ? { label: 'New Department', onClick: openCreate } : undefined}
           />
         </div>
       ) : (

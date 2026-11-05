@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { PERMISSIONS } from '@ti/shared';
+import { usePermissions } from '@/lib/usePermissions';
 import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2, UserX, UserCheck } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -23,6 +25,9 @@ const EMPTY_FORM = {
 type FormState = typeof EMPTY_FORM;
 
 export default function ClientsPage() {
+  const { hasPermission } = usePermissions();
+  const canCreateClient = hasPermission(PERMISSIONS.CLIENTS_CREATE);
+  const canCreateProject = hasPermission(PERMISSIONS.PROJECTS_CREATE);
   const router = useRouter();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -129,9 +134,11 @@ export default function ClientsPage() {
         qc.invalidateQueries({ queryKey: ['clients'] });
         setShowModal(false);
         // Offer to start a project
-        setNewClientId(res.data._id);
-        setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' });
-        setShowProjectModal(true);
+        if (canCreateProject) {
+          setNewClientId(res.data._id);
+          setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' });
+          setShowProjectModal(true);
+        }
       }
     } catch (e: unknown) {
       const raw = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -180,9 +187,11 @@ export default function ClientsPage() {
             <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
             Show inactive
           </label>
-          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
-            <UserPlus className="w-4 h-4" /> Add Client
-          </button>
+          {canCreateClient && (
+            <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
+              <UserPlus className="w-4 h-4" /> Add Client
+            </button>
+          )}
         </div>
       </div>
 
@@ -202,7 +211,7 @@ export default function ClientsPage() {
             icon={UserCircle2}
             title="No clients yet"
             description="Add your first client to start tracking interior projects, follow-ups, and payment milestones."
-            action={{ label: '+ Add Client', onClick: openCreate }}
+            action={canCreateClient ? { label: '+ Add Client', onClick: openCreate } : undefined}
           />
         </div>
       ) : (
@@ -227,13 +236,13 @@ export default function ClientsPage() {
                   </button>
                   {c.isActive !== false ? (
                     <>
-                      <button
+                      {canCreateProject && <button
                         onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
                         className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                         title="Create project for this client"
                       >
                         <FolderPlus className="w-3.5 h-3.5" />
-                      </button>
+                      </button>}
                       <button
                         onClick={() => deactivateMut.mutate(c._id)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"

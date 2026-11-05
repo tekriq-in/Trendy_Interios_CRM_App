@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { PERMISSIONS } from '@ti/shared';
+import { usePermissions } from '@/lib/usePermissions';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Plus, X, FolderKanban, LayoutList, Columns3 } from 'lucide-react';
@@ -29,6 +31,8 @@ type FormState = typeof EMPTY_FORM;
 type ViewMode = 'list' | 'board';
 
 export default function ProjectsPage() {
+  const { hasPermission } = usePermissions();
+  const canCreateProject = hasPermission(PERMISSIONS.PROJECTS_CREATE);
   const router = useRouter();
   const qc = useQueryClient();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -143,9 +147,11 @@ export default function ProjectsPage() {
               <Columns3 className="w-4 h-4" />
             </button>
           </div>
-          <button onClick={() => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
-            <Plus className="w-4 h-4" /> New Project
-          </button>
+          {canCreateProject && (
+            <button onClick={() => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
+              <Plus className="w-4 h-4" /> New Project
+            </button>
+          )}
         </div>
       </div>
 
@@ -159,7 +165,7 @@ export default function ProjectsPage() {
             icon={FolderKanban}
             title="No projects yet"
             description="Start by creating your first interior project. Each project tracks stages, tasks, and handovers end-to-end."
-            action={{ label: '+ New Project', onClick: () => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); } }}
+            action={canCreateProject ? { label: '+ New Project', onClick: () => { setForm(EMPTY_FORM); setErr(''); setShowModal(true); } } : undefined}
           />
         </div>
       ) : viewMode === 'list' ? (

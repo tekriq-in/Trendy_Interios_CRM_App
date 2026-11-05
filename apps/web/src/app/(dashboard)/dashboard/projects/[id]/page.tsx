@@ -4,6 +4,8 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
+import { PERMISSIONS } from '@ti/shared';
+import { usePermissions } from '@/lib/usePermissions';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
 import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil } from 'lucide-react';
@@ -57,6 +59,14 @@ export default function ProjectDetailPage({ params }: Props) {
   const router = useRouter();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
+  const canEditProject = hasPermission(PERMISSIONS.PROJECTS_EDIT);
+  const canAdvanceProject = hasPermission(PERMISSIONS.PROJECTS_ADVANCE_STAGE);
+  const canCreateTask = hasPermission(PERMISSIONS.TASKS_CREATE);
+  const canEditTask = hasPermission(PERMISSIONS.TASKS_EDIT);
+  const canUploadDocuments = hasPermission(PERMISSIONS.DOCUMENTS_UPLOAD);
+  const canDeleteDocuments = hasPermission(PERMISSIONS.DOCUMENTS_DELETE);
+  const canManagePurchaseItems = hasPermission(PERMISSIONS.PURCHASE_ITEMS_MANAGE);
   const [advancing, setAdvancing] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [drawingType, setDrawingType] = useState<'drawing_2d' | 'drawing_3d'>('drawing_2d');
@@ -339,7 +349,7 @@ export default function ProjectDetailPage({ params }: Props) {
       <div className="bg-white border border-slate-200 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Stage Pipeline</h2>
-          {nextStage && project.status === 'active' && (
+          {canAdvanceProject && nextStage && project.status === 'active' && (
             <button
               onClick={() => { setAdvancing(true); advanceMut.mutate(nextStage._id); }}
               disabled={advancing || advanceMut.isPending}
@@ -349,7 +359,7 @@ export default function ProjectDetailPage({ params }: Props) {
               Advance to {nextStage.name}
             </button>
           )}
-          {isAtFinalStage && project.status === 'active' && (
+          {canEditProject && isAtFinalStage && project.status === 'active' && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">Final stage</span>
               <button
@@ -420,9 +430,9 @@ export default function ProjectDetailPage({ params }: Props) {
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Assigned Team</h2>
-            <button onClick={() => setShowTeamModal(true)} className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors">
+            {canEditProject && <button onClick={() => setShowTeamModal(true)} className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors">
               <UserPlus className="w-3.5 h-3.5" /> Manage
-            </button>
+            </button>}
           </div>
           {(project.assignedTeam ?? []).length === 0 ? (
             <p className="text-sm text-slate-400">No team members assigned.</p>
@@ -437,9 +447,9 @@ export default function ProjectDetailPage({ params }: Props) {
                     <div className="text-sm font-medium text-slate-800 truncate">{m.name}</div>
                     <div className="text-xs text-slate-400 truncate">{m.email}</div>
                   </div>
-                  <button onClick={() => toggleTeamMember(m._id)} className="ml-auto p-1 text-slate-300 hover:text-red-500 rounded transition-colors">
+                  {canEditProject && <button onClick={() => toggleTeamMember(m._id)} className="ml-auto p-1 text-slate-300 hover:text-red-500 rounded transition-colors">
                     <X className="w-3.5 h-3.5" />
-                  </button>
+                  </button>}
                 </div>
               ))}
             </div>
@@ -450,12 +460,12 @@ export default function ProjectDetailPage({ params }: Props) {
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Tasks</h2>
-            <button
+            {canCreateTask && <button
               onClick={() => { setShowTaskModal(true); setTaskForm(EMPTY_TASK); setTaskPhotos([]); setTaskErr(''); }}
               className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> Add Task
-            </button>
+            </button>}
           </div>
           {tasks.length === 0 ? (
             <p className="text-sm text-slate-400">No tasks yet.</p>
@@ -465,7 +475,7 @@ export default function ProjectDetailPage({ params }: Props) {
                 const nextStatus = task.status === 'pending' ? 'in_progress' : task.status === 'in_progress' ? 'done' : null;
                 return (
                   <div key={task._id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
-                    <button
+                    {canEditTask ? <button
                       onClick={() => nextStatus && toggleTaskMut.mutate({ taskId: task._id, status: nextStatus })}
                       className={`w-4 h-4 rounded-full shrink-0 border-2 flex items-center justify-center transition-colors ${
                         task.status === 'done' ? 'bg-emerald-500 border-emerald-500' :
@@ -476,7 +486,9 @@ export default function ProjectDetailPage({ params }: Props) {
                       title={nextStatus ? `Mark as ${nextStatus.replace('_', ' ')}` : undefined}
                     >
                       {task.status === 'done' && <CheckCircle2 className="w-3 h-3 text-white" />}
-                    </button>
+                    </button> : <span className={`w-4 h-4 rounded-full shrink-0 border-2 flex items-center justify-center ${task.status === 'done' ? 'bg-emerald-500 border-emerald-500' : task.status === 'blocked' ? 'bg-red-500 border-red-500' : task.status === 'in_progress' ? 'border-blue-500' : 'border-slate-300'}`} aria-label={task.status}>
+                      {task.status === 'done' && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    </span>}
                     <div className="flex-1 min-w-0">
                       <span className={`text-sm block truncate ${task.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
                       {task.assignedTo && (
@@ -499,7 +511,8 @@ export default function ProjectDetailPage({ params }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Drawings</h2>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-semibold">
+            {canUploadDocuments && <>
+              <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-semibold">
               {(['drawing_2d', 'drawing_3d'] as const).map((t) => (
                 <button
                   key={t}
@@ -509,22 +522,23 @@ export default function ProjectDetailPage({ params }: Props) {
                   {t === 'drawing_2d' ? '2D' : '3D'}
                 </button>
               ))}
-            </div>
-            <input
+              </div>
+              <input
               ref={drawingInputRef}
               type="file"
               className="hidden"
               accept=".pdf,.jpg,.jpeg,.png,.dwg,.dxf,.svg"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleDrawingUpload(f); }}
-            />
-            <button
+              />
+              <button
               onClick={() => drawingInputRef.current?.click()}
               disabled={drawingUploading}
               className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
               {drawingUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               Upload {drawingType === 'drawing_2d' ? '2D' : '3D'} Drawing
-            </button>
+              </button>
+            </>}
           </div>
         </div>
 
@@ -539,14 +553,14 @@ export default function ProjectDetailPage({ params }: Props) {
                 <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                 <span className="text-sm text-slate-800 flex-1 truncate">{d.fileName}</span>
                 <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium uppercase shrink-0">{d.type.replace('drawing_', '')}</span>
-                <button
+                {canDeleteDocuments && <button
                   onClick={() => deleteDrawingMut.mutate(d._id)}
                   disabled={deleteDrawingMut.isPending}
                   className="p-1 text-slate-300 hover:text-red-500 shrink-0 transition-colors disabled:opacity-50"
                   title="Delete drawing"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </button>}
               </div>
             ))}
           </div>
@@ -559,12 +573,12 @@ export default function ProjectDetailPage({ params }: Props) {
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
             <ShoppingCart className="w-4 h-4 text-slate-400" /> Purchase Items
           </h2>
-          <button
+          {canManagePurchaseItems && <button
             onClick={() => { setEditingPI(null); setShowPIModal(true); setPiForm(EMPTY_PI); setPiErr(''); }}
             className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Add Item
-          </button>
+          </button>}
         </div>
         {purchaseItems.length === 0 ? (
           <p className="text-sm text-slate-400">No purchase items yet.</p>
@@ -590,7 +604,7 @@ export default function ProjectDetailPage({ params }: Props) {
                     <td className="py-2.5 pr-3 text-slate-600">{pi.quantity}{pi.unit ? ` ${pi.unit}` : ''}</td>
                     <td className="py-2.5 pr-3 text-slate-500">{pi.supplier ?? '—'}</td>
                     <td className="py-2.5">
-                      <select
+                      {canManagePurchaseItems ? <select
                         value={pi.status}
                         onChange={(e) => updatePIStatusMut.mutate({ itemId: pi._id, status: e.target.value })}
                         className={`text-xs font-semibold rounded-full px-2.5 py-1 border-0 focus:ring-2 focus:ring-indigo-500 cursor-pointer ${
@@ -602,10 +616,10 @@ export default function ProjectDetailPage({ params }: Props) {
                         <option value="pending">Pending</option>
                         <option value="ordered">Ordered</option>
                         <option value="received">Received</option>
-                      </select>
+                      </select> : <span className="text-xs font-semibold capitalize">{pi.status}</span>}
                     </td>
                     <td className="py-2.5 text-right">
-                      <button
+                      {canManagePurchaseItems && <button
                         type="button"
                         aria-label={`Edit ${pi.item}`}
                         title="Edit purchase item"
@@ -618,7 +632,7 @@ export default function ProjectDetailPage({ params }: Props) {
                         className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
                       >
                         <Pencil className="h-3.5 w-3.5" /> Edit
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -634,12 +648,12 @@ export default function ProjectDetailPage({ params }: Props) {
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-slate-400" /> Additional Work
           </h2>
-          <button
+          {canEditProject && <button
             onClick={() => { setShowAWModal(true); setAwForm(EMPTY_AW); setAwErr(''); }}
             className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Log Work
-          </button>
+              </button>}
         </div>
         {(projectFull?.additionalWork ?? []).length === 0 ? (
           <p className="text-sm text-slate-400">No additional work logged.</p>
@@ -731,14 +745,14 @@ export default function ProjectDetailPage({ params }: Props) {
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
               <button onClick={() => setShowTaskModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
-              <button
+              {canCreateTask && <button
                 onClick={() => createTaskMut.mutate(taskForm)}
                 disabled={!taskForm.title.trim() || !taskForm.departmentId || !taskForm.assignedToId || createTaskMut.isPending}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 {createTaskMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {createTaskMut.isPending ? 'Creating…' : 'Create Task'}
-              </button>
+          </button>}
             </div>
           </div>
         </div>

@@ -28,6 +28,7 @@ export default function ClientsPage() {
   const { hasPermission } = usePermissions();
   const canCreateClient = hasPermission(PERMISSIONS.CLIENTS_CREATE);
   const canCreateProject = hasPermission(PERMISSIONS.PROJECTS_CREATE);
+  const canEditClient = hasPermission(PERMISSIONS.CLIENTS_EDIT);
   const router = useRouter();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -231,18 +232,18 @@ export default function ClientsPage() {
                   )}
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <button onClick={() => openEdit(c)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                  {canEditClient && <button onClick={() => openEdit(c)} aria-label={`Edit ${c.name}`} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                     <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  {c.isActive !== false ? (
+                  </button>}
+                  {c.isActive !== false && canCreateProject && <button
+                    onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
+                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                    title="Create project for this client"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                  </button>}
+                  {canEditClient && (c.isActive !== false ? (
                     <>
-                      {canCreateProject && <button
-                        onClick={() => { setNewClientId(c._id); setProjectForm({ title: '', firstStageId: sortedDepts[0]?._id ?? '' }); setShowProjectModal(true); }}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                        title="Create project for this client"
-                      >
-                        <FolderPlus className="w-3.5 h-3.5" />
-                      </button>}
                       <button
                         onClick={() => deactivateMut.mutate(c._id)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -259,7 +260,7 @@ export default function ClientsPage() {
                     >
                       <UserCheck className="w-3.5 h-3.5" />
                     </button>
-                  )}
+                  ))}
                 </div>
               </div>
               <div className="space-y-1.5">

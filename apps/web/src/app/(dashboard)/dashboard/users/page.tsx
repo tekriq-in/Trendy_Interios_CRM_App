@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { UserPlus, Pencil, UserX, UserCheck, X, Users } from 'lucide-react';
+import { PERMISSIONS } from '@ti/shared';
+import { usePermissions } from '@/lib/usePermissions';
+import { UserPlus, Pencil, UserX, UserCheck, X, Users, ShieldAlert } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -55,6 +57,11 @@ function avatarColor(name: string) {
 }
 
 export default function UsersPage() {
+  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const canViewUsers = hasPermission(PERMISSIONS.USERS_READ);
+  const canCreateUsers = hasPermission(PERMISSIONS.USERS_CREATE);
+  const canEditUsers = hasPermission(PERMISSIONS.USERS_EDIT);
+  const canDeleteUsers = hasPermission(PERMISSIONS.USERS_DELETE);
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
@@ -67,16 +74,19 @@ export default function UsersPage() {
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: () => apiClient.get('/users').then((r) => r.data),
+    enabled: canViewUsers,
   });
 
   const { data: roles = [] } = useQuery<Role[]>({
     queryKey: ['roles'],
     queryFn: () => apiClient.get('/roles').then((r) => r.data),
+    enabled: canCreateUsers || canEditUsers,
   });
 
   const { data: departments = [] } = useQuery<Department[]>({
     queryKey: ['departments'],
     queryFn: () => apiClient.get('/departments').then((r) => r.data),
+    enabled: canCreateUsers || canEditUsers,
   });
 
   const deactivateMut = useMutation({
@@ -198,6 +208,28 @@ export default function UsersPage() {
   const fieldErr = (field: keyof FormState) =>
     fieldErrors[field] ? <p className="text-xs text-red-500 mt-1">{fieldErrors[field]}</p> : null;
 
+  if (permissionsLoading) {
+    return <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">{Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)}</div>;
+  }
+
+  if (!canViewUsers) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Employees</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Employee directory</p>
+        </div>
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+          <div>
+            <h2 className="text-sm font-semibold text-amber-900">You don’t have access to employee records</h2>
+            <p className="mt-1 text-sm text-amber-800">Your role doesn’t include permission to view the employee directory. Contact an administrator if you need access.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -205,9 +237,9 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-slate-900">Employees</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage staff accounts and role assignments.</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+        {canCreateUsers && <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
           <UserPlus className="w-4 h-4" /> Add Employee
-        </button>
+        </button>}
       </div>
 
       {isLoading ? (
@@ -220,7 +252,7 @@ export default function UsersPage() {
             icon={Users}
             title="No employees yet"
             description="Add your first employee to start assigning them to projects and departments."
-            action={{ label: 'Add Employee', onClick: openCreate }}
+            action={canCreateUsers ? { label: 'Add Employee', onClick: openCreate } : undefined}
           />
         </div>
       ) : (
@@ -258,21 +290,21 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <button
+                      {canEditUsers && <button
                         onClick={() => openEdit(u)}
                         className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" /> Edit
-                      </button>
+                      </button>}
                       {u.isActive ? (
-                        <button
+                        canDeleteUsers && <button
                           onClick={() => setConfirmDeactivate(u)}
                           className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors"
                         >
                           <UserX className="w-3.5 h-3.5" /> Deactivate
                         </button>
                       ) : (
-                        <button
+                        canEditUsers && <button
                           onClick={() => reactivateMut.mutate(u._id)}
                           disabled={reactivateMut.isPending}
                           className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
@@ -290,7 +322,7 @@ export default function UsersPage() {
       )}
 
       {/* Deactivate confirmation modal */}
-      {confirmDeactivate && (
+      {canDeleteUsers && confirmDeactivate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-start gap-3">
@@ -323,7 +355,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      {showModal && (
+      {showModal && (editing ? canEditUsers : canCreateUsers) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-16 px-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mb-8">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">

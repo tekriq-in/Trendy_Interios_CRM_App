@@ -83,9 +83,9 @@ export class ChatGroupsService {
         {
           $lookup: {
             from: 'users',
-            let: { sid: '$sender' },
+            let: { sid: '$senderId' },
             pipeline: [
-              { $match: { $expr: { $eq: ['$_id', '$$sid'] } } },
+              { $match: { $expr: { $eq: [{ $toString: '$_id' }, '$$sid'] } } },
               { $project: { name: 1, _id: 0 } },
             ],
             as: 'senderUser',

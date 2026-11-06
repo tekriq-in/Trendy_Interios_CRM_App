@@ -57,6 +57,16 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(_client: Socket) {}
 
+  emitMessageUpdated(message: Record<string, unknown>) {
+    if (this.server && typeof message.channel === 'string') {
+      this.server.to(message.channel).emit('message_updated', message);
+    }
+  }
+
+  emitMessageDeleted(channel: string, messageId: string) {
+    if (this.server) this.server.to(channel).emit('message_deleted', { channel, messageId });
+  }
+
   @SubscribeMessage('join_channel')
   handleJoinChannel(@ConnectedSocket() client: Socket, @MessageBody() channel: string) {
     client.join(channel);

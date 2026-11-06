@@ -189,7 +189,7 @@ export default function ApprovalsPage() {
   async function handleGenerate() {
     if (!reqForm.rawNotes.trim()) { setReqErr('Add some notes first.'); return; }
     const proj = projects.find(p => p._id === reqForm.projectId);
-    setGenerating(true); setReqErr('');
+    setGenerating(true); setReqErr(''); setGeneratedMsg(''); setTranslatedNotes('');
     try {
       const res = await apiClient.post<{ message: string; translatedNotes?: string }>('/approvals/generate-message', {
         rawNotes: reqForm.rawNotes,
@@ -200,8 +200,11 @@ export default function ApprovalsPage() {
       });
       setGeneratedMsg(res.data.message);
       setTranslatedNotes(res.data.translatedNotes ?? '');
-    } catch {
-      setReqErr('Failed to generate message. You can type one manually.');
+    } catch (e: unknown) {
+      const responseMessage = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setReqErr(Array.isArray(responseMessage)
+        ? responseMessage.join(' ')
+        : responseMessage ?? 'Failed to generate message. Check the AI provider configuration and try again.');
     } finally { setGenerating(false); }
   }
 
@@ -595,7 +598,10 @@ export default function ApprovalsPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Project</label>
                 <select
                   value={reqForm.projectId}
-                  onChange={e => setReqForm(p => ({ ...p, projectId: e.target.value }))}
+                  onChange={e => {
+                    setReqForm(p => ({ ...p, projectId: e.target.value }));
+                    setGeneratedMsg(''); setTranslatedNotes('');
+                  }}
                   className={inputCls}
                 >
                   <option value="">Select project…</option>
@@ -609,7 +615,10 @@ export default function ApprovalsPage() {
                   {Object.entries(KIND_LABELS).map(([k, v]) => (
                     <button
                       key={k}
-                      onClick={() => setReqForm(p => ({ ...p, kind: k }))}
+                      onClick={() => {
+                        setReqForm(p => ({ ...p, kind: k }));
+                        setGeneratedMsg(''); setTranslatedNotes('');
+                      }}
                       className={`px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors ${
                         reqForm.kind === k
                           ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
@@ -628,7 +637,10 @@ export default function ApprovalsPage() {
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Staff notes (raw)</label>
                     <textarea
                       value={reqForm.rawNotes}
-                      onChange={e => { setReqForm(p => ({ ...p, rawNotes: e.target.value })); setTranslatedNotes(''); }}
+                      onChange={e => {
+                        setReqForm(p => ({ ...p, rawNotes: e.target.value }));
+                        setTranslatedNotes(''); setGeneratedMsg('');
+                      }}
                       rows={3}
                       placeholder="e.g. Tiles arrived, work resumes Thursday, slight 2-day delay from supplier"
                       className={`${inputCls} resize-none`}
@@ -653,7 +665,10 @@ export default function ApprovalsPage() {
                         {(['en', 'ta'] as const).map(l => (
                           <button
                             key={l}
-                            onClick={() => setReqForm(p => ({ ...p, language: l }))}
+                            onClick={() => {
+                              setReqForm(p => ({ ...p, language: l }));
+                              setGeneratedMsg(''); setTranslatedNotes(''); setReqErr('');
+                            }}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
                               reqForm.language === l
                                 ? 'border-indigo-500 bg-indigo-50 text-indigo-700'

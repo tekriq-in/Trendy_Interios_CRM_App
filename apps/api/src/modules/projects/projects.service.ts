@@ -37,7 +37,13 @@ export class ProjectsService {
       .sort({ createdAt: -1 })
       .lean();
 
-    return this.populateTeams(projects as unknown as Record<string, unknown>[]);
+    const withProgress = await Promise.all(
+      (projects as unknown as Array<Record<string, unknown>>).map(async (project) => ({
+        ...project,
+        progressPct: await this.computeProgress(project as unknown as ProgressInput),
+      })),
+    );
+    return this.populateTeams(withProgress);
   }
 
   async findById(id: string, user: { _id: string; rolePermissions: string[] }) {
@@ -55,7 +61,8 @@ export class ProjectsService {
 
     if (!project) throw new NotFoundException('project.not_found');
     const [populated] = await this.populateTeams([project]);
-    return populated;
+    const progressPct = await this.computeProgress(project as unknown as ProgressInput);
+    return { ...populated, progressPct };
   }
 
   private async populateTeams(projects: Record<string, unknown>[]) {
@@ -240,7 +247,7 @@ export class ProjectsService {
     if (!project) throw new NotFoundException('project.not_found');
 
     return {
-      progressPct: project.progressPct,
+      progressPct: await this.computeProgress(project as unknown as ProgressInput),
       currentStage: project.currentStage,
       stageHistory: project.stageHistory,
     };
@@ -289,35 +296,57 @@ export class ProjectsService {
     return progressPct;
   }
 
-  private async computeProgress(project: ProjectDocument): Promise<number> {
-    const weights = project.stageWeights?.size
+  private async computeProgress(project: ProgressInput): Promise<number> {
+    const configuredWeights = project.stageWeights instanceof Map
       ? Object.fromEntries(project.stageWeights)
+      : project.stageWeights ?? {};
+    const weights = Object.keys(configuredWeights).length
+      ? configuredWeights
       : DEFAULT_STAGE_WEIGHTS;
+    const completedIds = new Set(
+      project.stageHistory
+        .filter((stage) => Boolean(stage.completedAt))
+        .map((stage) => String(stage.stage)),
+    );
+    const visitedIds = [...new Set(project.stageHistory.map((stage) => String(stage.stage)))];
+    const departments = await this.projectModel.db
+      .model('Department')
+      .find({
+        $or: [
+          { isActive: { $ne: false } },
+          { _id: { $in: visitedIds.map((stageId) => new Types.ObjectId(stageId)) } },
+        ],
+      })
+      .select('name')
+      .lean() as unknown as Array<{ _id: Types.ObjectId; name: string }>;
 
-    const completedStageIds = project.stageHistory
-      .filter((s) => s.completedAt)
-      .map((s) => s.stage.toString());
+    const knownWeights = departments
+      .map((department) => weights[department.name])
+      .filter((weight): weight is number => Number.isFinite(weight) && weight > 0);
+    const fallbackWeight = knownWeights.length
+      ? knownWeights.reduce((sum, weight) => sum + weight, 0) / knownWeights.length
+      : 1;
+    const stageWeights = new Map(
+      departments.map((department) => [
+        String(department._id),
+        Number.isFinite(weights[department.name]) && weights[department.name] > 0
+          ? weights[department.name]
+          : fallbackWeight,
+      ]),
+    );
 
-    let completedWeight = 0;
-    let totalWeight = 0;
-
-    for (const [, weight] of Object.entries(weights)) {
-      totalWeight += weight;
-    }
-
-    for (const stageId of completedStageIds) {
-      const stageDoc = await this.projectModel.db
-        .model('Department')
-        .findById(stageId)
-        .select('name')
-        .lean() as { name: string } | null;
-
-      if (stageDoc?.name && weights[stageDoc.name] !== undefined) {
-        completedWeight += weights[stageDoc.name];
-      }
-    }
-
+    const totalWeight = [...stageWeights.values()].reduce((sum, weight) => sum + weight, 0);
     if (totalWeight === 0) return 0;
-    return Math.round((completedWeight / totalWeight) * 100);
+
+    const completedWeight = [...completedIds].reduce(
+      (sum, stageId) => sum + (stageWeights.get(stageId) ?? 0),
+      0,
+    );
+    return Math.max(0, Math.min(100, Math.round((completedWeight / totalWeight) * 100)));
   }
+}
+
+interface ProgressInput {
+  stageHistory: Array<{ stage: Types.ObjectId | string; completedAt?: Date }>;
+  stageWeights?: Map<string, number> | Record<string, number>;
 }

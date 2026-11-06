@@ -135,7 +135,15 @@ export default function ProjectDetailPage({ params }: Props) {
       setAdvancing(false);
       toast('success', 'Stage advanced successfully.');
     },
-    onError: () => { setAdvancing(false); toast('error', 'Failed to advance stage.'); },
+    onError: (error: unknown) => {
+      setAdvancing(false);
+      const responseMessage = (error as { response?: { data?: { message?: string | string[] } } })
+        ?.response?.data?.message;
+      const message = Array.isArray(responseMessage)
+        ? responseMessage.join(' ')
+        : responseMessage;
+      toast('error', message || 'Failed to advance stage. Check the API terminal for the error details.');
+    },
   });
 
   const closeProjectMut = useMutation({

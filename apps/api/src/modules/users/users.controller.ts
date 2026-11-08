@@ -23,6 +23,11 @@ import { PERMISSIONS } from '@ti/shared';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  @Get('me')
+  getMe(@CurrentUser() currentUser: { sub: string }) {
+    return this.usersService.findById(currentUser.sub);
+  }
+
   // Lightweight endpoint — any logged-in user can fetch colleagues for chat
   @Get('for-chat')
   findForChat() {

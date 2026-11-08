@@ -33,7 +33,9 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const NAV_GROUPS: NavGroup[] = [
+import { ShoppingCart } from 'lucide-react';
+
+const ALL_GROUPS: NavGroup[] = [
   {
     label: 'OVERVIEW',
     items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true }],
@@ -65,11 +67,93 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const DESIGN_GROUPS: NavGroup[] = [
+  {
+    label: 'OVERVIEW',
+    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true }],
+  },
+  {
+    label: 'WORK',
+    items: [
+      { href: '/dashboard/projects', label: 'My Projects', icon: FolderKanban },
+      { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
+      { href: '/dashboard/approvals', label: 'Approvals', icon: CheckSquare },
+      { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
+      { href: '/dashboard/chat', label: 'Chat', icon: MessageSquare },
+    ],
+  },
+];
+
+const PURCHASE_GROUPS: NavGroup[] = [
+  {
+    label: 'OVERVIEW',
+    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true }],
+  },
+  {
+    label: 'WORK',
+    items: [
+      { href: '/dashboard/projects', label: 'My Projects', icon: FolderKanban },
+      { href: '/dashboard/purchase-items', label: 'Purchase Items', icon: ShoppingCart },
+      { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
+      { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
+      { href: '/dashboard/chat', label: 'Chat', icon: MessageSquare },
+    ],
+  },
+];
+
+const DEPT_HEAD_GROUPS: NavGroup[] = [
+  {
+    label: 'OVERVIEW',
+    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true }],
+  },
+  {
+    label: 'OPERATIONS',
+    items: [
+      { href: '/dashboard/projects', label: 'Projects', icon: FolderKanban },
+      { href: '/dashboard/approvals', label: 'Approvals', icon: CheckSquare },
+      { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
+      { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
+      { href: '/dashboard/chat', label: 'Chat', icon: MessageSquare },
+    ],
+  },
+  {
+    label: 'TEAM',
+    items: [
+      { href: '/dashboard/users', label: 'Employees', icon: Users },
+    ],
+  },
+];
+
+function getNavGroups(role: string, deptName?: string | null): NavGroup[] {
+  const isAdmin = role === 'MD' || role === 'GM';
+  if (isAdmin) return ALL_GROUPS;
+  if (deptName === 'Design') return DESIGN_GROUPS;
+  if (deptName === 'Purchase') return PURCHASE_GROUPS;
+  if (role === 'Department Head') return DEPT_HEAD_GROUPS;
+  // Generic employee
+  return [
+    {
+      label: 'OVERVIEW',
+      items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true }],
+    },
+    {
+      label: 'WORK',
+      items: [
+        { href: '/dashboard/projects', label: 'My Projects', icon: FolderKanban },
+        { href: '/dashboard/handovers', label: 'Handovers', icon: ArrowLeftRight },
+        { href: '/dashboard/blockers', label: 'Blockers', icon: AlertTriangle },
+        { href: '/dashboard/chat', label: 'Chat', icon: MessageSquare },
+      ],
+    },
+  ];
+}
+
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const user = useAuthStore((s) => s.user);
+  const navGroups = getNavGroups(user?.role ?? '', user?.department?.name);
 
   function isActive(item: NavItem) {
     if (item.exact) return pathname === item.href;
@@ -98,7 +182,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 overflow-y-auto py-6 px-3 space-y-6">
-        {NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.label}>
             <p className="text-slate-400 text-[10px] font-semibold tracking-[0.16em] px-3 mb-2">
               {group.label}

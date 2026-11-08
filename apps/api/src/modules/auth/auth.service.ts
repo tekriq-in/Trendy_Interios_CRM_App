@@ -26,6 +26,7 @@ export class AuthService {
       .findOne({ email: email.toLowerCase(), isActive: true })
       .select('+passwordHash +mfaSecret')
       .populate<{ role: { _id: string; permissions: string[]; name: string } }>('role', 'permissions name')
+      .populate<{ department: { _id: string; name: string } | null }>('department', 'name')
       .lean();
 
     if (!user) throw new UnauthorizedException('auth.invalid_credentials');
@@ -45,6 +46,7 @@ export class AuthService {
       .findById(userId)
       .select('+mfaSecret')
       .populate<{ role: { _id: string; permissions: string[]; name: string } }>('role', 'permissions name')
+      .populate<{ department: { _id: string; name: string } | null }>('department', 'name')
       .lean();
 
     if (!user) throw new UnauthorizedException('auth.invalid_token');
@@ -124,11 +126,14 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string }) {
+  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string; department?: { _id: string; name: string } | null }) {
     const sub = String(user._id);
     const roleName = typeof user.role === 'object' && user.role ? user.role.name : (user.role ?? 'Staff');
+    const dept = user.department && typeof user.department === 'object'
+      ? { id: String(user.department._id), name: user.department.name }
+      : null;
     const accessToken = this.jwtService.sign(
-      { sub, email: user.email, name: user.name ?? '', role: roleName },
+      { sub, email: user.email, name: user.name ?? '', role: roleName, department: dept },
       { expiresIn: this.config.get('JWT_ACCESS_EXPIRES', '15m') },
     );
     const refreshToken = this.jwtService.sign(

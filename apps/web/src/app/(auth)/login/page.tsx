@@ -50,6 +50,7 @@ export default function LoginPage() {
         setAuth(res.data.accessToken!, res.data.refreshToken!, {
           id: payload.sub as string,
           name, email: email.trim().toLowerCase(), role: roleName, initials,
+          department: payload.department ?? null,
         });
         router.push('/dashboard');
       }
@@ -82,7 +83,7 @@ export default function LoginPage() {
       const name: string = payload.name ?? email.split('@')[0];
       const roleName: string = payload.role ?? 'Staff';
       const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
-      setAuth(res.data.accessToken, res.data.refreshToken, { id: payload.sub as string, name, email, role: roleName, initials });
+      setAuth(res.data.accessToken, res.data.refreshToken, { id: payload.sub as string, name, email, role: roleName, initials, department: payload.department ?? null });
       router.push('/dashboard');
     } catch {
       setError('Invalid MFA code. Please try again.');

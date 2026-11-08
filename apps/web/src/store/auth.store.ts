@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-interface UserInfo { id?: string; name: string; email: string; role: string; initials: string; }
+interface UserInfo { id?: string; name: string; email: string; role: string; initials: string; department?: { id: string; name: string } | null; }
 
 interface AuthState {
   accessToken: string | null;

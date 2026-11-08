@@ -5,6 +5,8 @@ import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth.store';
+import { DesignDashboard } from '@/components/dashboards/DesignDashboard';
+import { PurchaseDashboard } from '@/components/dashboards/PurchaseDashboard';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -115,6 +117,15 @@ function useDashboardData<T>(key: string[], url: string) {
 
 export default function DashboardOverviewPage() {
   const user = useAuthStore((s) => s.user);
+
+  // Route department users to their own dashboards
+  const role = user?.role ?? '';
+  const deptName = user?.department?.name ?? null;
+  const isAdmin = role === 'MD' || role === 'GM';
+
+  if (!isAdmin && deptName === 'Design') return <DesignDashboard />;
+  if (!isAdmin && deptName === 'Purchase') return <PurchaseDashboard />;
+
   const [attentionTab, setAttentionTab] = useState<'approvals' | 'blockers'>('approvals');
   const [selectedDept, setSelectedDept] = useState<{
     dept: Dept;

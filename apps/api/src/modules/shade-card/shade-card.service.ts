@@ -47,6 +47,22 @@ export class ShadeCardService {
     return { deleted: true };
   }
 
+  async suggestions(q: string, field: 'codeName' | 'area' | 'units') {
+    const regex = new RegExp(q, 'i');
+    if (field === 'units') {
+      // units is an array field — unwind and find distinct values
+      const results = await this.model.aggregate([
+        { $unwind: '$units' },
+        { $match: { units: regex } },
+        { $group: { _id: '$units' } },
+        { $sort: { _id: 1 } },
+        { $limit: 10 },
+      ]);
+      return results.map((r: { _id: string }) => r._id);
+    }
+    return this.model.distinct(field, { [field]: regex }).then((r: string[]) => r.slice(0, 10));
+  }
+
   async reorder(projectId: string, orderedIds: string[]) {
     await Promise.all(
       orderedIds.map((id, idx) =>

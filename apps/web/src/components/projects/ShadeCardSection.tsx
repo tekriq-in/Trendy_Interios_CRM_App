@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { Printer, Plus, Pencil, Trash2, Upload, X, Palette } from 'lucide-react';
 import { FileUpload } from '@/components/ui/FileUpload';
 import type { UploadedFile } from '@/components/ui/FileUpload';
+import { AutocompleteInput } from '@/components/ui/AutocompleteInput';
 
 const MATERIAL_TYPES = ['Acrylic', 'LAM', 'Louver', 'Veneer', 'PU', 'Membrane', 'Glass', 'Other'] as const;
 type MaterialType = typeof MATERIAL_TYPES[number];
@@ -258,10 +259,10 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
               {/* Area */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Area / Room</label>
-                <input
-                  type="text"
+                <AutocompleteInput
                   value={form.area}
-                  onChange={(e) => setForm((f) => ({ ...f, area: e.target.value }))}
+                  onChange={(v) => setForm((f) => ({ ...f, area: v }))}
+                  field="area"
                   placeholder="e.g. Kitchen-Ground Floor, Living Room"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
@@ -295,10 +296,10 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Code Name / Shade</label>
-                  <input
-                    type="text"
+                  <AutocompleteInput
                     value={form.codeName}
-                    onChange={(e) => setForm((f) => ({ ...f, codeName: e.target.value }))}
+                    onChange={(v) => setForm((f) => ({ ...f, codeName: v }))}
+                    field="codeName"
                     placeholder="e.g. MYSTIC-MN 889"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />

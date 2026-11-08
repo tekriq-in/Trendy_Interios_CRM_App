@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ShadeCardService } from './shade-card.service';
 import { CreateShadeCardEntryDto, UpdateShadeCardEntryDto } from './dto/shade-card.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -8,6 +8,15 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 export class ShadeCardController {
   constructor(private service: ShadeCardService) {}
+
+  @Get('shade-card/suggestions')
+  suggestions(
+    @Query('q') q: string,
+    @Query('field') field: 'codeName' | 'area' | 'units',
+  ) {
+    if (!q || q.length < 1) return [];
+    return this.service.suggestions(q, field ?? 'codeName');
+  }
 
   @Get('projects/:projectId/shade-card')
   findByProject(@Param('projectId') projectId: string) {

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { X, Download, ExternalLink, FileText, Image as ImageIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Download, ExternalLink, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
 
 interface Props {
   url: string;
@@ -13,8 +13,36 @@ interface Props {
 export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
   const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
   const isImage = mimeType.startsWith('image/');
-  // Proxy PDF through our own route to strip Cloudinary's X-Frame-Options: DENY header
-  const embedUrl = isPdf ? `/api/file-proxy?url=${encodeURIComponent(url)}` : url;
+
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(isPdf);
+  const [fetchErr, setFetchErr] = useState(false);
+
+  // Fetch PDF as blob so Content-Disposition and X-Frame-Options are irrelevant
+  useEffect(() => {
+    if (!isPdf) return;
+    let revoke: string | null = null;
+    setLoading(true);
+    setFetchErr(false);
+    fetch(`/api/file-proxy?url=${encodeURIComponent(url)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error('proxy error');
+        return r.blob();
+      })
+      .then((blob) => {
+        const obj = URL.createObjectURL(blob);
+        revoke = obj;
+        setBlobUrl(obj);
+        setLoading(false);
+      })
+      .catch(() => {
+        setFetchErr(true);
+        setLoading(false);
+      });
+    return () => {
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [url, isPdf]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -48,7 +76,7 @@ export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
           <span className="hidden sm:inline">Open</span>
         </a>
         <a
-          href={url}
+          href={`/api/file-proxy?url=${encodeURIComponent(url)}`}
           download={fileName}
           className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0"
           title="Download"
@@ -68,12 +96,27 @@ export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
       {/* Content */}
       <div className="flex-1 overflow-hidden flex items-center justify-center p-2 sm:p-4">
         {isPdf ? (
-          <iframe
-            src={embedUrl}
-            title={fileName}
-            className="w-full h-full rounded-lg bg-white"
-            style={{ border: 'none' }}
-          />
+          loading ? (
+            <div className="flex flex-col items-center gap-3 text-slate-300">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
+              <p className="text-sm">Loading PDF…</p>
+            </div>
+          ) : fetchErr ? (
+            <div className="flex flex-col items-center gap-4 text-slate-300">
+              <FileText className="w-16 h-16 text-slate-500" />
+              <p className="text-sm">Could not load preview.</p>
+              <a href={url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 text-sm underline">
+                Open in new tab instead
+              </a>
+            </div>
+          ) : (
+            <iframe
+              src={blobUrl!}
+              title={fileName}
+              className="w-full h-full rounded-lg bg-white"
+              style={{ border: 'none' }}
+            />
+          )
         ) : isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -85,12 +128,7 @@ export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
           <div className="flex flex-col items-center gap-4 text-slate-300">
             <FileText className="w-16 h-16 text-slate-500" />
             <p className="text-sm">Preview not available for this file type.</p>
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-indigo-400 hover:text-indigo-300 text-sm underline"
-            >
+            <a href={url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 text-sm underline">
               Open in new tab
             </a>
           </div>

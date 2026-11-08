@@ -1,8 +1,10 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
-  @IsEmail()
-  email: string;
+  @IsString()
+  @MinLength(1)
+  /** Email address (for MD/GM) or phone number (for all other staff) */
+  identifier: string;
 
   @IsString()
   @MinLength(6)

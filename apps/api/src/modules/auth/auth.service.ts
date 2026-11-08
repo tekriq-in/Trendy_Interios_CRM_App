@@ -21,9 +21,17 @@ export class AuthService {
     private config: ConfigService,
   ) {}
 
-  async login(email: string, password: string) {
+  async login(identifier: string, password: string) {
+    const trimmed = identifier.trim();
+    const isPhone = /^[+\d][\d\s\-()]*$/.test(trimmed) && !trimmed.includes('@');
+    const normalizedPhone = trimmed.replace(/[\s\-()]/g, '');
+
+    const query = isPhone
+      ? { phone: normalizedPhone, isActive: true }
+      : { email: trimmed.toLowerCase(), isActive: true };
+
     const user = await this.userModel
-      .findOne({ email: email.toLowerCase(), isActive: true })
+      .findOne(query)
       .select('+passwordHash +mfaSecret')
       .populate<{ role: { _id: string; permissions: string[]; name: string } }>('role', 'permissions name')
       .populate<{ department: { _id: string; name: string } | null }>('department', 'name')
@@ -126,10 +134,10 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string; department?: { _id: string; name: string } | null }) {
+  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string; department?: { _id: string; name?: string } | null }) {
     const sub = String(user._id);
     const roleName = typeof user.role === 'object' && user.role ? user.role.name : (user.role ?? 'Staff');
-    const dept = user.department && typeof user.department === 'object'
+    const dept = user.department && typeof user.department === 'object' && 'name' in user.department && user.department.name
       ? { id: String(user.department._id), name: user.department.name }
       : null;
     const accessToken = this.jwtService.sign(

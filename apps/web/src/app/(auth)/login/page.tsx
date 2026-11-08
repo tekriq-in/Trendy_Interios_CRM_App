@@ -10,7 +10,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -19,10 +19,14 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Detect whether the identifier looks like a phone number
+  const isPhoneInput = /^[+\d][\d\s\-()+]*$/.test(identifier.trim()) && !identifier.includes('@');
+
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError('Enter a valid email address.');
+    const id = identifier.trim();
+    if (!id) {
+      setError('Enter your email or phone number.');
       return;
     }
     if (password.length < 6) {
@@ -37,19 +41,19 @@ export default function LoginPage() {
         userId?: string;
         accessToken?: string;
         refreshToken?: string;
-      }>(`${API_URL}/auth/login`, { email: email.trim().toLowerCase(), password });
+      }>(`${API_URL}/auth/login`, { identifier: id, password });
 
       if (res.data.requiresMfa) {
         setMfaRequired(true);
         setUserId(res.data.userId!);
       } else {
         const payload = JSON.parse(atob(res.data.accessToken!.split('.')[1]));
-        const name: string = payload.name ?? email.split('@')[0];
+        const name: string = payload.name ?? id.split('@')[0];
         const roleName: string = payload.role ?? 'Staff';
         const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
         setAuth(res.data.accessToken!, res.data.refreshToken!, {
           id: payload.sub as string,
-          name, email: email.trim().toLowerCase(), role: roleName, initials,
+          name, email: payload.email ?? id, role: roleName, initials,
           department: payload.department ?? null,
         });
         router.push('/dashboard');
@@ -59,7 +63,7 @@ export default function LoginPage() {
       const status = axiosErr?.response?.status;
       const msg = axiosErr?.response?.data?.message ?? axiosErr?.message ?? 'Unknown error';
       if (status === 401) {
-        setError('Invalid email or password.');
+        setError('Invalid credentials. Check your email/phone and password.');
       } else if (!status) {
         setError(`Cannot reach API at ${API_URL} — make sure the backend is running on port 3001. (${axiosErr?.code ?? axiosErr?.message})`);
       } else {
@@ -80,10 +84,10 @@ export default function LoginPage() {
         { userId, token: mfaToken },
       );
       const payload = JSON.parse(atob(res.data.accessToken.split('.')[1]));
-      const name: string = payload.name ?? email.split('@')[0];
+      const name: string = payload.name ?? identifier.split('@')[0];
       const roleName: string = payload.role ?? 'Staff';
       const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
-      setAuth(res.data.accessToken, res.data.refreshToken, { id: payload.sub as string, name, email, role: roleName, initials, department: payload.department ?? null });
+      setAuth(res.data.accessToken, res.data.refreshToken, { id: payload.sub as string, name, email: payload.email ?? identifier, role: roleName, initials, department: payload.department ?? null });
       router.push('/dashboard');
     } catch {
       setError('Invalid MFA code. Please try again.');
@@ -142,16 +146,22 @@ export default function LoginPage() {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Email address
+                    {isPhoneInput ? 'Phone number' : 'Email or phone number'}
                   </label>
                   <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@trendyinteriors.in"
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder="Email address or phone number"
+                    autoComplete="username"
                     required
                     className={inputCls}
                   />
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    {isPhoneInput
+                      ? 'Signing in with phone number'
+                      : 'MD and GM sign in with email · all others use phone number'}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">

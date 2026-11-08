@@ -8,6 +8,7 @@ import { Printer, Plus, Pencil, Trash2, Upload, X, Palette } from 'lucide-react'
 import { FileUpload } from '@/components/ui/FileUpload';
 import type { UploadedFile } from '@/components/ui/FileUpload';
 import { AutocompleteInput } from '@/components/ui/AutocompleteInput';
+import type { Suggestion } from '@/components/ui/AutocompleteInput';
 
 const MATERIAL_TYPES = ['Acrylic', 'LAM', 'Louver', 'Veneer', 'PU', 'Membrane', 'Glass', 'Other'] as const;
 type MaterialType = typeof MATERIAL_TYPES[number];
@@ -299,6 +300,12 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
                   <AutocompleteInput
                     value={form.codeName}
                     onChange={(v) => setForm((f) => ({ ...f, codeName: v }))}
+                    onSelect={(s: Suggestion) => {
+                      if (s.photoUrl) {
+                        setForm((f) => ({ ...f, codeName: s.value, photoUrl: s.photoUrl! }));
+                        setSwatchKey((k) => k + 1);
+                      }
+                    }}
                     field="codeName"
                     placeholder="e.g. MYSTIC-MN 889"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"

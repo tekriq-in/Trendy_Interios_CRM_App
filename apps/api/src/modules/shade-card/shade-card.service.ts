@@ -49,8 +49,21 @@ export class ShadeCardService {
 
   async suggestions(q: string, field: 'codeName' | 'area' | 'units') {
     const regex = new RegExp(q, 'i');
+    if (field === 'codeName') {
+      // Return value + photoUrl so the UI can pre-fill the swatch photo
+      const results = await this.model.aggregate([
+        { $match: { codeName: regex } },
+        { $sort: { createdAt: -1 } },
+        { $group: { _id: '$codeName', photoUrl: { $first: '$photoUrl' } } },
+        { $sort: { _id: 1 } },
+        { $limit: 10 },
+      ]);
+      return results.map((r: { _id: string; photoUrl?: string }) => ({
+        value: r._id,
+        photoUrl: r.photoUrl ?? null,
+      }));
+    }
     if (field === 'units') {
-      // units is an array field — unwind and find distinct values
       const results = await this.model.aggregate([
         { $unwind: '$units' },
         { $match: { units: regex } },
@@ -58,9 +71,11 @@ export class ShadeCardService {
         { $sort: { _id: 1 } },
         { $limit: 10 },
       ]);
-      return results.map((r: { _id: string }) => r._id);
+      return results.map((r: { _id: string }) => ({ value: r._id, photoUrl: null }));
     }
-    return this.model.distinct(field, { [field]: regex }).then((r: string[]) => r.slice(0, 10));
+    // area — simple distinct
+    const values: string[] = await this.model.distinct(field, { [field]: regex });
+    return values.slice(0, 10).map((v) => ({ value: v, photoUrl: null }));
   }
 
   async reorder(projectId: string, orderedIds: string[]) {

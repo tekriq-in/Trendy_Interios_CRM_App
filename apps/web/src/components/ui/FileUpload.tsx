@@ -1,8 +1,9 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Upload, X, ExternalLink, Loader2, FileText, Image } from 'lucide-react';
+import { Upload, X, ExternalLink, Loader2, FileText, Image, Eye } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
+import { FileViewerModal } from './FileViewerModal';
 
 export interface UploadedFile {
   _id: string;
@@ -35,6 +36,7 @@ export function FileUpload({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [viewing, setViewing] = useState<UploadedFile | null>(null);
 
   async function uploadFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -147,16 +149,26 @@ export function FileUpload({
               )}
               <span className="text-sm text-slate-700 flex-1 truncate">{f.fileName}</span>
               {f.driveLink?.startsWith('http') && (
-                <a
-                  href={f.driveLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-1 text-slate-400 hover:text-indigo-600 shrink-0"
-                  title="Open in Drive"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setViewing(f); }}
+                    className="p-1 text-slate-400 hover:text-indigo-600 shrink-0"
+                    title="View file"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  <a
+                    href={f.driveLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1 text-slate-400 hover:text-indigo-600 shrink-0"
+                    title="Open in new tab"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </>
               )}
               <button
                 type="button"
@@ -169,6 +181,14 @@ export function FileUpload({
             </div>
           ))}
         </div>
+      )}
+      {viewing && (
+        <FileViewerModal
+          url={viewing.driveLink}
+          mimeType={viewing.mimeType}
+          fileName={viewing.fileName}
+          onClose={() => setViewing(null)}
+        />
       )}
     </div>
   );

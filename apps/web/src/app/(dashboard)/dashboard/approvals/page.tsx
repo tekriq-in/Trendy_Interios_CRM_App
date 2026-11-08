@@ -8,6 +8,7 @@ import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
 import { useToast } from '@/components/ui/Toast';
 import { SkeletonCard } from '@/components/ui/Skeleton';
+import { FileViewerModal } from '@/components/ui/FileViewerModal';
 import {
   CheckCircle, XCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Loader2, Paperclip,
   ExternalLink, FileText, MessageCircle, Check, CheckCheck, Eye, AlertCircle, Clock,
@@ -120,6 +121,7 @@ export default function ApprovalsPage() {
   const [uploadedDocId, setUploadedDocId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [viewingDoc, setViewingDoc] = useState<LinkedDocument | null>(null);
 
   const { data: approvals = [], isLoading, isError } = useQuery<Approval[]>({
     queryKey: ['approvals', canDecide ? 'all' : 'mine', userId],
@@ -365,16 +367,24 @@ export default function ApprovalsPage() {
                           <p className="text-xs text-slate-400 mt-1 italic">Notes: "{a.rawNotes}"</p>
                         )}
                         {a.linkedDocument && (
-                          <a
-                            href={a.linkedDocument.driveLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:underline mt-1"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            {a.linkedDocument.fileName}
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                          <div className="inline-flex items-center gap-0.5 mt-1 bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
+                            <button
+                              onClick={() => setViewingDoc(a.linkedDocument!)}
+                              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:bg-indigo-50 px-2 py-1 transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              {a.linkedDocument.fileName}
+                            </button>
+                            <a
+                              href={a.linkedDocument.driveLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-1.5 py-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border-l border-slate-200 transition-colors"
+                              title="Open in new tab"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
                         )}
                       </div>
                       <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 shrink-0">
@@ -753,6 +763,15 @@ export default function ApprovalsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {viewingDoc && (
+        <FileViewerModal
+          url={viewingDoc.driveLink}
+          mimeType={viewingDoc.mimeType}
+          fileName={viewingDoc.fileName}
+          onClose={() => setViewingDoc(null)}
+        />
       )}
     </div>
   );

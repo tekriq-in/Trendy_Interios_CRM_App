@@ -5,6 +5,7 @@ import {
 import { useState, useEffect, useCallback } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../../../src/services/api';
@@ -18,6 +19,7 @@ interface Project {
   _id: string; title: string; progressPct: number; status: string;
   currentStage?: Dept | string;
 }
+interface TIDocument { _id: string; fileName: string; driveLink: string; mimeType: string; type: string; }
 
 const STATUS_DOT: Record<string, string> = {
   done: '#10B981', in_progress: '#3B82F6', blocked: '#EF4444', pending: '#94A3B8',
@@ -33,6 +35,7 @@ export default function ProjectDetailScreen() {
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskPopulated[]>([]);
   const [departments, setDepartments] = useState<Dept[]>([]);
+  const [documents, setDocuments] = useState<TIDocument[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Handover state
@@ -43,14 +46,16 @@ export default function ProjectDetailScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [projRes, tasksRes, deptsRes] = await Promise.all([
+      const [projRes, tasksRes, deptsRes, docsRes] = await Promise.all([
         api.get<Project>(`/projects/${id}`),
         api.get<TaskPopulated[]>(`/projects/${id}/tasks`),
         api.get<Dept[]>('/departments'),
+        api.get<TIDocument[]>('/documents', { params: { projectId: id } }),
       ]);
       setProject(projRes.data);
       setTasks(tasksRes.data);
       setDepartments(deptsRes.data.sort((a, b) => a.order - b.order));
+      setDocuments(docsRes.data);
     } catch {
       // offline
     } finally {
@@ -69,6 +74,10 @@ export default function ProjectDetailScreen() {
       Alert.alert('Offline', t('offline'));
       setTasks((prev) => prev.map((t) => t._id === taskId ? { ...t, status: 'done' as const } : t));
     }
+  }
+
+  async function openDocument(url: string) {
+    await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
   }
 
   async function uploadPhoto(taskId: string) {
@@ -200,6 +209,32 @@ export default function ProjectDetailScreen() {
         </View>
       ))}
 
+      {/* Documents */}
+      {documents.length > 0 && (
+        <>
+          <Text style={[s.sectionLabel, { marginTop: 20 }]}>DOCUMENTS & DRAWINGS</Text>
+          {documents.map((doc) => (
+            <TouchableOpacity
+              key={doc._id}
+              style={s.docCard}
+              onPress={() => openDocument(doc.driveLink)}
+              accessibilityLabel={`View ${doc.fileName}`}
+            >
+              <View style={s.docIcon}>
+                <Text style={s.docIconText}>
+                  {doc.mimeType === 'application/pdf' || doc.fileName.endsWith('.pdf') ? '📄' : '🖼️'}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.docName} numberOfLines={1}>{doc.fileName}</Text>
+                <Text style={s.docType}>{doc.type.replace('drawing_', '').replace('_', ' ')}</Text>
+              </View>
+              <Text style={s.docViewBtn}>View</Text>
+            </TouchableOpacity>
+          ))}
+        </>
+      )}
+
       {/* Handover section */}
       <View style={s.sectionRow}>
         <Text style={s.sectionLabel}>HANDOVER</Text>
@@ -310,6 +345,13 @@ const s = StyleSheet.create({
   proofBtnTextDone: { color: '#10B981' },
 
   notesInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 12, fontSize: 14, color: '#0F172A', backgroundColor: '#F8FAFC', minHeight: 72, textAlignVertical: 'top' },
+
+  docCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  docIcon: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#EEF2FF', justifyContent: 'center' as const, alignItems: 'center' as const, flexShrink: 0 },
+  docIconText: { fontSize: 18 },
+  docName: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
+  docType: { fontSize: 11, color: '#64748B', marginTop: 1, textTransform: 'capitalize' },
+  docViewBtn: { color: '#4F46E5', fontWeight: '700', fontSize: 13, flexShrink: 0 },
 
   handoverBtns: { flexDirection: 'row', gap: 10 },
   cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center' },

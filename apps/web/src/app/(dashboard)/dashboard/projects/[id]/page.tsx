@@ -8,8 +8,9 @@ import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil, Eye } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
+import { FileViewerModal } from '@/components/ui/FileViewerModal';
 
 interface Dept { _id: string; name: string; order: number; }
 interface TeamMember { _id: string; name: string; email: string; }
@@ -70,6 +71,7 @@ export default function ProjectDetailPage({ params }: Props) {
   const [advancing, setAdvancing] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [drawingType, setDrawingType] = useState<'drawing_2d' | 'drawing_3d'>('drawing_2d');
+  const [viewingDoc, setViewingDoc] = useState<TIDocument | null>(null);
   const [drawingUploading, setDrawingUploading] = useState(false);
   const [drawingErr, setDrawingErr] = useState('');
   const drawingInputRef = useRef<HTMLInputElement>(null);
@@ -561,6 +563,15 @@ export default function ProjectDetailPage({ params }: Props) {
                 <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                 <span className="text-sm text-slate-800 flex-1 truncate">{d.fileName}</span>
                 <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium uppercase shrink-0">{d.type.replace('drawing_', '')}</span>
+                {d.driveLink && (
+                  <button
+                    onClick={() => setViewingDoc(d)}
+                    className="p-1 text-slate-400 hover:text-indigo-600 shrink-0 transition-colors"
+                    title="View file"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {canDeleteDocuments && <button
                   onClick={() => deleteDrawingMut.mutate(d._id)}
                   disabled={deleteDrawingMut.isPending}
@@ -894,6 +905,15 @@ export default function ProjectDetailPage({ params }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {viewingDoc && (
+        <FileViewerModal
+          url={viewingDoc.driveLink}
+          mimeType={viewingDoc.mimeType}
+          fileName={viewingDoc.fileName}
+          onClose={() => setViewingDoc(null)}
+        />
       )}
     </div>
   );

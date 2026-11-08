@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { CheckCircle, XCircle, ChevronRight, ArrowRight, Plus, X, ExternalLink, PackageCheck, FileText } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, ArrowRight, Plus, X, ExternalLink, PackageCheck, FileText, Eye } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
+import { FileViewerModal } from '@/components/ui/FileViewerModal';
 
 interface NameObj { name: string; }
 interface ProjectObj { _id: string; title: string; }
@@ -36,6 +37,11 @@ interface RaiseForm {
 }
 const EMPTY_RAISE: RaiseForm = { projectId: '', fromDeptId: '', toDeptId: '', notes: '' };
 
+function useFileViewer() {
+  const [file, setFile] = useState<ProofFile | null>(null);
+  return { file, open: setFile, close: () => setFile(null) };
+}
+
 const STATUS_STYLE: Record<string, string> = {
   draft:     'bg-slate-100 text-slate-600',
   confirmed: 'bg-amber-50 text-amber-700',
@@ -57,6 +63,7 @@ function nameOf(v: NameObj | string | undefined) {
 
 export default function HandoversPage() {
   const qc = useQueryClient();
+  const fileViewer = useFileViewer();
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [showRaise, setShowRaise] = useState(false);
@@ -146,17 +153,25 @@ export default function HandoversPage() {
             {(h.proofFiles ?? []).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {(h.proofFiles ?? []).filter(Boolean).map((f) => (
-                  <a
-                    key={f._id}
-                    href={f.driveLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-xs bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-2 py-1 rounded-md border border-slate-200 transition-colors"
-                  >
-                    <FileText className="w-3 h-3" />
-                    {(f.fileName ?? '').length > 20 ? (f.fileName ?? '').slice(0, 20) + '…' : (f.fileName ?? 'file')}
-                    <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
-                  </a>
+                  <div key={f._id} className="flex items-center gap-0.5 bg-slate-100 border border-slate-200 rounded-md overflow-hidden">
+                    <button
+                      onClick={() => fileViewer.open(f)}
+                      className="flex items-center gap-1 text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 px-2 py-1 transition-colors"
+                      title="View file"
+                    >
+                      <Eye className="w-3 h-3" />
+                      {(f.fileName ?? '').length > 20 ? (f.fileName ?? '').slice(0, 20) + '…' : (f.fileName ?? 'file')}
+                    </button>
+                    <a
+                      href={f.driveLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-1.5 py-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border-l border-slate-200"
+                      title="Open in new tab"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
                 ))}
               </div>
             )}
@@ -342,6 +357,14 @@ export default function HandoversPage() {
             </div>
           )}
         </>
+      )}
+      {fileViewer.file && (
+        <FileViewerModal
+          url={fileViewer.file.driveLink}
+          mimeType={fileViewer.file.mimeType}
+          fileName={fileViewer.file.fileName}
+          onClose={fileViewer.close}
+        />
       )}
     </div>
   );

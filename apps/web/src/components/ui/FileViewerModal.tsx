@@ -13,6 +13,8 @@ interface Props {
 export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
   const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
   const isImage = mimeType.startsWith('image/');
+  // Proxy PDF through our own route to strip Cloudinary's X-Frame-Options: DENY header
+  const embedUrl = isPdf ? `/api/file-proxy?url=${encodeURIComponent(url)}` : url;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -67,7 +69,7 @@ export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
       <div className="flex-1 overflow-hidden flex items-center justify-center p-2 sm:p-4">
         {isPdf ? (
           <iframe
-            src={url}
+            src={embedUrl}
             title={fileName}
             className="w-full h-full rounded-lg bg-white"
             style={{ border: 'none' }}

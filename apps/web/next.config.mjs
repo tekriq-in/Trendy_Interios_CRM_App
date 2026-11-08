@@ -40,7 +40,6 @@ const nextConfig = {
               "img-src 'self' data: blob: https://res.cloudinary.com https://storage.googleapis.com",
               "font-src 'self' data:",
               "connect-src 'self' http://localhost:3001 ws://localhost:3001 ws: wss:",
-              "frame-src https://res.cloudinary.com",
               "frame-ancestors 'none'",
             ].join('; '),
           },

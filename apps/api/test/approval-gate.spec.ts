@@ -125,9 +125,12 @@ describe('Approval Gate — no client message without approved approval', () => 
     const actor = { _id: actorId, rolePermissions: [PERMISSIONS.APPROVALS_DECIDE] };
     await service.approve(approvalId, {}, actor);
 
-    expect(mockWhatsApp.sendMessage).toHaveBeenCalledWith(
+    // Service now uses sendTemplate (WhatsApp template API) for all approval kinds
+    expect(mockWhatsApp.sendTemplate).toHaveBeenCalledWith(
       '+919876543210',
-      expect.stringContaining('Trendy Interios'),
+      'project_update',
+      expect.arrayContaining([expect.stringContaining('Rajesh Sharma')]),
+      expect.any(String),
     );
   });
 

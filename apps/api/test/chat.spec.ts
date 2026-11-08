@@ -58,13 +58,10 @@ describe('ChatGroupsService', () => {
   describe('findForUser', () => {
     it('returns groups the user is a member of, with lastMessage attached', async () => {
       const group = makeGroup({ channel: 'project:abc123', members: [new Types.ObjectId(userId)] });
-      mockGroupModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue([group]),
-      });
+      // findForUser uses aggregate on the group model (not find)
+      mockGroupModel.aggregate.mockResolvedValue([group]);
       mockMessageModel.aggregate.mockResolvedValue([
-        { _id: 'project:abc123', body: 'Hello', senderName: 'Alice', createdAt: new Date() },
+        { _id: 'project:abc123', body: 'Hello', senderName: 'Alice', senderId: 'other', createdAt: new Date() },
       ]);
 
       const result = await service.findForUser(userId);
@@ -76,11 +73,7 @@ describe('ChatGroupsService', () => {
 
     it('returns null lastMessage for groups with no messages', async () => {
       const group = makeGroup({ channel: 'group:empty' });
-      mockGroupModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue([group]),
-      });
+      mockGroupModel.aggregate.mockResolvedValue([group]);
       mockMessageModel.aggregate.mockResolvedValue([]);
 
       const result = await service.findForUser(userId);
@@ -132,7 +125,8 @@ describe('ChatGroupsService', () => {
       const [sorted1, sorted2] = [id1, id2].sort();
       mockGroupModel.findOne.mockReturnValue({ populate: jest.fn().mockResolvedValue(null) });
       const dm = makeGroup({ type: 'individual', channel: `dm:${sorted1}_${sorted2}` });
-      mockGroupModel.create.mockResolvedValue(dm);
+      // Service calls created.populate() after create — add it to the mock
+      mockGroupModel.create.mockResolvedValue({ ...dm, populate: jest.fn().mockResolvedValue(dm) });
 
       await service.findOrCreateDM(id2, id1); // order reversed intentionally
       const call = mockGroupModel.create.mock.calls[0][0];

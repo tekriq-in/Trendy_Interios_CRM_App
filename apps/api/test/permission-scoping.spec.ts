@@ -4,12 +4,16 @@ import { Types } from 'mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
+import { ChatGroupsService } from '../src/modules/chat-groups/chat-groups.service';
+import { HandoversService } from '../src/modules/handovers/handovers.service';
 import { PERMISSIONS } from '@ti/shared';
 
 const mockProject = {
   _id: new Types.ObjectId(),
   title: 'Test Project',
   assignedTeam: [new Types.ObjectId()], // different user
+  stageHistory: [],
+  status: 'active',
 };
 
 const mockProjectModel = {
@@ -18,7 +22,14 @@ const mockProjectModel = {
   findById: jest.fn(),
   create: jest.fn(),
   findByIdAndUpdate: jest.fn(),
-  db: { model: jest.fn() },
+  db: {
+    model: jest.fn().mockReturnValue({
+      find: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([]),
+      }),
+    }),
+  },
 };
 
 const mockUserModel = {
@@ -29,6 +40,8 @@ const mockUserModel = {
 };
 const mockActivityLog = { record: jest.fn() };
 const mockEventEmitter = { emit: jest.fn() };
+const mockChatGroups = { autoCreateForProject: jest.fn(), findOrCreateDM: jest.fn() };
+const mockHandovers = { findByProject: jest.fn().mockResolvedValue([]) };
 
 describe('Permission Scoping — Employee project isolation', () => {
   let service: ProjectsService;
@@ -42,6 +55,8 @@ describe('Permission Scoping — Employee project isolation', () => {
         { provide: getModelToken('User'), useValue: mockUserModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: ChatGroupsService, useValue: mockChatGroups },
+        { provide: HandoversService, useValue: mockHandovers },
       ],
     }).compile();
 

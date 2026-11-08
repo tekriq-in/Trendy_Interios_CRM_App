@@ -12,7 +12,7 @@ export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email: string;
 
-  @Prop({ trim: true, sparse: true })
+  @Prop({ trim: true })
   phone: string;
 
   @Prop({ required: true, select: false })
@@ -51,7 +51,8 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.plugin(basePlugin);
-UserSchema.index({ email: 1 });
+// email unique index is declared via @Prop({ unique: true }) above
+// phone sparse unique index declared via @Prop({ sparse: true }) + explicit index below
 UserSchema.index({ phone: 1 }, { sparse: true, unique: true });
 UserSchema.index({ role: 1 });
 UserSchema.index({ department: 1 });

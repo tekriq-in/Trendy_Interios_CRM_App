@@ -77,6 +77,16 @@ export class ApprovalsService {
     ]);
   }
 
+  findMine(userId: string) {
+    return this.approvalModel
+      .find({ requestedBy: new Types.ObjectId(userId) })
+      .populate('project', 'title')
+      .populate('approver', 'name')
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+  }
+
   findPending() {
     return this.approvalModel
       .find({ status: 'pending' })

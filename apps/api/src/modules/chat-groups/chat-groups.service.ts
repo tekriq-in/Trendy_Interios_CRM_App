@@ -76,16 +76,16 @@ export class ChatGroupsService {
     const channels = groups.map((g) => g.channel);
     const lastMessages = await (this.messageModel as unknown as Model<{ channel: string; body: string; sender: Types.ObjectId; createdAt: Date }>)
       .aggregate([
-        { $match: { channel: { $in: channels } } },
+        { $match: { channel: { $in: channels }, isDeleted: { $ne: true } } },
         { $sort: { createdAt: -1 } },
         { $group: { _id: '$channel', body: { $first: '$body' }, sender: { $first: '$sender' }, senderId: { $first: { $toString: '$sender' } }, createdAt: { $first: '$createdAt' } } },
         // Pipeline lookup handles both ObjectId and string sender values
         {
           $lookup: {
             from: 'users',
-            let: { sid: '$sender' },
+            let: { sid: '$senderId' },
             pipeline: [
-              { $match: { $expr: { $eq: ['$_id', '$$sid'] } } },
+              { $match: { $expr: { $eq: [{ $toString: '$_id' }, '$$sid'] } } },
               { $project: { name: 1, _id: 0 } },
             ],
             as: 'senderUser',

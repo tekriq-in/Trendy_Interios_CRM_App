@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PurchaseItem, PurchaseItemDocument } from './schemas/purchase-item.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { UpdatePurchaseItemDto } from './dto/update-purchase-item.dto';
 
 @Injectable()
 export class PurchaseItemsService {
@@ -42,25 +43,32 @@ export class PurchaseItemsService {
     return item;
   }
 
-  async updateStatus(
+  async update(
     id: string,
-    dto: { status: string; linkedDocumentId?: string },
+    dto: UpdatePurchaseItemDto,
     actorId: string,
   ) {
-    const update: Record<string, unknown> = { status: dto.status };
+    const update: Record<string, unknown> = {};
+    if (dto.item !== undefined) update.item = dto.item;
+    if (dto.description !== undefined) update.description = dto.description;
+    if (dto.quantity !== undefined) update.quantity = dto.quantity;
+    if (dto.unit !== undefined) update.unit = dto.unit;
+    if (dto.supplier !== undefined) update.supplier = dto.supplier;
+    if (dto.status !== undefined) update.status = dto.status;
     if (dto.status === 'ordered') update.orderedAt = new Date();
     if (dto.status === 'received') update.receivedAt = new Date();
     if (dto.linkedDocumentId) update.linkedDocument = new Types.ObjectId(dto.linkedDocumentId);
+    if (Object.keys(update).length === 0) throw new BadRequestException('purchase_item.empty_update');
 
     const item = await this.itemModel.findByIdAndUpdate(id, update, { new: true });
     if (!item) throw new NotFoundException('purchase_item.not_found');
 
     await this.activityLog.record({
       actor: actorId,
-      action: 'purchase_item.status_changed',
+      action: dto.status !== undefined ? 'purchase_item.status_changed' : 'purchase_item.updated',
       entity: 'purchaseItems',
       entityId: id,
-      metadata: { status: dto.status },
+      metadata: update,
     });
 
     return item;

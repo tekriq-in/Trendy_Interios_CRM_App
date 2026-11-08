@@ -5,6 +5,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '@ti/shared';
+import { UpdatePurchaseItemDto } from './dto/update-purchase-item.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -27,11 +28,11 @@ export class PurchaseItemsController {
   }
 
   @Patch('purchase-items/:id')
-  updateStatus(
+  update(
     @Param('id') id: string,
-    @Body() dto: { status: string; linkedDocumentId?: string },
+    @Body() dto: UpdatePurchaseItemDto,
     @CurrentUser() actor: { _id: string },
   ) {
-    return this.service.updateStatus(id, dto, actor._id);
+    return this.service.update(id, dto, actor._id);
   }
 }

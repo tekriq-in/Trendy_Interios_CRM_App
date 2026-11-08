@@ -3,6 +3,9 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth.store';
+import { PERMISSIONS } from '@ti/shared';
+import { usePermissions } from '@/lib/usePermissions';
 import { useToast } from '@/components/ui/Toast';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import {
@@ -87,6 +90,11 @@ type Tab = 'pending' | 'history' | 'replies';
 export default function ApprovalsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const userId = useAuthStore((state) => state.user?.id);
+  const { hasPermission } = usePermissions();
+  const canDecide = hasPermission(PERMISSIONS.APPROVALS_DECIDE);
+  const canRequest = hasPermission(PERMISSIONS.APPROVALS_REQUEST);
+  const requesterOnly = canRequest && !canDecide;
 
   const [activeTab, setActiveTab] = useState<Tab>('pending');
 
@@ -114,15 +122,17 @@ export default function ApprovalsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: approvals = [], isLoading, isError } = useQuery<Approval[]>({
-    queryKey: ['approvals'],
-    queryFn: () => apiClient.get('/approvals').then(r => r.data),
+    queryKey: ['approvals', canDecide ? 'all' : 'mine', userId],
+    queryFn: () => apiClient.get(canDecide ? '/approvals' : '/approvals/mine').then(r => r.data),
+    enabled: canDecide || canRequest,
+    refetchInterval: requesterOnly ? 30_000 : false,
     retry: 1,
   });
 
   const { data: clientMessages = [], isLoading: repliesLoading } = useQuery<ClientMessage[]>({
     queryKey: ['client-messages'],
     queryFn: () => apiClient.get('/webhooks/client-messages').then(r => r.data),
-    enabled: activeTab === 'replies',
+    enabled: canDecide && activeTab === 'replies',
     refetchInterval: activeTab === 'replies' ? 30_000 : false,
   });
 
@@ -134,7 +144,7 @@ export default function ApprovalsPage() {
   const { data: projects = [] } = useQuery<Array<{ _id: string; title: string }>>({
     queryKey: ['projects'],
     queryFn: () => apiClient.get('/projects').then(r => r.data),
-    enabled: showRequest,
+    enabled: showRequest && canRequest,
   });
 
   const approveMut = useMutation({
@@ -179,7 +189,7 @@ export default function ApprovalsPage() {
   async function handleGenerate() {
     if (!reqForm.rawNotes.trim()) { setReqErr('Add some notes first.'); return; }
     const proj = projects.find(p => p._id === reqForm.projectId);
-    setGenerating(true); setReqErr('');
+    setGenerating(true); setReqErr(''); setGeneratedMsg(''); setTranslatedNotes('');
     try {
       const res = await apiClient.post<{ message: string; translatedNotes?: string }>('/approvals/generate-message', {
         rawNotes: reqForm.rawNotes,
@@ -190,8 +200,11 @@ export default function ApprovalsPage() {
       });
       setGeneratedMsg(res.data.message);
       setTranslatedNotes(res.data.translatedNotes ?? '');
-    } catch {
-      setReqErr('Failed to generate message. You can type one manually.');
+    } catch (e: unknown) {
+      const responseMessage = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setReqErr(Array.isArray(responseMessage)
+        ? responseMessage.join(' ')
+        : responseMessage ?? 'Failed to generate message. Check the AI provider configuration and try again.');
     } finally { setGenerating(false); }
   }
 
@@ -241,17 +254,53 @@ export default function ApprovalsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Approvals</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Review and approve client updates — AI-drafted messages sent via WhatsApp after approval.
+            {requesterOnly ? 'Track the status of approval requests you submitted.' : 'Review and approve client updates — AI-drafted messages sent via WhatsApp after approval.'}
           </p>
         </div>
-        <button
+        {canRequest && <button
           onClick={() => { setShowRequest(true); setGeneratedMsg(''); setReqErr(''); }}
           className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors"
         >
           <Send className="w-4 h-4" /> Request Approval
-        </button>
+        </button>}
       </div>
 
+      {requesterOnly ? (
+        isLoading ? (
+          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}</div>
+        ) : isError ? (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-5 py-6 text-center">
+            <p className="text-sm font-semibold text-red-700">Failed to load your approval requests.</p>
+          </div>
+        ) : approvals.length === 0 ? (
+          <p className="rounded-xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-400">You haven’t submitted any approval requests yet.</p>
+        ) : (
+          <section aria-label="My approval requests" className="space-y-3">
+            {approvals.map((approval) => {
+              const kindInfo = KIND_LABELS[approval.kind] ?? { label: approval.kind, color: 'bg-slate-100 text-slate-600 ring-slate-200' };
+              return (
+                <article key={approval._id} className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${kindInfo.color}`}>{kindInfo.label}</span>
+                        <span className="truncate text-sm font-semibold text-slate-900">{projectTitle(approval.project)}</span>
+                      </div>
+                      {approval.createdAt && <p className="mt-1 text-xs text-slate-500">Submitted {new Date(approval.createdAt).toLocaleDateString('en-IN')}</p>}
+                      {approval.rejectionReason && <p className="mt-2 text-sm text-red-600">Reason: {approval.rejectionReason}</p>}
+                      {approval.status === 'approved' && approval.approver && <p className="mt-2 text-xs text-emerald-700">Approved by {nameOf(approval.approver)}</p>}
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${approval.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : approval.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                      {approval.status}
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        )
+      ) : (
+        <>
       {/* ── Tab bar ── */}
       <div className="border-b border-slate-200 flex gap-0 -mb-2">
         <button className={tabCls('pending')} onClick={() => setActiveTab('pending')}>
@@ -265,7 +314,7 @@ export default function ApprovalsPage() {
         <button className={tabCls('history')} onClick={() => setActiveTab('history')}>
           History
         </button>
-        <button className={tabCls('replies')} onClick={() => setActiveTab('replies')}>
+        {canDecide && <button className={tabCls('replies')} onClick={() => setActiveTab('replies')}>
           <MessageCircle className="w-3.5 h-3.5" />
           Client Replies
           {unreadReplies > 0 && (
@@ -273,7 +322,7 @@ export default function ApprovalsPage() {
               {unreadReplies}
             </span>
           )}
-        </button>
+        </button>}
       </div>
 
       {isLoading ? (
@@ -530,6 +579,8 @@ export default function ApprovalsPage() {
           </section>}
         </>
       )}
+        </>
+      )}
 
       {/* ── Request Approval Modal ── */}
       {showRequest && (
@@ -547,7 +598,10 @@ export default function ApprovalsPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Project</label>
                 <select
                   value={reqForm.projectId}
-                  onChange={e => setReqForm(p => ({ ...p, projectId: e.target.value }))}
+                  onChange={e => {
+                    setReqForm(p => ({ ...p, projectId: e.target.value }));
+                    setGeneratedMsg(''); setTranslatedNotes('');
+                  }}
                   className={inputCls}
                 >
                   <option value="">Select project…</option>
@@ -561,7 +615,10 @@ export default function ApprovalsPage() {
                   {Object.entries(KIND_LABELS).map(([k, v]) => (
                     <button
                       key={k}
-                      onClick={() => setReqForm(p => ({ ...p, kind: k }))}
+                      onClick={() => {
+                        setReqForm(p => ({ ...p, kind: k }));
+                        setGeneratedMsg(''); setTranslatedNotes('');
+                      }}
                       className={`px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors ${
                         reqForm.kind === k
                           ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
@@ -580,7 +637,10 @@ export default function ApprovalsPage() {
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Staff notes (raw)</label>
                     <textarea
                       value={reqForm.rawNotes}
-                      onChange={e => { setReqForm(p => ({ ...p, rawNotes: e.target.value })); setTranslatedNotes(''); }}
+                      onChange={e => {
+                        setReqForm(p => ({ ...p, rawNotes: e.target.value }));
+                        setTranslatedNotes(''); setGeneratedMsg('');
+                      }}
                       rows={3}
                       placeholder="e.g. Tiles arrived, work resumes Thursday, slight 2-day delay from supplier"
                       className={`${inputCls} resize-none`}
@@ -605,7 +665,10 @@ export default function ApprovalsPage() {
                         {(['en', 'ta'] as const).map(l => (
                           <button
                             key={l}
-                            onClick={() => setReqForm(p => ({ ...p, language: l }))}
+                            onClick={() => {
+                              setReqForm(p => ({ ...p, language: l }));
+                              setGeneratedMsg(''); setTranslatedNotes(''); setReqErr('');
+                            }}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
                               reqForm.language === l
                                 ? 'border-indigo-500 bg-indigo-50 text-indigo-700'

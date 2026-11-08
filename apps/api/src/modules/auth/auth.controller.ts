@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, MfaVerifyDto, RefreshDto, LogoutDto, MfaSetupConfirmDto } from './dto/login.dto';
@@ -8,6 +8,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
+
+  @Get('permissions')
+  @UseGuards(JwtAuthGuard)
+  getPermissions(@CurrentUser() user: { rolePermissions?: string[] }) {
+    return { permissions: user.rolePermissions ?? [] };
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

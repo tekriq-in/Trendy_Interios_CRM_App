@@ -80,7 +80,7 @@ export class UsersService {
     if (dto.name !== undefined) update.name = dto.name;
     if (dto.phone !== undefined) update.phone = dto.phone;
     if (dto.roleId !== undefined) update.role = new Types.ObjectId(dto.roleId);
-    if (dto.departmentId !== undefined) update.department = new Types.ObjectId(dto.departmentId);
+    if (dto.departmentId !== undefined) update.department = dto.departmentId ? new Types.ObjectId(dto.departmentId) : null;
     if (dto.reportsToId !== undefined) update.reportsTo = new Types.ObjectId(dto.reportsToId);
     if (dto.preferredLanguage !== undefined) update.preferredLanguage = dto.preferredLanguage;
     if (dto.isActive !== undefined) update.isActive = dto.isActive;

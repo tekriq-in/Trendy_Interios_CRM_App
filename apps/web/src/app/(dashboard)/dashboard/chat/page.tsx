@@ -20,6 +20,9 @@ import {
   LogIn,
   LogOut,
   ChevronDown,
+  Pencil,
+  Trash2,
+  Check,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth.store';
@@ -47,6 +50,8 @@ interface ChatMessage {
   mediaUrl?: string | null;
   attachments?: { _id: string; fileName: string; driveLink: string }[];
   createdAt?: string;
+  editedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 interface UserSummary {
@@ -293,6 +298,10 @@ export default function ChatPage() {
   const [activeTab, setActiveTab] = useState<keyof typeof TAB_LABELS>('project');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageBody, setEditingMessageBody] = useState('');
+  const [messageActionError, setMessageActionError] = useState('');
+  const [savingMessage, setSavingMessage] = useState(false);
   const [connected, setConnected] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showNewDM, setShowNewDM] = useState(false);
@@ -347,6 +356,13 @@ export default function ChatPage() {
         if (msg.channel && prevChannelRef.current && msg.channel !== prevChannelRef.current) return prev;
         return [...prev, msg];
       });
+    });
+    socket.on('message_updated', (updated: ChatMessage) => {
+      setMessages((prev) => prev.map((msg) => (msg._id === updated._id ? updated : msg)));
+    });
+    socket.on('message_deleted', ({ channel, messageId }: { channel: string; messageId: string }) => {
+      if (channel !== prevChannelRef.current) return;
+      setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
     });
     socket.on('group_member_added', () => refetchGroups());
     socket.on('group_member_removed', () => refetchGroups());
@@ -488,6 +504,42 @@ export default function ChatPage() {
   const isMe = (msg: ChatMessage) => {
     if (typeof msg.sender === 'object') return msg.sender._id === currentUser?.id;
     return msg.sender === currentUser?.id;
+  };
+
+  const saveMessageEdit = async (message: ChatMessage) => {
+    if (!message._id || !editingMessageBody.trim()) return;
+    setSavingMessage(true);
+    setMessageActionError('');
+    try {
+      const { data } = await apiClient.patch<ChatMessage>(`/messages/${message._id}`, {
+        body: editingMessageBody.trim(),
+      });
+      setMessages((prev) => prev.map((item) => item._id === message._id ? data : item));
+      setEditingMessageId(null);
+      setEditingMessageBody('');
+      void queryClient.invalidateQueries({ queryKey: ['chat-groups'] });
+    } catch (error: unknown) {
+      const apiMessage = (error as { response?: { data?: { message?: string | string[] } } })
+        ?.response?.data?.message;
+      setMessageActionError(Array.isArray(apiMessage) ? apiMessage.join(' ') : apiMessage ?? 'Could not edit message.');
+    } finally {
+      setSavingMessage(false);
+    }
+  };
+
+  const deleteMessage = async (message: ChatMessage) => {
+    if (!message._id) return;
+    setMessageActionError('');
+    try {
+      await apiClient.delete(`/messages/${message._id}`);
+      setMessages((prev) => prev.filter((item) => item._id !== message._id));
+      void queryClient.invalidateQueries({ queryKey: ['chat-groups'] });
+      if (editingMessageId === message._id) setEditingMessageId(null);
+    } catch (error: unknown) {
+      const apiMessage = (error as { response?: { data?: { message?: string | string[] } } })
+        ?.response?.data?.message;
+      setMessageActionError(Array.isArray(apiMessage) ? apiMessage.join(' ') : apiMessage ?? 'Could not delete message.');
+    }
   };
 
   const renderMediaPreview = (msg: ChatMessage) => {
@@ -751,7 +803,37 @@ export default function ChatPage() {
                         {senderName(msg)}
                       </p>
                     )}
-                    {msg.mediaType ? (
+                    {editingMessageId === msg._id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          autoFocus
+                          rows={3}
+                          maxLength={4000}
+                          value={editingMessageBody}
+                          onChange={(e) => setEditingMessageBody(e.target.value)}
+                          className="w-full min-w-56 rounded-lg border border-indigo-300 bg-white px-2.5 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setEditingMessageId(null); setEditingMessageBody(''); }}
+                            className="rounded px-2 py-1 text-xs text-indigo-100 hover:bg-indigo-500"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveMessageEdit(msg)}
+                            disabled={!editingMessageBody.trim() || savingMessage}
+                            className="inline-flex items-center gap-1 rounded bg-white px-2 py-1 text-xs font-semibold text-indigo-700 disabled:opacity-50"
+                          >
+                            <Check className="h-3 w-3" /> Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : msg.isDeleted ? (
+                      <p className={`text-sm italic ${mine ? 'text-indigo-200' : 'text-gray-400'}`}>Message deleted</p>
+                    ) : msg.mediaType ? (
                       <div>{renderMediaPreview(msg)}</div>
                     ) : (
                       <div className={`text-sm ${mine ? 'text-white' : 'text-gray-800'}`}>
@@ -768,7 +850,34 @@ export default function ChatPage() {
                           hour: '2-digit',
                           minute: '2-digit',
                         })}
+                        {msg.editedAt && !msg.isDeleted ? ' · edited' : ''}
                       </p>
+                    )}
+                    {mine && msg._id && !msg.isDeleted && editingMessageId !== msg._id && (
+                      <div className="mt-1 flex justify-end gap-1 border-t border-white/15 pt-1">
+                        <button
+                          type="button"
+                          title="Edit message"
+                          aria-label="Edit message"
+                          onClick={() => {
+                            setEditingMessageId(msg._id!);
+                            setEditingMessageBody(msg.body);
+                            setMessageActionError('');
+                          }}
+                          className="rounded p-1 text-indigo-100 hover:bg-indigo-500 hover:text-white"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete message"
+                          aria-label="Delete message"
+                          onClick={() => void deleteMessage(msg)}
+                          className="rounded p-1 text-indigo-100 hover:bg-red-500 hover:text-white"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -781,6 +890,12 @@ export default function ChatPage() {
             )}
             <div ref={bottomRef} />
           </div>
+
+          {messageActionError && (
+            <p role="alert" className="mx-5 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+              {messageActionError}
+            </p>
+          )}
 
           {/* @mention suggestions */}
           {suggestions.length > 0 && (

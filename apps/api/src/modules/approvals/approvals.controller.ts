@@ -11,6 +11,12 @@ import { PERMISSIONS } from '@ti/shared';
 export class ApprovalsController {
   constructor(private service: ApprovalsService) {}
 
+  @Get('mine')
+  @RequirePermissions(PERMISSIONS.APPROVALS_REQUEST)
+  findMine(@CurrentUser() actor: { _id: string }) {
+    return this.service.findMine(actor._id);
+  }
+
   @Get()
   @RequirePermissions(PERMISSIONS.APPROVALS_DECIDE)
   findAll() {

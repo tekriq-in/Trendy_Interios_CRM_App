@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface GenerateMessageDto {
@@ -27,6 +27,7 @@ function buildPrompt(dto: GenerateMessageDto): string {
   return `You are a professional customer communication assistant for Trendy Interios, an interior design company in Chennai, India.
 
 Write a polite, warm WhatsApp message in ${lang} to send to the client. Keep it under 140 words.
+When Tamil is requested, write the entire message in natural Tamil using Tamil script. Translate the staff notes into Tamil; do not copy English sentences from the notes into the message. Proper names and project names may remain as written.
 
 Details:
 - Client name: ${dto.clientName}
@@ -60,6 +61,25 @@ export class MessageGeneratorService {
     const prompt = buildPrompt(dto);
     let message: string;
 
+    // Never present the mock Tamil template as a translation: it embeds the
+    // original English notes and can look like a successful Tamil translation.
+    if (dto.language === 'ta') {
+      try {
+        message = await this.callConfiguredProvider(prompt);
+        if (!this.isPredominantlyTamil(message)) {
+          throw new Error('The generated message was not predominantly Tamil.');
+        }
+
+        const translatedNotes = await this.translateNotes(dto.rawNotes);
+        return { message, translatedNotes };
+      } catch (e) {
+        this.logger.warn(`Tamil generation failed: ${(e as Error).message}`);
+        throw new ServiceUnavailableException(
+          'Tamil generation is unavailable or returned English text. Check the AI provider configuration and try again.',
+        );
+      }
+    }
+
     if (this.provider === 'gemini' && this.geminiKey) {
       try { message = await this.callGemini(prompt); }
       catch (e) {
@@ -79,32 +99,57 @@ export class MessageGeneratorService {
       message = this.mockMessage(dto);
     }
 
-    if (dto.language !== 'ta') {
-      return { message };
-    }
-
-    const translatedNotes = await this.translateNotes(dto.rawNotes);
-    return { message, translatedNotes };
+    return { message };
   }
 
   private async translateNotes(text: string): Promise<string> {
-    const prompt = `Translate the following interior design project staff note from English to Tamil. Return only the translated text, nothing else.\n\n${text}`;
+    const prompt = `Translate the following staff note into natural Tamil. Write only in Tamil script, preserving its meaning. Do not repeat the English source or add an explanation. Proper names may remain in English.\n\n${text}`;
+    const translated = await this.callConfiguredProvider(prompt);
+    if (!this.isPredominantlyTamil(translated)) {
+      throw new Error('The staff notes translation was not predominantly Tamil.');
+    }
+    return translated;
+  }
 
-    if (this.provider === 'gemini' && this.geminiKey) {
-      try { return await this.callGemini(prompt); } catch { /* fall through */ }
+  private async callConfiguredProvider(prompt: string): Promise<string> {
+    const configuredProviders = this.provider === 'gemini'
+      ? [
+          { name: 'Gemini', available: Boolean(this.geminiKey), call: () => this.callGemini(prompt) },
+          { name: 'Groq', available: Boolean(this.groqKey), call: () => this.callGroq(prompt) },
+        ]
+      : this.provider === 'groq'
+        ? [
+            { name: 'Groq', available: Boolean(this.groqKey), call: () => this.callGroq(prompt) },
+            { name: 'Gemini', available: Boolean(this.geminiKey), call: () => this.callGemini(prompt) },
+          ]
+        : [];
+    let lastError: Error | undefined;
+
+    for (const provider of configuredProviders) {
+      if (!provider.available) continue;
+      try {
+        const output = await provider.call();
+        if (!this.isPredominantlyTamil(output)) {
+          throw new Error(`${provider.name} returned text that was not predominantly Tamil.`);
+        }
+        return output;
+      } catch (e) {
+        lastError = e as Error;
+        this.logger.warn(`${provider.name} Tamil generation failed: ${lastError.message}`);
+      }
     }
-    if (this.provider === 'groq' && this.groqKey) {
-      try { return await this.callGroq(prompt); } catch { /* fall through */ }
-    }
-    if (this.geminiKey && this.provider !== 'mock') {
-      try { return await this.callGemini(prompt); } catch { /* fall through */ }
-    }
-    // mock: indicate that a real LLM key is needed for actual Tamil translation
-    return `[Tamil translation unavailable — set GROQ_API_KEY or GEMINI_API_KEY for live translation]\n\nOriginal: ${text}`;
+
+    throw lastError ?? new Error('No live Tamil AI provider is configured.');
+  }
+
+  private isPredominantlyTamil(text: string): boolean {
+    const tamilLetters = (text.match(/[\u0B80-\u0BFF]/g) ?? []).length;
+    const latinLetters = (text.match(/[A-Za-z]/g) ?? []).length;
+    return tamilLetters >= 3 && tamilLetters > latinLetters;
   }
 
   private async callGemini(prompt: string): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${this.geminiKey}`;
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { maxOutputTokens: 300, temperature: 0.7 },
@@ -132,12 +177,12 @@ export class MessageGeneratorService {
         Authorization: `Bearer ${this.groqKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'qwen/qwen3.8-27b',
         messages: [
           { role: 'system', content: 'You are a professional customer communication assistant.' },
           { role: 'user', content: prompt },
         ],
-        max_tokens: 300,
+        max_completion_tokens: 300,
         temperature: 0.7,
       }),
     });

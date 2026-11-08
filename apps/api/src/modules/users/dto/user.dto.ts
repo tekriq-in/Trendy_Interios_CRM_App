@@ -70,7 +70,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsMongoId({ message: 'departmentId must be a valid ID.' })
-  departmentId?: string;
+  departmentId?: string | null;
 
   @IsOptional()
   @IsMongoId({ message: 'reportsToId must be a valid ID.' })

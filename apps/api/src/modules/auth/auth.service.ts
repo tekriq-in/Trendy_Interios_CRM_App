@@ -134,7 +134,7 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string; department?: { _id: string; name?: string } | null }) {
+  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string; department?: { _id: string | object; name?: string } | null }) {
     const sub = String(user._id);
     const roleName = typeof user.role === 'object' && user.role ? user.role.name : (user.role ?? 'Staff');
     const dept = user.department && typeof user.department === 'object' && 'name' in user.department && user.department.name

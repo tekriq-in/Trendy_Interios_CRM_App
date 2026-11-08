@@ -15,6 +15,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { HandoversModule } from './modules/handovers/handovers.module';
 import { PurchaseItemsModule } from './modules/purchase-items/purchase-items.module';
+import { ShadeCardModule } from './modules/shade-card/shade-card.module';
 import { BlockersModule } from './modules/blockers/blockers.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -58,6 +59,7 @@ import { HealthModule } from './modules/health/health.module';
     TasksModule,
     HandoversModule,
     PurchaseItemsModule,
+    ShadeCardModule,
     BlockersModule,
     ApprovalsModule,
     PaymentsModule,

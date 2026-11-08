@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil, Eye } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 import { FileViewerModal } from '@/components/ui/FileViewerModal';
+import { ShadeCardSection } from '@/components/projects/ShadeCardSection';
 
 interface Dept { _id: string; name: string; order: number; }
 interface TeamMember { _id: string; name: string; email: string; }
@@ -660,6 +661,13 @@ export default function ProjectDetailPage({ params }: Props) {
           </div>
         )}
       </div>
+
+      {/* Shade Card */}
+      <ShadeCardSection
+        projectId={id}
+        projectTitle={project?.title ?? ''}
+        clientName={project?.client?.name}
+      />
 
       {/* Additional Work */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">

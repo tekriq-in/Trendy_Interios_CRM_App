@@ -28,9 +28,13 @@ export async function GET(req: NextRequest) {
   const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
   const body = await upstream.arrayBuffer();
 
+  const fileName = parsed.pathname.split('/').pop() ?? 'file';
+
   return new NextResponse(body, {
     headers: {
       'Content-Type': contentType,
+      // inline = display in browser, not download
+      'Content-Disposition': `inline; filename="${fileName}"`,
       // Intentionally omit X-Frame-Options so the browser can embed this in an iframe
       'Cache-Control': 'private, max-age=3600',
     },

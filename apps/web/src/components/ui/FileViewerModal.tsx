@@ -69,11 +69,11 @@ export function FileViewerModal({ url, mimeType, fileName, onClose }: Props) {
       {/* Content */}
       <div className="flex-1 overflow-hidden flex items-center justify-center p-2 sm:p-4">
         {isPdf ? (
-          <embed
+          <iframe
             src={proxyUrl}
-            type="application/pdf"
-            className="w-full h-full rounded-lg"
             title={fileName}
+            className="w-full h-full rounded-lg bg-white"
+            style={{ border: 'none' }}
           />
         ) : isImage ? (
           // eslint-disable-next-line @next/next/no-img-element

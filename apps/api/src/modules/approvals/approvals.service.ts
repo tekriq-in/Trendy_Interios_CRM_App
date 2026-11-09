@@ -7,11 +7,13 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 import { WHATSAPP_SERVICE, IWhatsAppService } from '../whatsapp/whatsapp.interface';
 import { MessageGeneratorService, GenerateMessageDto, GenerateMessageResult } from '../message-generator/message-generator.service';
+import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 
 @Injectable()
 export class ApprovalsService {
   constructor(
     @InjectModel(Approval.name) private approvalModel: Model<ApprovalDocument>,
+    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     private activityLog: ActivityLogService,
     @Inject(WHATSAPP_SERVICE) private whatsapp: IWhatsAppService,
     private messageGenerator: MessageGeneratorService,
@@ -215,6 +217,14 @@ export class ApprovalsService {
         }
         await approval.save();
       }
+    }
+
+    // If project was waiting for client approval, reset it back to active
+    if (approval.project) {
+      await this.projectModel.updateOne(
+        { _id: approval.project, status: 'waiting_for_client_approval' },
+        { $set: { status: 'active' } },
+      );
     }
 
     return approval;

@@ -3,13 +3,17 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ApprovalsService } from './approvals.service';
 import { ApprovalsController } from './approvals.controller';
 import { Approval, ApprovalSchema } from './schemas/approval.schema';
+import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { MessageGeneratorModule } from '../message-generator/message-generator.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Approval.name, schema: ApprovalSchema }]),
+    MongooseModule.forFeature([
+      { name: Approval.name, schema: ApprovalSchema },
+      { name: Project.name, schema: ProjectSchema },
+    ]),
     ActivityLogModule,
     WhatsAppModule,
     MessageGeneratorModule,

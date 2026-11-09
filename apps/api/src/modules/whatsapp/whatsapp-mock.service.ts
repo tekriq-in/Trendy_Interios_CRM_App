@@ -13,4 +13,8 @@ export class WhatsAppMockService implements IWhatsAppService {
   async sendMessage(to: string, body: string) {
     this.logger.log(`[MOCK] sendMessage to=${to}\n---\n${body}\n---`);
   }
+
+  async sendDocument(to: string, documentUrl: string, fileName: string, caption?: string) {
+    this.logger.log(`[MOCK] sendDocument to=${to} file=${fileName} url=${documentUrl} caption=${caption ?? ''}`);
+  }
 }

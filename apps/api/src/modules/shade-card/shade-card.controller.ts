@@ -53,4 +53,9 @@ export class ShadeCardController {
   ) {
     return this.service.reorder(projectId, body.orderedIds);
   }
+
+  @Post('projects/:projectId/shade-card/send-approval')
+  sendApproval(@Param('projectId') projectId: string) {
+    return this.service.sendApproval(projectId);
+  }
 }

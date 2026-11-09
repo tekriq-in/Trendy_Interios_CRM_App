@@ -49,6 +49,7 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold: 'bg-amber-50 text-amber-700',
   completed: 'bg-blue-50 text-blue-700',
   cancelled: 'bg-red-50 text-red-700',
+  waiting_for_client_approval: 'bg-orange-50 text-orange-700',
 };
 
 const TASK_DOT: Record<string, string> = {
@@ -166,17 +167,14 @@ export default function ProjectDetailPage({ params }: Props) {
   });
 
   const sendShadeCardApprovalMut = useMutation({
-    mutationFn: (msg: string) =>
-      apiClient.post('/approvals', {
-        projectId: id,
-        kind: 'client_update',
-        generatedMessage: msg,
-      }),
+    mutationFn: () =>
+      apiClient.post(`/projects/${id}/shade-card/send-approval`),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', id] });
       qc.invalidateQueries({ queryKey: ['approvals', 'project', id] });
-      toast('success', 'Shade card sent for customer approval via WhatsApp.');
+      toast('success', 'Material Approval Sheet sent to customer as PDF via WhatsApp.');
     },
-    onError: () => toast('error', 'Failed to send approval request.'),
+    onError: () => toast('error', 'Failed to send shade card to customer.'),
   });
 
   const closeProjectMut = useMutation({
@@ -388,7 +386,7 @@ export default function ProjectDetailPage({ params }: Props) {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900 truncate">{project.title}</h1>
             <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_COLORS[project.status ?? 'active'] ?? 'bg-slate-100 text-slate-600'}`}>
-              {(project.status ?? 'active').replace('_', ' ')}
+              {(project.status ?? 'active').replace(/_/g, ' ')}
             </span>
           </div>
           {project.client && (
@@ -1038,7 +1036,7 @@ export default function ProjectDetailPage({ params }: Props) {
                       {buildShadeCardMessage()}
                     </div>
                     <button
-                      onClick={() => sendShadeCardApprovalMut.mutate(buildShadeCardMessage())}
+                      onClick={() => sendShadeCardApprovalMut.mutate()}
                       disabled={shadeCardEntries.length === 0 || sendShadeCardApprovalMut.isPending}
                       className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
                     >

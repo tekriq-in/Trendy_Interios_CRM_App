@@ -54,4 +54,24 @@ export class WhatsAppMetaService implements IWhatsAppService {
       this.logger.error(`Meta API sendMessage error: ${res.status} ${await res.text()}`);
     }
   }
+
+  async sendDocument(to: string, documentUrl: string, fileName: string, caption?: string) {
+    const token = this.config.get('WHATSAPP_API_TOKEN');
+    const phoneNumberId = this.config.get('WHATSAPP_PHONE_NUMBER_ID');
+    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const body = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'document',
+      document: { link: documentUrl, filename: fileName, ...(caption ? { caption } : {}) },
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      this.logger.error(`Meta API sendDocument error: ${res.status} ${await res.text()}`);
+    }
+  }
 }

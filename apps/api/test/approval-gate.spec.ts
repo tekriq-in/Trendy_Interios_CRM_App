@@ -19,6 +19,12 @@ const mockApprovalModel = {
   countDocuments: jest.fn(),
 };
 
+const mockProjectModel = {
+  findById: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
+  updateOne: jest.fn().mockResolvedValue({}),
+};
+
 const mockActivityLog = { record: jest.fn() };
 const mockWhatsApp = { sendTemplate: jest.fn(), sendMessage: jest.fn() };
 const mockMessageGenerator = { generate: jest.fn().mockResolvedValue('Mock generated message') };
@@ -32,6 +38,7 @@ describe('Approval Gate — no client message without approved approval', () => 
       providers: [
         ApprovalsService,
         { provide: getModelToken('Approval'), useValue: mockApprovalModel },
+        { provide: getModelToken('Project'), useValue: mockProjectModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: WHATSAPP_SERVICE, useValue: mockWhatsApp },
         { provide: MessageGeneratorService, useValue: mockMessageGenerator },

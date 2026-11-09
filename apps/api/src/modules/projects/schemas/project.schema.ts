@@ -49,7 +49,7 @@ export class Project {
 
   @Prop({
     type: String,
-    enum: ['active', 'on_hold', 'completed', 'cancelled'],
+    enum: ['active', 'on_hold', 'completed', 'cancelled', 'waiting_for_client_approval'],
     default: 'active',
   })
   status: string;

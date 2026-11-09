@@ -58,15 +58,12 @@ export class SeedService implements OnApplicationBootstrap {
   private async seedRoles() {
     const roleNames = Object.keys(DEFAULT_ROLE_PERMISSIONS);
     for (const name of roleNames) {
-      const existing = await this.roleModel.findOne({ name });
-      if (!existing) {
-        await this.roleModel.create({
-          name,
-          permissions: DEFAULT_ROLE_PERMISSIONS[name],
-          isSystem: true,
-        });
-        this.logger.log(`Seeded role: ${name}`);
-      }
+      await this.roleModel.updateOne(
+        { name },
+        { $set: { permissions: DEFAULT_ROLE_PERMISSIONS[name], isSystem: true } },
+        { upsert: true },
+      );
+      this.logger.log(`Synced role: ${name}`);
     }
   }
 

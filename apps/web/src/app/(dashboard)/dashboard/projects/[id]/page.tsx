@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
+import { useAuthStore } from '@/store/auth.store';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil, Eye } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil, Eye, Palette, Send } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 import { FileViewerModal } from '@/components/ui/FileViewerModal';
 import { ShadeCardSection } from '@/components/projects/ShadeCardSection';
@@ -62,6 +63,7 @@ export default function ProjectDetailPage({ params }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { hasPermission } = usePermissions();
+  const authUser = useAuthStore((s) => s.user);
   const canEditProject = hasPermission(PERMISSIONS.PROJECTS_EDIT);
   const canAdvanceProject = hasPermission(PERMISSIONS.PROJECTS_ADVANCE_STAGE);
   const canCreateTask = hasPermission(PERMISSIONS.TASKS_CREATE);
@@ -91,6 +93,9 @@ export default function ProjectDetailPage({ params }: Props) {
   const [showAWModal, setShowAWModal] = useState(false);
   const [awForm, setAwForm] = useState(EMPTY_AW);
   const [awErr, setAwErr] = useState('');
+
+  // Stage advance gate
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
 
   const { data: project, isLoading } = useQuery<Project>({
     queryKey: ['project', id],
@@ -130,23 +135,48 @@ export default function ProjectDetailPage({ params }: Props) {
     queryFn: () => apiClient.get(`/projects/${id}`).then((r) => r.data),
   });
 
+  interface ShadeEntry { _id: string; area: string; codeName: string; material: string; photoUrl?: string; units: string[]; }
+  const { data: shadeCardEntries = [] } = useQuery<ShadeEntry[]>({
+    queryKey: ['shade-card', id],
+    queryFn: () => apiClient.get(`/projects/${id}/shade-card`).then((r) => r.data),
+  });
+
+  interface Approval { _id: string; kind: string; status: string; }
+  const { data: projectApprovals = [] } = useQuery<Approval[]>({
+    queryKey: ['approvals', 'project', id],
+    queryFn: () => apiClient.get('/approvals', { params: { projectId: id } }).then((r) => r.data),
+  });
+
   const advanceMut = useMutation({
     mutationFn: (nextStageId: string) =>
       apiClient.post(`/projects/${id}/advance-stage`, { nextStageId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project', id] });
       setAdvancing(false);
+      setShowAdvanceModal(false);
       toast('success', 'Stage advanced successfully.');
     },
     onError: (error: unknown) => {
       setAdvancing(false);
       const responseMessage = (error as { response?: { data?: { message?: string | string[] } } })
         ?.response?.data?.message;
-      const message = Array.isArray(responseMessage)
-        ? responseMessage.join(' ')
-        : responseMessage;
-      toast('error', message || 'Failed to advance stage. Check the API terminal for the error details.');
+      const message = Array.isArray(responseMessage) ? responseMessage.join(' ') : responseMessage;
+      toast('error', message || 'Failed to advance stage.');
     },
+  });
+
+  const sendShadeCardApprovalMut = useMutation({
+    mutationFn: (msg: string) =>
+      apiClient.post('/approvals', {
+        projectId: id,
+        kind: 'client_update',
+        generatedMessage: msg,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['approvals', 'project', id] });
+      toast('success', 'Shade card sent for customer approval via WhatsApp.');
+    },
+    onError: () => toast('error', 'Failed to send approval request.'),
   });
 
   const closeProjectMut = useMutation({
@@ -295,6 +325,34 @@ export default function ProjectDetailPage({ params }: Props) {
         : null;
 
   const teamIds = new Set((project.assignedTeam ?? []).map((m) => m._id));
+  const isTeamMember = authUser?.id ? teamIds.has(authUser.id) : false;
+  const canAdvance = canAdvanceProject || isTeamMember;
+
+  // Shade card approval gate for Design → Purchase
+  const currentStageName = typeof project.currentStage === 'object' ? project.currentStage?.name : '';
+  const isDesignStage = currentStageName === 'Design';
+  const shadeCardApproval = projectApprovals.find((a) => a.kind === 'client_update' && (a.status === 'pending' || a.status === 'approved'));
+  const shadeCardApproved = shadeCardApproval?.status === 'approved';
+  const shadeCardPending = shadeCardApproval?.status === 'pending';
+  // Design→Purchase requires shade card entries AND customer approval
+  const needsShadeCardGate = isDesignStage && nextStage?.name === 'Purchase';
+  const canAdvanceDesign = !needsShadeCardGate || shadeCardApproved;
+
+  function buildShadeCardMessage() {
+    const clientName = project?.client?.name ?? 'Customer';
+    const lines = [`Dear ${clientName},`,'',`Please find the material selection for your project "${project?.title ?? ''}":`, ''];
+    const grouped: Record<string, ShadeEntry[]> = {};
+    shadeCardEntries.forEach((e) => { (grouped[e.area] = grouped[e.area] ?? []).push(e); });
+    Object.entries(grouped).forEach(([area, entries]) => {
+      lines.push(`*${area}*`);
+      entries.forEach((e) => {
+        lines.push(`• ${e.units.join(', ')} — ${e.material}: ${e.codeName}`);
+      });
+      lines.push('');
+    });
+    lines.push('Kindly review and approve the above material selection.','','— Team Trendy Interios');
+    return lines.join('\n');
+  }
 
   async function handleDrawingUpload(file: File) {
     setDrawingUploading(true); setDrawingErr('');
@@ -360,15 +418,27 @@ export default function ProjectDetailPage({ params }: Props) {
       <div className="bg-white border border-slate-200 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Stage Pipeline</h2>
-          {canAdvanceProject && nextStage && project.status === 'active' && (
-            <button
-              onClick={() => { setAdvancing(true); advanceMut.mutate(nextStage._id); }}
-              disabled={advancing || advanceMut.isPending}
-              className="flex items-center gap-1.5 text-sm font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {advancing || advanceMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
-              Advance to {nextStage.name}
-            </button>
+          {canAdvance && nextStage && project.status === 'active' && (
+            needsShadeCardGate ? (
+              /* Design → Purchase: gated by shade card customer approval */
+              <button
+                onClick={() => setShowAdvanceModal(true)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Palette className="w-3.5 h-3.5" />
+                Complete Design
+              </button>
+            ) : (
+              /* All other stages: direct advance */
+              <button
+                onClick={() => { setAdvancing(true); advanceMut.mutate(nextStage._id); }}
+                disabled={advancing || advanceMut.isPending}
+                className="flex items-center gap-1.5 text-sm font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {advancing || advanceMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                Advance to {nextStage.name}
+              </button>
+            )
           )}
           {canEditProject && isAtFinalStage && project.status === 'active' && (
             <div className="flex items-center gap-2">
@@ -922,6 +992,84 @@ export default function ProjectDetailPage({ params }: Props) {
           fileName={viewingDoc.fileName}
           onClose={() => setViewingDoc(null)}
         />
+      )}
+
+      {/* Complete Design / Shade Card Approval Modal */}
+      {showAdvanceModal && nextStage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowAdvanceModal(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                <Palette className="w-4 h-4 text-indigo-500" /> Complete Design Stage
+              </h3>
+              <button onClick={() => setShowAdvanceModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Step 1: Shade Card */}
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${shadeCardEntries.length > 0 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
+                  <span className="text-sm font-semibold text-slate-800">Shade Card / Material Selection</span>
+                  {shadeCardEntries.length > 0
+                    ? <span className="ml-auto text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">{shadeCardEntries.length} entries</span>
+                    : <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Not added</span>}
+                </div>
+                {shadeCardEntries.length === 0 && (
+                  <p className="text-xs text-slate-500">Add shade card entries before proceeding. Use the Shade Card section below.</p>
+                )}
+              </div>
+
+              {/* Step 2: Send to customer */}
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${shadeCardApproval ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
+                  <span className="text-sm font-semibold text-slate-800">Send to Customer via WhatsApp</span>
+                  {shadeCardPending && <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Awaiting approval</span>}
+                  {shadeCardApproved && <span className="ml-auto text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">Approved ✓</span>}
+                </div>
+                {!shadeCardApproval && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-500">The material selection will be sent to <strong>{project.client?.name}</strong> for approval before advancing to Purchase.</p>
+                    <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 font-mono whitespace-pre-wrap leading-relaxed">
+                      {buildShadeCardMessage()}
+                    </div>
+                    <button
+                      onClick={() => sendShadeCardApprovalMut.mutate(buildShadeCardMessage())}
+                      disabled={shadeCardEntries.length === 0 || sendShadeCardApprovalMut.isPending}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    >
+                      {sendShadeCardApprovalMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      Send to Customer for Approval
+                    </button>
+                  </div>
+                )}
+                {shadeCardPending && (
+                  <p className="text-xs text-slate-500">Waiting for MD/GM to approve and forward to customer. Once approved, the advance button will unlock.</p>
+                )}
+              </div>
+
+              {/* Step 3: Advance */}
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${shadeCardApproved ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>3</div>
+                  <span className="text-sm font-semibold text-slate-800">Advance to {nextStage.name}</span>
+                </div>
+                <button
+                  onClick={() => { setAdvancing(true); advanceMut.mutate(nextStage._id); }}
+                  disabled={!shadeCardApproved || advancing || advanceMut.isPending}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {advancing || advanceMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                  {shadeCardApproved ? `Advance to ${nextStage.name}` : 'Waiting for customer approval…'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

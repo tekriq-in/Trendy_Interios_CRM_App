@@ -9,6 +9,7 @@ import { FileUpload } from '@/components/ui/FileUpload';
 import type { UploadedFile } from '@/components/ui/FileUpload';
 import { AutocompleteInput } from '@/components/ui/AutocompleteInput';
 import type { Suggestion } from '@/components/ui/AutocompleteInput';
+import { useToast } from '@/components/ui/Toast';
 
 const MATERIAL_TYPES = ['Acrylic', 'LAM', 'Louver', 'Veneer', 'PU', 'Membrane', 'Glass', 'Other'] as const;
 type MaterialType = typeof MATERIAL_TYPES[number];
@@ -54,6 +55,7 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
   clientName?: string;
 }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
   const isDesign = user?.department?.name === 'Design' || user?.role === 'MD' || user?.role === 'GM';
 
@@ -75,6 +77,7 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
         : apiClient.post(`/projects/${projectId}/shade-card`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['shade-card', projectId] });
+      toast('success', editing ? 'Entry updated.' : 'Entry added.');
       closeModal();
     },
     onError: () => setErr('Failed to save entry.'),
@@ -82,7 +85,11 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/shade-card/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['shade-card', projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['shade-card', projectId] });
+      toast('success', 'Entry deleted.');
+    },
+    onError: () => toast('error', 'Failed to delete entry.'),
   });
 
   function openAdd() {
@@ -227,7 +234,12 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
                             className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 opacity-0 group-hover:opacity-100 transition-all">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => deleteMut.mutate(entry._id)}
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete "${entry.codeName}"?`)) {
+                                deleteMut.mutate(entry._id);
+                              }
+                            }}
                             className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

@@ -329,7 +329,7 @@ export default function ProjectDetailPage({ params }: Props) {
   // Shade card approval gate for Design → Purchase
   const currentStageName = typeof project.currentStage === 'object' ? project.currentStage?.name : '';
   const isDesignStage = currentStageName === 'Design';
-  const shadeCardApproval = projectApprovals.find((a) => a.kind === 'client_update' && (a.status === 'pending' || a.status === 'approved'));
+  const shadeCardApproval = projectApprovals.find((a) => a.kind === 'shade_card' && (a.status === 'pending' || a.status === 'approved'));
   const shadeCardApproved = shadeCardApproval?.status === 'approved';
   const shadeCardPending = shadeCardApproval?.status === 'pending';
   // Design→Purchase requires shade card entries AND customer approval
@@ -416,15 +416,15 @@ export default function ProjectDetailPage({ params }: Props) {
       <div className="bg-white border border-slate-200 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Stage Pipeline</h2>
-          {canAdvance && nextStage && project.status === 'active' && (
+          {canAdvance && nextStage && (project.status === 'active' || (needsShadeCardGate && project.status === 'waiting_for_client_approval')) && (
             needsShadeCardGate ? (
               /* Design → Purchase: gated by shade card customer approval */
               <button
                 onClick={() => setShowAdvanceModal(true)}
-                className="flex items-center gap-1.5 text-sm font-semibold text-white bg-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
+                className={`flex items-center gap-1.5 text-sm font-semibold text-white px-3 py-1.5 rounded-lg transition-colors ${project.status === 'waiting_for_client_approval' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
               >
                 <Palette className="w-3.5 h-3.5" />
-                Complete Design
+                {project.status === 'waiting_for_client_approval' ? 'View Approval Status' : 'Complete Design'}
               </button>
             ) : (
               /* All other stages: direct advance */
@@ -576,7 +576,7 @@ export default function ProjectDetailPage({ params }: Props) {
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-slate-400 capitalize shrink-0">{task.status.replace('_', ' ')}</span>
+                    <span className="text-xs text-slate-400 capitalize shrink-0">{task.status.replace(/_/g, ' ')}</span>
                   </div>
                 );
               })}
@@ -1024,10 +1024,10 @@ export default function ProjectDetailPage({ params }: Props) {
               {/* Step 2: Send to customer */}
               <div className="rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${shadeCardApproval ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
-                  <span className="text-sm font-semibold text-slate-800">Send to Customer via WhatsApp</span>
-                  {shadeCardPending && <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Awaiting approval</span>}
-                  {shadeCardApproved && <span className="ml-auto text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">Approved ✓</span>}
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${shadeCardApproved ? 'bg-emerald-500 text-white' : shadeCardPending ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
+                  <span className="text-sm font-semibold text-slate-800">Send Shade Card to Customer</span>
+                  {shadeCardPending && <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Sent — awaiting MD confirmation</span>}
+                  {shadeCardApproved && <span className="ml-auto text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">Client confirmed ✓</span>}
                 </div>
                 {!shadeCardApproval && (
                   <div className="space-y-3">
@@ -1046,7 +1046,7 @@ export default function ProjectDetailPage({ params }: Props) {
                   </div>
                 )}
                 {shadeCardPending && (
-                  <p className="text-xs text-slate-500">Waiting for MD/GM to approve and forward to customer. Once approved, the advance button will unlock.</p>
+                  <p className="text-xs text-slate-500">PDF sent to customer via WhatsApp. An approval request has been raised to MD/GM to confirm the client's acceptance. Once confirmed, step 3 will unlock.</p>
                 )}
               </div>
 

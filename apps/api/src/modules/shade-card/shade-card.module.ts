@@ -7,12 +7,14 @@ import { ShadeCardPdfService } from './shade-card-pdf.service';
 import { DriveModule } from '../drive/drive.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
+import { Approval, ApprovalSchema } from '../approvals/schemas/approval.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: ShadeCardEntry.name, schema: ShadeCardEntrySchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: Approval.name, schema: ApprovalSchema },
     ]),
     DriveModule,
     WhatsAppModule,

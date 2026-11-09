@@ -56,6 +56,7 @@ const KIND_LABELS: Record<string, { label: string; color: string }> = {
   client_update:      { label: 'Client Update',      color: 'bg-amber-50 text-amber-700 ring-amber-200' },
   drawing:            { label: 'Drawing',             color: 'bg-teal-50 text-teal-700 ring-teal-200' },
   customer_sign_off:  { label: 'Customer Sign-Off',  color: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  shade_card:         { label: 'Shade Card Approval', color: 'bg-indigo-50 text-indigo-700 ring-indigo-200' },
 };
 
 function DeliveryChip({ status }: { status?: string }) {

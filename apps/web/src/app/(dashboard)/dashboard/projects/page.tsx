@@ -23,6 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold: 'bg-amber-50 text-amber-700',
   completed: 'bg-blue-50 text-blue-700',
   cancelled: 'bg-red-50 text-red-700',
+  waiting_for_client_approval: 'bg-orange-50 text-orange-700',
 };
 
 const EMPTY_FORM = { clientId: '', title: '', firstStageId: '', targetDate: '' };
@@ -145,6 +146,7 @@ export default function ProjectsPage() {
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="on_hold">On Hold</option>
+            <option value="waiting_for_client_approval">Waiting for Approval</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
@@ -229,7 +231,7 @@ export default function ProjectsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${STATUS_COLORS[p.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                      {p.status.replace('_', ' ')}
+                      {p.status.replace(/_/g, ' ')}
                     </span>
                   </td>
                 </tr>
@@ -287,7 +289,7 @@ export default function ProjectsPage() {
                             <span className="text-[10px] text-slate-400 font-mono">{p.progressPct ?? 0}%</span>
                           </div>
                           <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLORS[p.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                            {p.status.replace('_', ' ')}
+                            {p.status.replace(/_/g, ' ')}
                           </span>
                         </div>
                       ))}

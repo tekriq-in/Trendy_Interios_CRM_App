@@ -11,7 +11,7 @@ export class Approval {
 
   @Prop({
     type: String,
-    enum: ['quotation', 'order_confirmation', 'client_update', 'drawing', 'customer_sign_off'],
+    enum: ['quotation', 'order_confirmation', 'client_update', 'drawing', 'customer_sign_off', 'shade_card'],
     required: true,
   })
   kind: string;

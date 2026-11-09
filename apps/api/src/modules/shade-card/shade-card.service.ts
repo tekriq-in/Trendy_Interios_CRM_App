@@ -7,13 +7,14 @@ import { ShadeCardPdfService } from './shade-card-pdf.service';
 import { DRIVE_SERVICE, IDriveService } from '../drive/drive.interface';
 import { WHATSAPP_SERVICE, IWhatsAppService } from '../whatsapp/whatsapp.interface';
 import { Project, ProjectDocument } from '../projects/schemas/project.schema';
-import { Client } from '../clients/schemas/client.schema';
+import { Approval, ApprovalDocument } from '../approvals/schemas/approval.schema';
 
 @Injectable()
 export class ShadeCardService {
   constructor(
     @InjectModel(ShadeCardEntry.name) private model: Model<ShadeCardEntryDocument>,
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
+    @InjectModel(Approval.name) private approvalModel: Model<ApprovalDocument>,
     private pdfService: ShadeCardPdfService,
     @Inject(DRIVE_SERVICE) private drive: IDriveService,
     @Inject(WHATSAPP_SERVICE) private whatsapp: IWhatsAppService,
@@ -87,7 +88,7 @@ export class ShadeCardService {
     return values.slice(0, 10).map((v) => ({ value: v, photoUrl: null }));
   }
 
-  async sendApproval(projectId: string) {
+  async sendApproval(projectId: string, actorId: string) {
     const entries = await this.findByProject(projectId);
     if (entries.length === 0) {
       throw new BadRequestException('shade_card.no_entries');
@@ -126,6 +127,15 @@ export class ShadeCardService {
 
     // Set project status to waiting_for_client_approval
     await this.projectModel.findByIdAndUpdate(projectId, { status: 'waiting_for_client_approval' });
+
+    // Create a shade_card approval record so MD/GM can confirm in Approvals page
+    await this.approvalModel.create({
+      project: new Types.ObjectId(projectId),
+      kind: 'shade_card',
+      rawNotes: `Material Approval Sheet sent to ${client?.name ?? 'customer'} via WhatsApp PDF. Waiting for client confirmation.`,
+      requestedBy: new Types.ObjectId(actorId),
+      createdBy: new Types.ObjectId(actorId),
+    });
 
     return { pdfUrl: uploaded.webViewLink, sentToPhone: client?.phone ?? null };
   }

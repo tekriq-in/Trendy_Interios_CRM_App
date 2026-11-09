@@ -55,7 +55,10 @@ export class ShadeCardController {
   }
 
   @Post('projects/:projectId/shade-card/send-approval')
-  sendApproval(@Param('projectId') projectId: string) {
-    return this.service.sendApproval(projectId);
+  sendApproval(
+    @Param('projectId') projectId: string,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.service.sendApproval(projectId, actor._id);
   }
 }

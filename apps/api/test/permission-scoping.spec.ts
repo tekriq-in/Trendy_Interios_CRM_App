@@ -20,8 +20,9 @@ const mockProjectModel = {
   find: jest.fn(),
   findOne: jest.fn(),
   findById: jest.fn(),
-  create: jest.fn(),
   findByIdAndUpdate: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  create: jest.fn(),
   db: {
     model: jest.fn().mockReturnValue({
       find: jest.fn().mockReturnValue({
@@ -120,5 +121,44 @@ describe('Permission Scoping — Employee project isolation', () => {
 
     const projectId = new Types.ObjectId().toHexString();
     await expect(service.findById(projectId, user)).rejects.toThrow('project.not_found');
+  });
+
+  it('allows an employee to add additional work only to an assigned project', async () => {
+    const projectId = new Types.ObjectId().toHexString();
+    const project = { _id: new Types.ObjectId(projectId) };
+    mockProjectModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ _id: project._id }),
+    });
+    mockProjectModel.findByIdAndUpdate.mockResolvedValue(project);
+
+    await service.addAdditionalWork(
+      projectId,
+      { description: 'Extra room', amount: 1000 },
+      { _id: employeeId, rolePermissions: [PERMISSIONS.PROJECTS_READ_OWN] },
+    );
+
+    expect(mockProjectModel.findOne).toHaveBeenCalledWith({
+      _id: new Types.ObjectId(projectId),
+      assignedTeam: new Types.ObjectId(employeeId),
+    });
+    expect(mockProjectModel.findByIdAndUpdate).toHaveBeenCalled();
+  });
+
+  it('prevents an employee from adding additional work to an unassigned project', async () => {
+    mockProjectModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue(null),
+    });
+
+    await expect(
+      service.addAdditionalWork(
+        new Types.ObjectId().toHexString(),
+        { description: 'Extra room', amount: 1000 },
+        { _id: employeeId, rolePermissions: [PERMISSIONS.PROJECTS_READ_OWN] },
+      ),
+    ).rejects.toThrow('project.not_found');
+
+    expect(mockProjectModel.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 });

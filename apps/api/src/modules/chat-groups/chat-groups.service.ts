@@ -137,6 +137,7 @@ export class ChatGroupsService {
       isAutoCreated: false,
       createdBy: new Types.ObjectId(creatorId),
     });
+    await group.populate('members', 'name email');
     return group;
   }
 

@@ -256,8 +256,9 @@ export class ProjectsService {
   async addAdditionalWork(
     projectId: string,
     dto: { description: string; amount: number; drawingRequired?: boolean },
-    actorId: string,
+    actor: { _id: string; rolePermissions: string[] },
   ) {
+    await this.assertCanManageAdditionalWork(projectId, actor);
     const project = await this.projectModel.findByIdAndUpdate(
       projectId,
       {
@@ -276,7 +277,7 @@ export class ProjectsService {
     if (!project) throw new NotFoundException('project.not_found');
 
     await this.activityLog.record({
-      actor: actorId,
+      actor: actor._id,
       action: 'project.additional_work_added',
       entity: 'projects',
       entityId: projectId,
@@ -284,6 +285,80 @@ export class ProjectsService {
     });
 
     return project;
+  }
+
+  async updateAdditionalWork(
+    projectId: string,
+    workId: string,
+    dto: { description: string; amount: number; drawingRequired?: boolean },
+    actor: { _id: string; rolePermissions: string[] },
+  ) {
+    await this.assertCanManageAdditionalWork(projectId, actor);
+    const project = await this.projectModel.findOneAndUpdate(
+      { _id: projectId, 'additionalWork._id': new Types.ObjectId(workId) },
+      {
+        $set: {
+          'additionalWork.$.description': dto.description,
+          'additionalWork.$.amount': dto.amount,
+          'additionalWork.$.drawingRequired': dto.drawingRequired ?? false,
+        },
+      },
+      { new: true },
+    );
+
+    if (!project) throw new NotFoundException('additional_work.not_found');
+
+    await this.activityLog.record({
+      actor: actor._id,
+      action: 'project.additional_work_updated',
+      entity: 'projects',
+      entityId: projectId,
+      metadata: { workId, ...dto },
+    });
+
+    return project;
+  }
+
+  async deleteAdditionalWork(
+    projectId: string,
+    workId: string,
+    actor: { _id: string; rolePermissions: string[] },
+  ) {
+    await this.assertCanManageAdditionalWork(projectId, actor);
+    const project = await this.projectModel.findOneAndUpdate(
+      { _id: projectId, 'additionalWork._id': new Types.ObjectId(workId) },
+      { $pull: { additionalWork: { _id: new Types.ObjectId(workId) } } },
+      { new: true },
+    );
+
+    if (!project) throw new NotFoundException('additional_work.not_found');
+
+    await this.activityLog.record({
+      actor: actor._id,
+      action: 'project.additional_work_deleted',
+      entity: 'projects',
+      entityId: projectId,
+      metadata: { workId },
+    });
+
+    return project;
+  }
+
+  private async assertCanManageAdditionalWork(
+    projectId: string,
+    actor: { _id: string; rolePermissions: string[] },
+  ) {
+    if (actor.rolePermissions.includes(PERMISSIONS.PROJECTS_EDIT)) return;
+
+    const project = await this.projectModel
+      .findOne({
+        _id: new Types.ObjectId(projectId),
+        assignedTeam: new Types.ObjectId(actor._id),
+      })
+      .select('_id')
+      .lean();
+
+    if (!project) throw new NotFoundException('project.not_found');
   }
 
   async recomputeProgress(projectId: string): Promise<number> {

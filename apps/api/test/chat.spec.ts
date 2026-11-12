@@ -86,7 +86,11 @@ describe('ChatGroupsService', () => {
     it('always includes the creator as a member', async () => {
       const memberId = new Types.ObjectId().toHexString();
       const group = makeGroup();
-      mockGroupModel.create.mockResolvedValue(group);
+      const populatedGroup = {
+        ...group,
+        populate: jest.fn().mockResolvedValue(group),
+      };
+      mockGroupModel.create.mockResolvedValue(populatedGroup);
 
       await service.create({ name: 'Team Alpha', memberIds: [memberId] }, userId);
 
@@ -94,10 +98,14 @@ describe('ChatGroupsService', () => {
       const memberStrings = call.members.map(String);
       expect(memberStrings).toContain(userId);
       expect(memberStrings).toContain(memberId);
+      expect(populatedGroup.populate).toHaveBeenCalledWith('members', 'name email');
     });
 
     it('deduplicates creator if already in memberIds', async () => {
-      mockGroupModel.create.mockResolvedValue(makeGroup());
+      mockGroupModel.create.mockResolvedValue({
+        ...makeGroup(),
+        populate: jest.fn().mockResolvedValue(undefined),
+      });
       await service.create({ name: 'Dupe Check', memberIds: [userId] }, userId);
 
       const call = mockGroupModel.create.mock.calls[0][0];

@@ -6,6 +6,9 @@ import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 import { Blocker, BlockerSchema } from '../blockers/schemas/blocker.schema';
 import { Approval, ApprovalSchema } from '../approvals/schemas/approval.schema';
 import { Task, TaskSchema } from '../tasks/schemas/task.schema';
+import { User, UserSchema } from '../users/schemas/user.schema';
+import { PurchaseItem, PurchaseItemSchema } from '../purchase-items/schemas/purchase-item.schema';
+import { Handover, HandoverSchema } from '../handovers/schemas/handover.schema';
 
 @Module({
   imports: [
@@ -14,6 +17,9 @@ import { Task, TaskSchema } from '../tasks/schemas/task.schema';
       { name: Blocker.name, schema: BlockerSchema },
       { name: Approval.name, schema: ApprovalSchema },
       { name: Task.name, schema: TaskSchema },
+      { name: User.name, schema: UserSchema },
+      { name: PurchaseItem.name, schema: PurchaseItemSchema },
+      { name: Handover.name, schema: HandoverSchema },
     ]),
   ],
   providers: [DashboardService],

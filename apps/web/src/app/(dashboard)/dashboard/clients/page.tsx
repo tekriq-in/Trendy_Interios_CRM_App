@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 interface Client {
   _id: string; name: string; phone: string; email?: string;
   address?: string; leadSource?: string; whatsappOptIn?: boolean; notes?: string;
-  isActive?: boolean;
+  isActive?: boolean; createdAt?: string;
 }
 interface Dept { _id: string; name: string; order: number; }
 
@@ -280,6 +280,11 @@ export default function ClientsPage() {
                     <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{c.address}</span>
                   </div>
+                )}
+                {c.createdAt && (
+                  <p className="text-xs text-slate-400 pt-1">
+                    Joined {new Date(c.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                  </p>
                 )}
                 {c.notes && <p className="text-xs text-slate-400 italic pt-1">"{c.notes}"</p>}
               </div>

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ProjectsService, CreateProjectDto, UpdateProjectDto } from './projects.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -59,12 +59,33 @@ export class ProjectsController {
   }
 
   @Post(':id/additional-work')
-  @RequirePermissions(PERMISSIONS.PROJECTS_EDIT)
+  @RequirePermissions(PERMISSIONS.PROJECTS_READ_OWN)
   addAdditionalWork(
     @Param('id') id: string,
     @Body() dto: { description: string; amount: number; drawingRequired?: boolean },
-    @CurrentUser() actor: { _id: string },
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
   ) {
-    return this.service.addAdditionalWork(id, dto, actor._id);
+    return this.service.addAdditionalWork(id, dto, actor);
+  }
+
+  @Patch(':id/additional-work/:workId')
+  @RequirePermissions(PERMISSIONS.PROJECTS_READ_OWN)
+  updateAdditionalWork(
+    @Param('id') id: string,
+    @Param('workId') workId: string,
+    @Body() dto: { description: string; amount: number; drawingRequired?: boolean },
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+  ) {
+    return this.service.updateAdditionalWork(id, workId, dto, actor);
+  }
+
+  @Delete(':id/additional-work/:workId')
+  @RequirePermissions(PERMISSIONS.PROJECTS_READ_OWN)
+  deleteAdditionalWork(
+    @Param('id') id: string,
+    @Param('workId') workId: string,
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+  ) {
+    return this.service.deleteAdditionalWork(id, workId, actor);
   }
 }

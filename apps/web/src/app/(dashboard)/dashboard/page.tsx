@@ -21,6 +21,7 @@ import {
   Users,
   UserCircle2,
   X,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -35,14 +36,13 @@ import {
   PieChart,
   Pie,
   Cell,
-  AreaChart,
-  Area,
 } from 'recharts';
 
 interface Project {
   _id: string;
   title: string;
   progressPct: number;
+  client?: { _id: string; name: string };
   targetDate?: string;
 }
 interface BoardData {
@@ -87,9 +87,6 @@ interface Employee {
   department?: { _id: string } | string;
   isActive: boolean;
 }
-interface Client {
-  _id: string;
-}
 interface SlaReportRow {
   projectId: string;
   stageName: string;
@@ -111,12 +108,55 @@ const panel =
 const chartTick = { fontSize: 10, fill: '#64748b' };
 const tooltipStyle = { borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 };
 
-function useDashboardData<T>(key: string[], url: string) {
-  return useQuery<T>({ queryKey: key, queryFn: () => apiClient.get<T>(url).then((r) => r.data) });
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function daysAgoDate(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() - (days - 1));
+  return formatDateInput(date);
+}
+
+function useDashboardData<T>(
+  key: string[],
+  url: string,
+  from?: string,
+  to?: string,
+  enabled = true,
+) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const query = params.toString();
+  return useQuery<T>({
+    queryKey: [...key, from ?? null, to ?? null],
+    queryFn: () => apiClient.get<T>(`${url}${query ? `?${query}` : ''}`).then((r) => r.data),
+    enabled,
+  });
 }
 
 export default function DashboardOverviewPage() {
   const user = useAuthStore((s) => s.user);
+  const [datePreset, setDatePreset] = useState<'7' | '30' | '90' | 'custom' | 'all'>('all');
+  const [customFrom, setCustomFrom] = useState(() => daysAgoDate(30));
+  const [customTo, setCustomTo] = useState(() => formatDateInput(new Date()));
+  const filterFrom = datePreset === 'all'
+    ? undefined
+    : datePreset === 'custom'
+      ? customFrom
+      : daysAgoDate(Number(datePreset));
+  const filterTo = datePreset === 'all' ? undefined : datePreset === 'custom' ? customTo : formatDateInput(new Date());
+  const dateRangeValid =
+    datePreset !== 'custom' || (!!filterFrom && !!filterTo && filterFrom <= filterTo);
+  const periodDescription = datePreset === 'all'
+    ? 'All time'
+    : dateRangeValid
+      ? `${filterFrom} to ${filterTo}`
+      : 'Choose a valid date range';
 
   // Route department users to their own dashboards
   const role = user?.role ?? '';
@@ -134,23 +174,43 @@ export default function DashboardOverviewPage() {
     breaches: number;
     color: string;
   } | null>(null);
-  const board = useDashboardData<BoardData>(['dashboard-board'], '/dashboard/board');
+  const board = useDashboardData<BoardData>(
+    ['dashboard-board'],
+    '/dashboard/board',
+    filterFrom,
+    filterTo,
+    dateRangeValid,
+  );
   const approvals = useDashboardData<ApprovalsSummary>(
     ['dashboard-approvals'],
     '/dashboard/approvals-pending',
+    filterFrom,
+    filterTo,
+    dateRangeValid,
   );
   const blockers = useDashboardData<BlockerSummary[]>(
     ['dashboard-blockers'],
     '/dashboard/blockers',
+    filterFrom,
+    filterTo,
+    dateRangeValid,
   );
-  const workload = useDashboardData<WorkloadItem[]>(['dashboard-workload'], '/dashboard/workload');
+  const workload = useDashboardData<WorkloadItem[]>(
+    ['dashboard-workload'],
+    '/dashboard/workload',
+    filterFrom,
+    filterTo,
+    dateRangeValid,
+  );
   const stageDurations = useDashboardData<StageDuration[]>(
     ['dashboard-stage-durations'],
     '/dashboard/stage-durations',
+    filterFrom,
+    filterTo,
+    dateRangeValid,
   );
   const departments = useDashboardData<Dept[]>(['departments'], '/departments');
   const employees = useDashboardData<Employee[]>(['users'], '/users');
-  const clients = useDashboardData<Client[]>(['clients', ''], '/clients');
   const slaReport = useDashboardData<SlaReportRow[]>(['sla-report'], '/sla/report');
   const queries = [
     board,
@@ -160,7 +220,6 @@ export default function DashboardOverviewPage() {
     stageDurations,
     departments,
     employees,
-    clients,
     slaReport,
   ];
   const failed = queries.filter((q) => q.isError);
@@ -170,8 +229,11 @@ export default function DashboardOverviewPage() {
     (b) => b.status === 'open' || b.status === 'sla_triggered',
   );
   const allProjects = Object.values(board.data ?? {}).flat();
+  const clientIds = new Set(allProjects.map((project) => project.client?._id).filter(Boolean));
   const activeEmployees = (employees.data ?? []).filter((e) => e.isActive);
-  const breached = (slaReport.data ?? []).filter((s) => s.breached);
+  const projectIds = new Set(allProjects.map((project) => project._id));
+  const relevantSlaRows = (slaReport.data ?? []).filter((row) => projectIds.has(row.projectId));
+  const breached = relevantSlaRows.filter((s) => s.breached);
   const progress = allProjects.length
     ? Math.round(allProjects.reduce((sum, p) => sum + (p.progressPct ?? 0), 0) / allProjects.length)
     : 0;
@@ -192,16 +254,60 @@ export default function DashboardOverviewPage() {
             A little clarity for everything you’re creating.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void Promise.all(queries.map((q) => q.refetch()))}
-          disabled={refreshing}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing…' : 'Refresh overview'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-h-11 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <CalendarDays className="h-4 w-4 text-indigo-500" />
+            <label htmlFor="dashboard-period" className="sr-only">Dashboard date range</label>
+            <select
+              id="dashboard-period"
+              value={datePreset}
+              onChange={(event) => setDatePreset(event.target.value as typeof datePreset)}
+              className="bg-transparent text-sm font-medium text-slate-700 outline-none"
+            >
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="custom">Custom range</option>
+              <option value="all">All time</option>
+            </select>
+            {datePreset === 'custom' && (
+              <>
+                <label htmlFor="dashboard-from" className="sr-only">Start date</label>
+                <input
+                  id="dashboard-from"
+                  type="date"
+                  value={customFrom}
+                  max={customTo || undefined}
+                  onChange={(event) => setCustomFrom(event.target.value)}
+                  className="border-l border-slate-200 pl-2 text-xs text-slate-600 outline-none"
+                />
+                <span className="text-xs text-slate-400">to</span>
+                <label htmlFor="dashboard-to" className="sr-only">End date</label>
+                <input
+                  id="dashboard-to"
+                  type="date"
+                  value={customTo}
+                  min={customFrom || undefined}
+                  onChange={(event) => setCustomTo(event.target.value)}
+                  className="text-xs text-slate-600 outline-none"
+                />
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void Promise.all(queries.map((q) => q.refetch()))}
+            disabled={refreshing || !dateRangeValid}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing…' : 'Refresh overview'}
+          </button>
+        </div>
       </div>
+      <p className="-mt-5 text-xs text-slate-500">
+        Showing projects with activity during: <span className="font-medium text-slate-700">{periodDescription}</span>
+      </p>
 
       {failed.length > 0 && (
         <div
@@ -307,11 +413,11 @@ export default function DashboardOverviewPage() {
         />
         <StatCard
           icon={UserCircle2}
-          label="Clients"
-          value={clients.data?.length ?? 0}
-          pending={clients.isPending}
-          error={clients.isError}
-          hint="Relationships you’re building"
+          label="Clients in period"
+          value={clientIds.size}
+          pending={board.isPending}
+          error={board.isError}
+          hint="Connected to active projects"
           href="/dashboard/clients"
           tone="bg-teal-50 text-teal-700"
         />
@@ -570,9 +676,9 @@ export default function DashboardOverviewPage() {
 
           {/* ── Chart 1: Project Status Distribution ── */}
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
-            <h3 className="text-sm font-semibold text-slate-900">Project status</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Active projects by stage</h3>
             <p className="mb-4 mt-1 text-xs text-slate-500">
-              How projects are spread across pipeline stages.
+              Where active projects currently sit in the production pipeline.
             </p>
             <DataState
               pending={board.isPending || departments.isPending}
@@ -631,9 +737,9 @@ export default function DashboardOverviewPage() {
 
           {/* ── Chart 2: SLA Performance ── */}
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
-            <h3 className="text-sm font-semibold text-slate-900">SLA performance</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Stage SLA health</h3>
             <p className="mb-4 mt-1 text-xs text-slate-500">
-              On-time vs breached projects per stage.
+              Active projects within and beyond their stage time limits.
             </p>
             <DataState
               pending={slaReport.isPending}
@@ -648,7 +754,9 @@ export default function DashboardOverviewPage() {
                   if (r.breached) byStage[r.stageName].breached++;
                   else byStage[r.stageName].onTime++;
                 });
-                const data = Object.values(byStage);
+                const data = sortedDepts
+                  .map((department) => byStage[department.name])
+                  .filter((stage): stage is { stage: string; onTime: number; breached: number } => Boolean(stage));
                 return (
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={data} margin={{ top: 4, right: 0, left: -24, bottom: 4 }}>
@@ -657,7 +765,7 @@ export default function DashboardOverviewPage() {
                       <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
                       <Tooltip contentStyle={tooltipStyle} />
                       <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                      <Bar dataKey="onTime" name="On time" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} maxBarSize={28} />
+                      <Bar dataKey="onTime" name="Within SLA" stackId="a" fill="#10b981" maxBarSize={28} />
                       <Bar dataKey="breached" name="Breached" stackId="a" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={28} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -668,9 +776,9 @@ export default function DashboardOverviewPage() {
 
           {/* ── Chart 3: Team Workload ── */}
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
-            <h3 className="text-sm font-semibold text-slate-900">Team workload</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Team task progress</h3>
             <p className="mb-4 mt-1 text-xs text-slate-500">
-              Open tasks and work already in motion per person.
+              Pending and in-progress tasks for every active employee.
             </p>
             <DataState
               pending={workload.isPending}
@@ -678,31 +786,48 @@ export default function DashboardOverviewPage() {
               empty={!workload.data?.length}
               emptyText="Team workload will appear as tasks are assigned."
             >
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart
-                  accessibilityLayer
-                  data={workload.data}
-                  margin={{ top: 4, right: 0, left: -24, bottom: 4 }}
-                  barCategoryGap="30%"
+              <div className="overflow-x-auto">
+                <div
+                  className="h-[240px]"
+                  style={{ minWidth: Math.max(560, (workload.data?.length ?? 0) * 140) }}
                 >
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="userName" tick={chartTick} axisLine={false} tickLine={false} tickMargin={8} />
-                  <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                  <Bar dataKey="totalTasks" name="Total tasks" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={20} />
-                  <Bar dataKey="inProgress" name="In progress" fill="#a5b4fc" radius={[4, 4, 0, 0]} maxBarSize={20} />
-                </BarChart>
-              </ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      accessibilityLayer
+                      data={(workload.data ?? []).map((employee) => ({
+                        ...employee,
+                        pending: Math.max(0, employee.totalTasks - employee.inProgress),
+                      }))}
+                      margin={{ top: 4, right: 8, left: -24, bottom: 4 }}
+                      barCategoryGap="30%"
+                    >
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="userName" tick={chartTick} axisLine={false} tickLine={false} tickMargin={8} />
+                      <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                      <Bar dataKey="pending" name="Pending" stackId="tasks" fill="#6366f1" maxBarSize={24} />
+                      <Bar dataKey="inProgress" name="In progress" stackId="tasks" fill="#a5b4fc" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             </DataState>
           </div>
 
-          {/* ── Chart 4: Project Completion Trend ── */}
+          {/* ── Chart 4: Overall Project Progress ── */}
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
-            <h3 className="text-sm font-semibold text-slate-900">Project completion trend</h3>
-            <p className="mb-4 mt-1 text-xs text-slate-500">
-              How many projects sit at each completion milestone.
-            </p>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Overall project progress</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Active projects grouped by their completion percentage.
+                </p>
+              </div>
+              <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                {progress}% average
+              </span>
+            </div>
             <DataState
               pending={board.isPending}
               error={board.isError}
@@ -711,21 +836,15 @@ export default function DashboardOverviewPage() {
             >
               {(() => {
                 const buckets = [
-                  { label: '0–25%', projects: allProjects.filter((p) => (p.progressPct ?? 0) <= 25).length },
-                  { label: '26–50%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 25 && (p.progressPct ?? 0) <= 50).length },
-                  { label: '51–75%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 50 && (p.progressPct ?? 0) <= 75).length },
-                  { label: '76–99%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 75 && (p.progressPct ?? 0) < 100).length },
-                  { label: '100%', projects: allProjects.filter((p) => (p.progressPct ?? 0) >= 100).length },
+                  { label: '0–25%', projects: allProjects.filter((p) => (p.progressPct ?? 0) <= 25).length, color: '#f97316' },
+                  { label: '26–50%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 25 && (p.progressPct ?? 0) <= 50).length, color: '#f59e0b' },
+                  { label: '51–75%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 50 && (p.progressPct ?? 0) <= 75).length, color: '#6366f1' },
+                  { label: '76–99%', projects: allProjects.filter((p) => (p.progressPct ?? 0) > 75 && (p.progressPct ?? 0) < 100).length, color: '#0d9488' },
+                  { label: '100%', projects: allProjects.filter((p) => (p.progressPct ?? 0) >= 100).length, color: '#10b981' },
                 ];
                 return (
                   <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={buckets} margin={{ top: 4, right: 8, left: -24, bottom: 4 }}>
-                      <defs>
-                        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.18} />
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
+                    <BarChart data={buckets} margin={{ top: 8, right: 8, left: -24, bottom: 4 }}>
                       <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="label" tick={chartTick} axisLine={false} tickLine={false} tickMargin={8} />
                       <YAxis tick={chartTick} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -733,17 +852,10 @@ export default function DashboardOverviewPage() {
                         contentStyle={tooltipStyle}
                         formatter={(v) => [`${v} project${Number(v) !== 1 ? 's' : ''}`, 'Count']}
                       />
-                      <Area
-                        type="monotone"
-                        dataKey="projects"
-                        name="Projects"
-                        stroke="#6366f1"
-                        strokeWidth={2}
-                        fill="url(#areaGrad)"
-                        dot={{ r: 4, fill: '#6366f1', strokeWidth: 0 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </AreaChart>
+                      <Bar dataKey="projects" name="Active projects" radius={[5, 5, 0, 0]} maxBarSize={42}>
+                        {buckets.map((bucket) => <Cell key={bucket.label} fill={bucket.color} />)}
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
                 );
               })()}

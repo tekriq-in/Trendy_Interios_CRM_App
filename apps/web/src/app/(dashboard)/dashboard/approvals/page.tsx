@@ -155,6 +155,7 @@ export default function ApprovalsPage() {
       apiClient.patch(`/approvals/${id}/approve`, { finalMessage }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-approvals'] });
       toast('success', 'Approval sent — WhatsApp message dispatched.');
     },
     onError: () => toast('error', 'Failed to approve. Please try again.'),
@@ -165,6 +166,7 @@ export default function ApprovalsPage() {
       apiClient.patch(`/approvals/${id}/reject`, { reason }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-approvals'] });
       setRejectingId(null); setRejectReason('');
       toast('warning', 'Approval rejected.');
     },
@@ -226,6 +228,7 @@ export default function ApprovalsPage() {
         ...(uploadedDocId ? { linkedDocumentId: uploadedDocId } : {}),
       });
       qc.invalidateQueries({ queryKey: ['approvals'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-approvals'] });
       toast('success', 'Approval request submitted.');
       setShowRequest(false);
       setReqForm({ projectId: '', kind: 'client_update', rawNotes: '', language: 'en' });

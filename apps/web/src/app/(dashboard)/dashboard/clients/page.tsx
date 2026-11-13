@@ -211,7 +211,7 @@ export default function ClientsPage() {
           <EmptyState
             icon={UserCircle2}
             title="No clients yet"
-            description="Add your first client to start tracking interior projects, follow-ups, and payment milestones."
+            description="Add your first client to start tracking interior projects and follow-ups."
             action={canCreateClient ? { label: '+ Add Client', onClick: openCreate } : undefined}
           />
         </div>

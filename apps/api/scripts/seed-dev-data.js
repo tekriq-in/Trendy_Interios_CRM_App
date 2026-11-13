@@ -41,7 +41,6 @@ const loose = { strict: false, timestamps: true };
 const Client   = mongoose.model('Client',      new mongoose.Schema({}, loose), 'clients');
 const Project  = mongoose.model('Project',     new mongoose.Schema({}, loose), 'projects');
 const Task     = mongoose.model('Task',        new mongoose.Schema({}, loose), 'tasks');
-const Payment  = mongoose.model('Payment',     new mongoose.Schema({}, loose), 'payments');
 const Blocker  = mongoose.model('Blocker',     new mongoose.Schema({}, loose), 'blockers');
 const Activity = mongoose.model('ActivityLog', new mongoose.Schema({}, { strict: false }), 'activitylogs');
 
@@ -94,7 +93,7 @@ async function run() {
       progressPct: 28,
       assignedTeam: [USER.md, USER.gm, USER.head, USER.employee],
       targetDate: new Date('2026-12-15'),
-      status: 'active', advance: 150000, advancePaidAt: new Date('2026-09-06'),
+      status: 'active',
       requiresDrawing: true, createdBy: USER.md,
     },
     {
@@ -111,7 +110,7 @@ async function run() {
       progressPct: 58,
       assignedTeam: [USER.md, USER.head, USER.employee],
       targetDate: new Date('2026-11-01'),
-      status: 'active', advance: 80000, advancePaidAt: new Date('2026-08-16'),
+      status: 'active',
       requiresDrawing: true, createdBy: USER.md,
     },
     {
@@ -124,7 +123,7 @@ async function run() {
       progressPct: 5,
       assignedTeam: [USER.gm, USER.employee],
       targetDate: new Date('2027-02-28'),
-      status: 'active', advance: 0, requiresDrawing: true, createdBy: USER.gm,
+      status: 'active', requiresDrawing: true, createdBy: USER.gm,
     },
   ]);
   console.log(`Projects: ${p1._id}  ${p2._id}  ${p3._id}`);
@@ -141,14 +140,6 @@ async function run() {
     { project: p3._id, department: DEPT.enquiry,        title: 'Collect client brief and reference images', assignedTo: USER.gm,   status: 'in_progress', dueDate: new Date('2026-10-18'), createdBy: USER.gm },
   ]);
   console.log('Tasks created');
-
-  // ── Payments ──────────────────────────────────────────────────────────────
-  await Payment.insertMany([
-    { project: p1._id, kind: 'advance',  amount: 150000, paidAt: new Date('2026-09-06'), collectedBy: USER.gm,   notes: 'Cash collected at showroom', createdBy: USER.gm },
-    { project: p2._id, kind: 'advance',  amount: 80000,  paidAt: new Date('2026-08-16'), collectedBy: USER.gm,   notes: 'UPI transfer confirmed', createdBy: USER.gm },
-    { project: p2._id, kind: 'periodic', amount: 50000,  paidAt: new Date('2026-09-20'), collectedBy: USER.head, notes: 'Mid-production milestone payment', createdBy: USER.head },
-  ]);
-  console.log('Payments created');
 
   // ── Blockers ──────────────────────────────────────────────────────────────
   await Blocker.insertMany([
@@ -172,7 +163,6 @@ async function run() {
     { actor: USER.md,       action: 'project.created',  entity: 'projects', entityId: String(p1._id), metadata: { title: 'Meena Krishnan — Full Home Renovation' } },
     { actor: USER.md,       action: 'project.created',  entity: 'projects', entityId: String(p2._id), metadata: { title: 'Suresh Babu — Kitchen + Living Room' } },
     { actor: USER.gm,       action: 'project.created',  entity: 'projects', entityId: String(p3._id), metadata: { title: 'Preethi Rajan — Office Interior' } },
-    { actor: USER.gm,       action: 'payment.recorded', entity: 'payments', entityId: 'seed', metadata: { amount: 150000, project: String(p1._id) } },
     { actor: USER.employee, action: 'blocker.raised',   entity: 'blockers', entityId: 'seed', metadata: { project: String(p1._id) } },
   ]);
   console.log('Activity log entries created');

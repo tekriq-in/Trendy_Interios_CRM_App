@@ -18,7 +18,6 @@ import { PurchaseItemsModule } from './modules/purchase-items/purchase-items.mod
 import { ShadeCardModule } from './modules/shade-card/shade-card.module';
 import { BlockersModule } from './modules/blockers/blockers.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
-import { PaymentsModule } from './modules/payments/payments.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { DriveModule } from './modules/drive/drive.module';
 import { SlaModule } from './modules/sla/sla.module';
@@ -62,7 +61,6 @@ import { HealthModule } from './modules/health/health.module';
     ShadeCardModule,
     BlockersModule,
     ApprovalsModule,
-    PaymentsModule,
     DocumentsModule,
     DriveModule,
     SlaModule,

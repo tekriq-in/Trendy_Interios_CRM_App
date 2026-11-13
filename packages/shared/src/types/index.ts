@@ -33,8 +33,6 @@ export type ApprovalKind =
   | 'drawing';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
-export type PaymentKind = 'advance' | 'periodic' | 'final';
-
 export type DocumentType =
   | 'photo'
   | 'drawing_2d'
@@ -108,8 +106,6 @@ export interface Project extends BaseEntity {
   assignedTeam: ID[];
   targetDate?: string;
   status: ProjectStatus;
-  advance?: number;
-  advancePaidAt?: string;
   requiresDrawing: boolean;
   additionalWork: AdditionalWork[];
 }
@@ -176,17 +172,6 @@ export interface Approval extends BaseEntity {
   linkedDocument?: ID;
   approvedAt?: string;
   whatsappScheduled: boolean;
-}
-
-export interface Payment extends BaseEntity {
-  project: ID | Project;
-  kind: PaymentKind;
-  amount: number;
-  paidAt?: string;
-  collectedBy: ID | User;
-  notes?: string;
-  followUpSentAt?: string;
-  followUpApprovedBy?: ID | User;
 }
 
 export interface Document extends BaseEntity {

@@ -34,12 +34,12 @@ A system that tracks every interior-manufacturing project end to end, department
 
 1. **Enquiry (Sales):** Client arrives via marketing or referral. Collect location share, time schedule, interior requirements, showroom visit, shared details and ideas. Schedule next meeting at site or factory.
 2. **Measurement:** Site visit and measurement per client requirement; order details filled.
-3. **Design (with Sales):** Design team prepares quotation (revisable). MD must approve before sharing with client, and again for order confirmation. Advance collected and recorded. Material and hardware approvals with client (laminate, acrylic, veneer, handles, glass, baskets & accessories, decoration products). 2D drawing COMPULSORY, 3D optional. Client approves final drawing. Area-wise priority passed to design.
+3. **Design (with Sales):** Design team prepares quotation (revisable). MD must approve before sharing with client, and again for order confirmation. Material and hardware approvals with client (laminate, acrylic, veneer, handles, glass, baskets & accessories, decoration products). 2D drawing COMPULSORY, 3D optional. Client approves final drawing. Area-wise priority passed to design.
 4. **Purchase:** Orders materials and goods. Item-level status (ordered / received / pending). All items received → stage completes; otherwise only pending items stay open.
 5. **Manufacturing:** Production starts; status updates with photos.
 6. **Assembly:** Assembly done; records updated.
 7. **Delivery:** Separate team, before cleaning and handover.
-8. **Final Clean and Handover:** Project handed over; final payment followed up; MD closes the project.
+8. **Final Clean and Handover:** Project handed over; MD closes the project.
 
 ---
 
@@ -60,10 +60,6 @@ A system that tracks every interior-manufacturing project end to end, department
 - Design looped in if a drawing is needed; production notified.
 - Must not disturb the main stage flow.
 
-### Payments
-- Advance, periodic, and final payments tracked per project.
-- Follow-up reminders: staff push notification; client WhatsApp nudge where appropriate.
-
 ### Blockers
 - Any team can raise one, tagged internal or client-side.
 - Goes to team lead and shows on MD/admin dashboard.
@@ -72,7 +68,7 @@ A system that tracks every interior-manufacturing project end to end, department
 - Client-side blockers produce a WhatsApp message **only** through the approval gate.
 
 ### Client Communication
-- **NOTHING** reaches a client unless an MD or GM approves it, or a fixed rule configured by the MD fires (e.g. payment reminders).
+- **NOTHING** reaches a client unless an MD or GM approves it, or a fixed rule configured by the MD fires.
 - No path exists for an employee to message a client directly.
 
 ---
@@ -108,7 +104,6 @@ A system that tracks every interior-manufacturing project end to end, department
 | purchaseItems | project, item, status (ordered/received/pending) |
 | blockers | type (internal/client_side), status, raisedBy |
 | approvals | project, kind (quotation/orderConfirmation/clientUpdate/drawing), status, approver |
-| payments | project, kind (advance/periodic/final), amount INR |
 | documents | driveFileId, driveLink, version, type |
 | messages | channel, sender, body, attachments |
 | slaSettings | department, defaultHours |
@@ -123,7 +118,6 @@ All documents carry `createdAt`, `updatedAt`, `createdBy`. The activity log is a
 - Projects by stage (board and list views) with readiness bars
 - Pending approvals queue
 - Open blockers with trigger-SLA action
-- Overdue payments
 - Team workload
 - Department / user / team-lead management (add, edit, remove)
 - SLA settings (per stage, editable)
@@ -134,11 +128,13 @@ All documents carry `createdAt`, `updatedAt`, `createdBy`. The activity log is a
 
 ## 8. Out of Scope
 
-- Online payment gateway
+- Payments of any kind: tracking (advance / periodic / final), follow-up reminders, and online payment gateway — see change note below
 - Client login portal
 - Accounting / GST integration (Tally / Zoho)
 - Data migration (system starts empty)
 - 3D design tooling
+
+> **Change note (2026-11-13):** Payment tracking and the payment follow-up engine were removed from scope by agreement with the client. The `payments` module, its permissions (`payments:record`, `payments:view_all`) and the project `advance` fields were removed from the codebase. Any existing `payments` collection in MongoDB is left untouched and unused.
 
 ---
 
@@ -148,7 +144,7 @@ All documents carry `createdAt`, `updatedAt`, `createdBy`. The activity log is a
 |-------|-------|
 | Phase 1 — Core | Users, roles, org chart, dynamic departments, client CRM, data-driven stage tracking, tasks, readiness bar, Google Drive uploads, admin dashboard, activity log |
 | Phase 2 — Collaboration | Chat, handover flow, blockers, push notifications, offline mode |
-| Phase 3 — Automation | Approval gate, WhatsApp Business API, payment tracking and follow-up engine |
+| Phase 3 — Automation | Approval gate, WhatsApp Business API |
 | Phase 4 — Insight | Analytics, reports, SLA tools, audit review |
 
 ---

@@ -49,7 +49,6 @@ Meta requires pre-approved templates to initiate conversations. Templates must b
 | `quotation_ready` | UTILITY | `{{client_name}}`, `{{project_title}}`, `{{amount}}` | Quotation approval |
 | `order_confirmed` | UTILITY | `{{client_name}}`, `{{project_title}}` | Order confirmation approval |
 | `drawing_ready` | UTILITY | `{{client_name}}`, `{{project_title}}`, `{{drive_link}}` | Drawing approval |
-| `payment_reminder` | UTILITY | `{{client_name}}`, `{{amount}}`, `{{due_date}}` | Payment follow-up |
 | `handover_complete` | UTILITY | `{{client_name}}`, `{{project_title}}` | Final handover completion |
 
 ### A3. Update `WhatsAppMetaService.sendTemplate()`
@@ -335,19 +334,6 @@ Show delivery status chips on approval cards in the web UI:
 
 ---
 
-## Phase E — Payment follow-up messages
-
-The payment module already has `followUpSentAt`. Wire it to WhatsApp:
-
-```
-POST /payments/:id/send-follow-up
-```
-
-1. Checks `approvals:decide` permission (MD/GM only)
-2. Sends `payment_reminder` template to the client
-3. Sets `followUpSentAt = now` and `followUpApprovedBy = actor._id`
-
----
 
 ## Implementation order
 
@@ -357,7 +343,6 @@ POST /payments/:id/send-follow-up
 | B — Inbound webhook + client reply inbox | 3–4 days | P0 | Phase A |
 | C — Customer sign-off flow | 2 days | P1 | Phase B |
 | D — Delivery status tracking | 1 day | P1 | Phase A |
-| E — Payment follow-up | 1 day | P2 | Phase A |
 
 ---
 

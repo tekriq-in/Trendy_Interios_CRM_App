@@ -54,12 +54,6 @@ export class Project {
   })
   status: string;
 
-  @Prop({ type: Number, default: 0 })
-  advance: number;
-
-  @Prop()
-  advancePaidAt: Date;
-
   @Prop({ default: true })
   requiresDrawing: boolean;
 

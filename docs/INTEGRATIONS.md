@@ -23,7 +23,7 @@ MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/trendy_in
 
 ### Collections created automatically by Mongoose
 
-`users`, `roles`, `departments`, `clients`, `projects`, `tasks`, `handovers`, `blockers`, `approvals`, `payments`, `tidocuments`, `messages`, `chatgroups`, `slaSettings`, `activityLog`
+`users`, `roles`, `departments`, `clients`, `projects`, `tasks`, `handovers`, `blockers`, `approvals`, `tidocuments`, `messages`, `chatgroups`, `slaSettings`, `activityLog`
 
 ---
 

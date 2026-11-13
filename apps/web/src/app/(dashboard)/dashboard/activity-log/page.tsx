@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { ActivityLog } from '@ti/shared';
 
-const ENTITIES = ['', 'projects', 'approvals', 'tasks', 'handovers', 'payments', 'blockers', 'users', 'departments'];
+const ENTITIES = ['', 'projects', 'approvals', 'tasks', 'handovers', 'blockers', 'users', 'departments'];
 
 interface Filters {
   actor: string;

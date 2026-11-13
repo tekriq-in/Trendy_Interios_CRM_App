@@ -23,7 +23,6 @@
 ### API completeness
 - [ ] SLA timer: cron job that automatically flags stages that have exceeded `defaultSlaHours`
 - [ ] Project `progressPct` recalculation on task completion and stage change
-- [ ] Payments: overdue follow-up engine (`GET /payments/overdue`)
 
 ---
 
@@ -33,7 +32,6 @@
 - [ ] Time-series chart: project completion trend over months (requires storing `completedAt` on projects)
 - [ ] Export dashboard data to CSV / PDF
 - [ ] Per-department SLA compliance rate (% of stages completed on time)
-- [ ] Revenue tracking chart (advance + periodic + final payments per month)
 
 ### Approval workflow
 - [ ] Approval history timeline on each approval card (requested → reviewed → approved/rejected)

@@ -88,12 +88,6 @@ All schemas share base fields via a plugin: `createdAt`, `updatedAt`, `createdBy
   rejectionReason, linkedDocument, approvedAt, whatsappScheduled }
 ```
 
-### payments
-```ts
-{ project, kind (advance|periodic|final), amount, paidAt,
-  collectedBy, notes, followUpSentAt, followUpApprovedBy }
-```
-
 ### documents
 ```ts
 { project, driveFileId, driveLink, mimeType, fileName, fileSize,
@@ -164,9 +158,6 @@ All schemas share base fields via a plugin: `createdAt`, `updatedAt`, `createdBy
 `GET/POST /approvals`
 `PATCH /approvals/:id/approve`, `PATCH /approvals/:id/reject`
 
-### Payments
-`GET/POST /projects/:id/payments`, `GET /payments/overdue`
-
 ### Documents
 `POST /documents/upload`, `GET/DELETE /documents/:id`
 
@@ -193,7 +184,6 @@ handovers:raise/confirm_from/accept_to
 purchase_items:manage
 blockers:raise/trigger_sla/resolve
 approvals:request/decide
-payments:record/view_all
 documents:upload/delete
 messages:send
 activity_log:read
@@ -243,7 +233,7 @@ whatsapp:send_approved   ← system-only, never assignable to users
 |-------|-------------|
 | 1 — Core | Monorepo, shared types, NestJS API (all modules, schemas, guards), Next.js admin dashboard, Expo mobile (auth + projects + tasks + offline), Drive stub, tests |
 | 2 — Collaboration | Socket.IO chat, handover flow, blockers, FCM push, offline sync |
-| 3 — Automation | Approval gate, WhatsApp integration, payment follow-up engine |
+| 3 — Automation | Approval gate, WhatsApp integration |
 | 4 — Insight | Analytics, SLA reporting, audit log UI |
 
 ---

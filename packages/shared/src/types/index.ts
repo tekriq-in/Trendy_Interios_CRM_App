@@ -151,11 +151,15 @@ export interface PurchaseItem extends BaseEntity {
   finish: string;
   /** Order qty — cumulative total requested by Design */
   quantity: number;
-  /** Received qty — entered manually by Purchase */
+  /** Ordered qty — entered manually by Purchase (total ordered so far) */
+  orderedQty: number;
+  /** Received qty — entered manually by Purchase (total received so far) */
   receivedQty: number;
+  /** Yet to order = quantity - orderedQty (computed by the API) */
+  yetToOrderQty: number;
   /** Balance qty = quantity - receivedQty (computed by the API) */
   balanceQty: number;
-  /** 'pending' is shown as "Yet to order" in the UI */
+  /** Derived from the quantities. 'pending' is shown as "Yet to order". */
   status: PurchaseItemStatus;
   orderedAt?: string;
   receivedAt?: string;

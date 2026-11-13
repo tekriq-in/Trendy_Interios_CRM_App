@@ -12,6 +12,7 @@ import {
   derivePurchaseItemStatus,
   purchaseItemBalance,
   purchaseItemMatchKey,
+  purchaseItemYetToOrder,
 } from '@ti/shared';
 import { PurchaseItem, PurchaseItemDocument } from './schemas/purchase-item.schema';
 import { Project, ProjectDocument } from '../projects/schemas/project.schema';
@@ -38,6 +39,7 @@ interface LeanPurchaseItem {
   finish?: string;
   matchKey?: string;
   quantity: number;
+  orderedQty?: number;
   receivedQty?: number;
   status: Status;
 }
@@ -54,7 +56,9 @@ export interface PurchaseItemView {
   size: string;
   finish: string;
   quantity: number;
+  orderedQty: number;
   receivedQty: number;
+  yetToOrderQty: number;
   balanceQty: number;
   status: Status;
   orderedAt?: Date;
@@ -76,8 +80,13 @@ export class PurchaseItemsService implements OnModuleInit {
     private pdf: PurchaseItemsPdfService,
   ) {}
 
-  /** One-time backfill for rows created before quantity tracking existed. Idempotent. */
+  /** One-time backfills for rows created before quantity tracking existed. Idempotent. */
   async onModuleInit() {
+    await this.backfillLegacyRows();
+    await this.backfillOrderedQty();
+  }
+
+  private async backfillLegacyRows() {
     try {
       const legacy = (await this.itemModel
         .find({ matchKey: { $exists: false } })
@@ -126,6 +135,32 @@ export class PurchaseItemsService implements OnModuleInit {
     }
   }
 
+  /** Rows from before ordered qty was tracked: infer it from the old status. */
+  private async backfillOrderedQty() {
+    try {
+      const rows = (await this.itemModel
+        .find({ orderedQty: { $exists: false } })
+        .select('_id quantity receivedQty status')
+        .lean()) as unknown as LeanPurchaseItem[];
+      if (rows.length === 0) return;
+
+      const ops: AnyBulkWriteOperation<PurchaseItemDocument>[] = rows.map((r) => {
+        const receivedQty = r.receivedQty ?? 0;
+        const orderedQty = r.status === 'pending' ? receivedQty : Math.max(r.quantity, receivedQty);
+        return {
+          updateOne: {
+            filter: { _id: r._id },
+            update: { $set: { orderedQty, status: derivePurchaseItemStatus(r.quantity, orderedQty, receivedQty) } },
+          },
+        };
+      });
+      await this.itemModel.bulkWrite(ops);
+      this.logger.log(`Backfilled ordered qty on ${ops.length} purchase item(s)`);
+    } catch (err) {
+      this.logger.error(`Ordered qty backfill failed: ${(err as Error).message}`);
+    }
+  }
+
   async findByProject(projectId: string, actor: Actor): Promise<PurchaseItemView[]> {
     await this.assertProjectAccess(projectId, actor);
     const items = (await this.itemModel
@@ -159,7 +194,8 @@ export class PurchaseItemsService implements OnModuleInit {
       {
         $inc: { quantity: dto.quantity },
         $set: { status: 'pending' },
-        $setOnInsert: { ...fields, receivedQty: 0, slNo, createdBy: new Types.ObjectId(actor._id) },
+        // New quantity is never ordered yet, so the row is always "Yet to order" after an add
+        $setOnInsert: { ...fields, orderedQty: 0, receivedQty: 0, slNo, createdBy: new Types.ObjectId(actor._id) },
       },
       { upsert: true, new: true, setDefaultsOnInsert: false, includeResultMetadata: true },
     );
@@ -198,10 +234,11 @@ export class PurchaseItemsService implements OnModuleInit {
       if (dto.quantity < item.receivedQty) {
         throw new BadRequestException('purchase_item.quantity_below_received');
       }
+      if (dto.quantity < item.orderedQty) {
+        throw new BadRequestException('purchase_item.quantity_below_ordered');
+      }
       item.quantity = dto.quantity;
-      // More quantity than before has not been ordered yet
-      const requested: Status | undefined = dto.quantity > before.quantity ? 'pending' : undefined;
-      this.applyStatus(item, derivePurchaseItemStatus(item.quantity, item.receivedQty, requested, item.status));
+      this.applyStatus(item, derivePurchaseItemStatus(item.quantity, item.orderedQty, item.receivedQty));
     }
 
     await item.save();
@@ -215,20 +252,30 @@ export class PurchaseItemsService implements OnModuleInit {
     return this.withBalance(item);
   }
 
-  /** Purchase records ordering / receipt. Manual: nothing here is automatic. */
+  /**
+   * Purchase records how many are ordered / received so far (totals, entered by hand).
+   * Status follows from the numbers. Receiving more than was marked ordered raises the
+   * ordered qty to match, since goods can't arrive without having been ordered.
+   */
   async updateProgress(id: string, dto: UpdatePurchaseItemProgressDto, actor: Actor): Promise<PurchaseItemView> {
-    if (dto.status === undefined && dto.receivedQty === undefined) {
+    if (dto.orderedQty === undefined && dto.receivedQty === undefined) {
       throw new BadRequestException('purchase_item.empty_update');
     }
     const item = await this.findOwned(id, actor);
-    const before = { status: item.status, receivedQty: item.receivedQty };
+    const before = { status: item.status, orderedQty: item.orderedQty, receivedQty: item.receivedQty };
 
-    const receivedQty = dto.status === 'received' ? item.quantity : dto.receivedQty ?? item.receivedQty;
-    if (receivedQty > item.quantity) {
-      throw new BadRequestException('purchase_item.received_exceeds_order');
+    const receivedQty = dto.receivedQty ?? item.receivedQty;
+    let orderedQty = dto.orderedQty ?? item.orderedQty;
+    if (receivedQty > item.quantity) throw new BadRequestException('purchase_item.received_exceeds_order');
+    if (orderedQty > item.quantity) throw new BadRequestException('purchase_item.ordered_exceeds_order');
+    if (receivedQty > orderedQty) {
+      if (dto.orderedQty !== undefined) throw new BadRequestException('purchase_item.ordered_below_received');
+      orderedQty = receivedQty;
     }
+
+    item.orderedQty = orderedQty;
     item.receivedQty = receivedQty;
-    this.applyStatus(item, derivePurchaseItemStatus(item.quantity, receivedQty, dto.status, item.status));
+    this.applyStatus(item, derivePurchaseItemStatus(item.quantity, orderedQty, receivedQty));
 
     await item.save();
     await this.activityLog.record({
@@ -239,6 +286,8 @@ export class PurchaseItemsService implements OnModuleInit {
       metadata: {
         fromStatus: before.status,
         toStatus: item.status,
+        fromOrderedQty: before.orderedQty,
+        toOrderedQty: item.orderedQty,
         fromReceivedQty: before.receivedQty,
         toReceivedQty: item.receivedQty,
       },
@@ -246,10 +295,10 @@ export class PurchaseItemsService implements OnModuleInit {
     return this.withBalance(item);
   }
 
-  /** Only rows that are still fully "Yet to order" can be deleted. Remaining rows are renumbered. */
+  /** Only rows with nothing ordered or received can be deleted. Remaining rows are renumbered. */
   async remove(id: string, actor: Actor): Promise<{ deleted: true }> {
     const item = await this.findOwned(id, actor);
-    if (item.receivedQty > 0 || item.status !== 'pending') {
+    if (item.receivedQty > 0 || item.orderedQty > 0) {
       throw new BadRequestException('purchase_item.cannot_delete_in_progress');
     }
     await item.deleteOne();
@@ -295,6 +344,7 @@ export class PurchaseItemsService implements OnModuleInit {
         size: i.size ?? '',
         finish: i.finish ?? '',
         quantity: i.quantity,
+        orderedQty: i.orderedQty,
         receivedQty: i.receivedQty,
         balanceQty: i.balanceQty,
         status: i.status,
@@ -319,6 +369,7 @@ export class PurchaseItemsService implements OnModuleInit {
 
   private toView(i: PurchaseItemView): PurchaseItemView {
     const receivedQty = i.receivedQty ?? 0;
+    const orderedQty = i.orderedQty ?? 0;
     return {
       ...i,
       slNo: i.slNo ?? 0,
@@ -327,7 +378,9 @@ export class PurchaseItemsService implements OnModuleInit {
       code: i.code ?? '',
       size: i.size ?? '',
       finish: i.finish ?? '',
+      orderedQty,
       receivedQty,
+      yetToOrderQty: purchaseItemYetToOrder(i.quantity, orderedQty),
       balanceQty: purchaseItemBalance(i.quantity, receivedQty),
     };
   }

@@ -42,11 +42,15 @@ export class PurchaseItem {
   @Prop({ type: Number, required: true, default: 0, min: 0 })
   quantity: number;
 
-  /** Received qty — entered manually by Purchase */
+  /** Ordered qty — entered manually by Purchase (total ordered so far) */
+  @Prop({ type: Number, default: 0, min: 0 })
+  orderedQty: number;
+
+  /** Received qty — entered manually by Purchase (total received so far) */
   @Prop({ type: Number, default: 0, min: 0 })
   receivedQty: number;
 
-  /** pending = "Yet to order" */
+  /** Derived from the quantities. pending = "Yet to order" */
   @Prop({ type: String, enum: PURCHASE_ITEM_STATUSES, default: 'pending' })
   status: (typeof PURCHASE_ITEM_STATUSES)[number];
 

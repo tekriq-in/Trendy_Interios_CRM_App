@@ -7,6 +7,7 @@ import {
   derivePurchaseItemStatus,
   purchaseItemBalance,
   purchaseItemMatchKey,
+  purchaseItemYetToOrder,
 } from '@ti/shared';
 import { PurchaseItemsService } from '../src/modules/purchase-items/purchase-items.service';
 import { PurchaseItemsPdfService } from '../src/modules/purchase-items/purchase-items-pdf.service';
@@ -27,11 +28,17 @@ describe('Purchase item rules (shared)', () => {
     expect(purchaseItemBalance(0.3, 0.1)).toBe(0.2);
   });
 
-  it('derives status from quantities', () => {
-    expect(derivePurchaseItemStatus(10, 10, undefined, 'ordered')).toBe('received');
-    expect(derivePurchaseItemStatus(10, 6, undefined, 'ordered')).toBe('ordered');
-    expect(derivePurchaseItemStatus(15, 10, undefined, 'received')).toBe('pending');
-    expect(derivePurchaseItemStatus(10, 0, 'ordered', 'pending')).toBe('ordered');
+  it('computes yet-to-order = order - ordered', () => {
+    expect(purchaseItemYetToOrder(10, 6)).toBe(4);
+    expect(purchaseItemYetToOrder(10, 10)).toBe(0);
+  });
+
+  it('derives status from order / ordered / received quantities', () => {
+    expect(derivePurchaseItemStatus(10, 0, 0)).toBe('pending');
+    expect(derivePurchaseItemStatus(10, 6, 0)).toBe('pending'); // 4 still to order
+    expect(derivePurchaseItemStatus(10, 10, 6)).toBe('ordered'); // all ordered, 4 to arrive
+    expect(derivePurchaseItemStatus(10, 10, 10)).toBe('received');
+    expect(derivePurchaseItemStatus(15, 10, 10)).toBe('pending'); // Design added 5 more
   });
 });
 
@@ -85,7 +92,7 @@ describe('PurchaseItemsService', () => {
   });
 
   it('adds quantity cumulatively to the matching row and resets it to "Yet to order"', async () => {
-    const merged = makeDoc({ quantity: 4, receivedQty: 0, status: 'pending', slNo: 1 });
+    const merged = makeDoc({ quantity: 4, orderedQty: 0, receivedQty: 0, status: 'pending', slNo: 1 });
     itemModel.findOneAndUpdate.mockResolvedValue({ value: merged, lastErrorObject: { updatedExisting: true } });
 
     const result = await service.add(projectId, { area: 'Kitchen', item: ' hinge ', quantity: 2 }, md);
@@ -102,36 +109,58 @@ describe('PurchaseItemsService', () => {
   });
 
   it('shows "10 received, 5 balance" after Design adds 5 to a fully received row', async () => {
-    const row = makeDoc({ quantity: 15, receivedQty: 10, status: 'pending' });
+    const row = makeDoc({ quantity: 15, orderedQty: 10, receivedQty: 10, status: 'pending' });
     itemModel.findOneAndUpdate.mockResolvedValue({ value: row, lastErrorObject: { updatedExisting: true } });
 
     const result = await service.add(projectId, { area: 'Kitchen', item: 'Hinge', quantity: 5 }, md);
     expect(result.receivedQty).toBe(10);
     expect(result.balanceQty).toBe(5);
+    expect(result.yetToOrderQty).toBe(5);
     expect(result.status).toBe('pending');
   });
 
-  it('keeps an ordered row "Ordered" on partial receipt and marks it Received when complete', async () => {
-    const row = makeDoc({ quantity: 10, receivedQty: 0, status: 'ordered' });
+  it('tracks partial ordering and receipt by quantity', async () => {
+    const row = makeDoc({ quantity: 10, orderedQty: 0, receivedQty: 0, status: 'pending' });
     itemModel.findById.mockResolvedValue(row);
 
-    const partial = await service.updateProgress(String(row._id), { receivedQty: 6 }, md);
-    expect(partial.status).toBe('ordered');
-    expect(partial.balanceQty).toBe(4);
+    const partOrdered = await service.updateProgress(String(row._id), { orderedQty: 6 }, md);
+    expect(partOrdered.status).toBe('pending');
+    expect(partOrdered.yetToOrderQty).toBe(4);
+
+    const allOrdered = await service.updateProgress(String(row._id), { orderedQty: 10 }, md);
+    expect(allOrdered.status).toBe('ordered');
+
+    const partReceived = await service.updateProgress(String(row._id), { receivedQty: 6 }, md);
+    expect(partReceived.status).toBe('ordered');
+    expect(partReceived.balanceQty).toBe(4);
 
     const full = await service.updateProgress(String(row._id), { receivedQty: 10 }, md);
     expect(full.status).toBe('received');
     expect(full.balanceQty).toBe(0);
   });
 
-  it('rejects a received qty above the order qty', async () => {
-    itemModel.findById.mockResolvedValue(makeDoc({ quantity: 10, receivedQty: 0, status: 'ordered' }));
+  it('raises ordered qty when more is received than was marked ordered', async () => {
+    itemModel.findById.mockResolvedValue(makeDoc({ quantity: 10, orderedQty: 2, receivedQty: 0, status: 'pending' }));
+    const result = await service.updateProgress('507f1f77bcf86cd799439011', { receivedQty: 5 }, md);
+    expect(result.orderedQty).toBe(5);
+    expect(result.receivedQty).toBe(5);
+  });
+
+  it('rejects ordered or received qty above the order qty, and ordered below received', async () => {
+    const fresh = () => makeDoc({ quantity: 10, orderedQty: 6, receivedQty: 4, status: 'pending' });
+    itemModel.findById.mockResolvedValueOnce(fresh());
     await expect(service.updateProgress('507f1f77bcf86cd799439011', { receivedQty: 11 }, md))
+      .rejects.toBeInstanceOf(BadRequestException);
+    itemModel.findById.mockResolvedValueOnce(fresh());
+    await expect(service.updateProgress('507f1f77bcf86cd799439011', { orderedQty: 11 }, md))
+      .rejects.toBeInstanceOf(BadRequestException);
+    itemModel.findById.mockResolvedValueOnce(fresh());
+    await expect(service.updateProgress('507f1f77bcf86cd799439011', { orderedQty: 3 }, md))
       .rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects lowering the order qty below what was already received', async () => {
-    itemModel.findById.mockResolvedValue(makeDoc({ quantity: 10, receivedQty: 8, status: 'ordered' }));
+    itemModel.findById.mockResolvedValue(makeDoc({ quantity: 10, orderedQty: 10, receivedQty: 8, status: 'ordered' }));
     await expect(service.updateDetails('507f1f77bcf86cd799439011', { quantity: 5 }, md))
       .rejects.toBeInstanceOf(BadRequestException);
   });

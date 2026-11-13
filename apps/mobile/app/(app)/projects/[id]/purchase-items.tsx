@@ -22,7 +22,9 @@ interface PurchaseItem {
   size: string;
   finish: string;
   quantity: number;
+  orderedQty: number;
   receivedQty: number;
+  yetToOrderQty: number;
   balanceQty: number;
   status: PurchaseItemStatus;
 }
@@ -48,6 +50,8 @@ const STATUS_COLORS: Record<PurchaseItemStatus, { bg: string; text: string }> = 
 
 const ERROR_TEXT: Record<string, string> = {
   'purchase_item.received_exceeds_order': 'Received qty cannot be more than the order qty.',
+  'purchase_item.ordered_exceeds_order': 'Ordered qty cannot be more than the order qty.',
+  'purchase_item.ordered_below_received': 'Ordered qty cannot be less than what is already received.',
   'auth.insufficient_permissions': 'You do not have permission to do this.',
   'project.not_found': 'You do not have access to this project.',
 };
@@ -70,8 +74,8 @@ export default function PurchaseItemsScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState<Form>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [receiving, setReceiving] = useState<PurchaseItem | null>(null);
-  const [receivedInput, setReceivedInput] = useState('');
+  const [qtyEdit, setQtyEdit] = useState<{ item: PurchaseItem; mode: 'ordered' | 'received' } | null>(null);
+  const [qtyInput, setQtyInput] = useState('');
 
   const canAdd = perms.includes(PERMISSIONS.PURCHASE_ITEMS_ADD);
   const canManage = perms.includes(PERMISSIONS.PURCHASE_ITEMS_MANAGE);
@@ -128,29 +132,28 @@ export default function PurchaseItemsScreen() {
     }
   }
 
-  async function setStatus(item: PurchaseItem, status: 'pending' | 'ordered') {
-    try {
-      const res = await api.patch<PurchaseItem>(`/purchase-items/${item._id}/progress`, { status });
-      replaceItem(res.data);
-    } catch (err) {
-      Alert.alert('Error', errorText(err, 'Failed to update status.'));
-    }
+  function openQty(item: PurchaseItem, mode: 'ordered' | 'received') {
+    setQtyEdit({ item, mode });
+    setQtyInput(String(mode === 'ordered' ? item.orderedQty : item.receivedQty));
   }
 
-  async function saveReceived() {
-    if (!receiving) return;
-    const qty = Number(receivedInput);
-    if (receivedInput.trim() === '' || Number.isNaN(qty) || qty < 0 || qty > receiving.quantity) {
-      Alert.alert('Invalid', `Enter a number from 0 to ${fmt(receiving.quantity)}.`);
+  async function saveQty() {
+    if (!qtyEdit) return;
+    const { item, mode } = qtyEdit;
+    const qty = Number(qtyInput);
+    const min = mode === 'ordered' ? item.receivedQty : 0;
+    if (qtyInput.trim() === '' || Number.isNaN(qty) || qty < min || qty > item.quantity) {
+      Alert.alert('Invalid', `Enter a number from ${fmt(min)} to ${fmt(item.quantity)}.`);
       return;
     }
     setSaving(true);
     try {
-      const res = await api.patch<PurchaseItem>(`/purchase-items/${receiving._id}/progress`, { receivedQty: qty });
+      const body = mode === 'ordered' ? { orderedQty: qty } : { receivedQty: qty };
+      const res = await api.patch<PurchaseItem>(`/purchase-items/${item._id}/progress`, body);
       replaceItem(res.data);
-      setReceiving(null);
+      setQtyEdit(null);
     } catch (err) {
-      Alert.alert('Error', errorText(err, 'Failed to update received qty.'));
+      Alert.alert('Error', errorText(err, 'Failed to save.'));
     } finally {
       setSaving(false);
     }
@@ -191,28 +194,22 @@ export default function PurchaseItemsScreen() {
 
               <View style={s.qtyRow}>
                 <View style={s.qtyBox}><Text style={s.qtyNum}>{fmt(item.quantity)}</Text><Text style={s.qtyLabel}>Order</Text></View>
+                <View style={s.qtyBox}><Text style={[s.qtyNum, { color: '#1D4ED8' }]}>{fmt(item.orderedQty)}</Text><Text style={s.qtyLabel}>Ordered</Text></View>
                 <View style={s.qtyBox}><Text style={[s.qtyNum, { color: '#047857' }]}>{fmt(item.receivedQty)}</Text><Text style={s.qtyLabel}>Received</Text></View>
                 <View style={s.qtyBox}><Text style={[s.qtyNum, { color: item.balanceQty > 0 ? '#B45309' : '#94A3B8' }]}>{fmt(item.balanceQty)}</Text><Text style={s.qtyLabel}>Balance</Text></View>
               </View>
 
               {canManage && (
                 <View style={s.actionRow}>
-                  {item.status === 'pending' && (
-                    <TouchableOpacity style={[s.actionBtn, { backgroundColor: '#DBEAFE' }]} onPress={() => setStatus(item, 'ordered')}
-                      accessibilityLabel={`Mark ${item.item} as ordered`}>
-                      <Text style={[s.actionText, { color: '#1E40AF' }]}>Mark ordered</Text>
-                    </TouchableOpacity>
-                  )}
-                  {item.status === 'ordered' && (
-                    <TouchableOpacity style={[s.actionBtn, { backgroundColor: '#F1F5F9' }]} onPress={() => setStatus(item, 'pending')}
-                      accessibilityLabel={`Move ${item.item} back to yet to order`}>
-                      <Text style={[s.actionText, { color: '#475569' }]}>Not ordered</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity style={[s.actionBtn, { backgroundColor: '#D1FAE5' }]}
-                    onPress={() => { setReceiving(item); setReceivedInput(String(item.receivedQty)); }}
-                    accessibilityLabel={`Record received quantity for ${item.item}`}>
-                    <Text style={[s.actionText, { color: '#065F46' }]}>Receive</Text>
+                  <TouchableOpacity style={[s.actionBtn, { backgroundColor: item.yetToOrderQty > 0 ? '#2563EB' : '#EFF6FF' }]}
+                    onPress={() => openQty(item, 'ordered')} accessibilityLabel={`How many ${item.item} are ordered`}>
+                    <Text style={[s.actionText, { color: item.yetToOrderQty > 0 ? '#fff' : '#1E40AF' }]}>
+                      {item.yetToOrderQty > 0 ? `Order (${fmt(item.yetToOrderQty)} left)` : 'Order'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.actionBtn, { backgroundColor: item.orderedQty > item.receivedQty ? '#059669' : '#ECFDF5' }]}
+                    onPress={() => openQty(item, 'received')} accessibilityLabel={`How many ${item.item} are received`}>
+                    <Text style={[s.actionText, { color: item.orderedQty > item.receivedQty ? '#fff' : '#065F46' }]}>Receive</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -263,44 +260,74 @@ export default function PurchaseItemsScreen() {
         </View>
       </Modal>
 
-      {/* Receive modal */}
-      <Modal visible={!!receiving} animationType="slide" transparent onRequestClose={() => setReceiving(null)}>
+      {/* Ordered / received qty modal */}
+      <Modal visible={!!qtyEdit} animationType="slide" transparent onRequestClose={() => setQtyEdit(null)}>
         <View style={s.overlay}>
           <View style={[s.sheet, { paddingBottom: 36 }]}>
-            <Text style={s.sheetTitle}>Received qty</Text>
-            {receiving && (
-              <>
-                <Text style={s.itemName}>{receiving.item}</Text>
-                <Text style={[s.itemSub, { marginBottom: 12 }]}>
-                  Order {fmt(receiving.quantity)} · received so far {fmt(receiving.receivedQty)}
-                </Text>
-                <Text style={s.fieldLabel}>Total received</Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <TextInput
-                    style={[s.input, { flex: 1 }]}
-                    value={receivedInput}
-                    onChangeText={setReceivedInput}
-                    keyboardType="decimal-pad"
-                    autoFocus
-                  />
-                  <TouchableOpacity style={s.allBtn} onPress={() => setReceivedInput(String(receiving.quantity))}>
-                    <Text style={s.allText}>All ({fmt(receiving.quantity)})</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+            {qtyEdit && (
+              <QtySheet
+                item={qtyEdit.item}
+                mode={qtyEdit.mode}
+                value={qtyInput}
+                onChange={setQtyInput}
+                saving={saving}
+                onCancel={() => setQtyEdit(null)}
+                onSave={saveQty}
+              />
             )}
-            <View style={s.sheetBtns}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setReceiving(null)}>
-                <Text style={s.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={saveReceived} disabled={saving}>
-                <Text style={s.saveText}>{saving ? 'Saving…' : 'Save'}</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
     </View>
+  );
+}
+
+function QtySheet({ item, mode, value, onChange, saving, onCancel, onSave }: {
+  item: PurchaseItem;
+  mode: 'ordered' | 'received';
+  value: string;
+  onChange: (v: string) => void;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const isOrdered = mode === 'ordered';
+  const accent = isOrdered ? '#2563EB' : '#059669';
+  const num = Number(value);
+  return (
+    <>
+      <Text style={s.sheetTitle}>{isOrdered ? 'How many are ordered?' : 'How many are received?'}</Text>
+      <Text style={s.itemName}>#{item.slNo}  {item.item}</Text>
+      <View style={[s.qtyRow, { marginBottom: 14 }]}>
+        <View style={s.qtyBox}><Text style={s.qtyNum}>{fmt(item.quantity)}</Text><Text style={s.qtyLabel}>Order</Text></View>
+        <View style={[s.qtyBox, isOrdered && { borderWidth: 2, borderColor: accent }]}><Text style={s.qtyNum}>{fmt(item.orderedQty)}</Text><Text style={s.qtyLabel}>Ordered</Text></View>
+        <View style={[s.qtyBox, !isOrdered && { borderWidth: 2, borderColor: accent }]}><Text style={s.qtyNum}>{fmt(item.receivedQty)}</Text><Text style={s.qtyLabel}>Received</Text></View>
+      </View>
+      <Text style={s.fieldLabel}>{isOrdered ? 'Total ordered so far' : 'Total received so far'}</Text>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <TextInput
+          style={[s.input, { flex: 1, fontSize: 20, fontWeight: '700', textAlign: 'center' }]}
+          value={value}
+          onChangeText={onChange}
+          keyboardType="decimal-pad"
+          autoFocus
+        />
+        <TouchableOpacity style={s.allBtn} onPress={() => onChange(String(item.quantity))}>
+          <Text style={s.allText}>All ({fmt(item.quantity)})</Text>
+        </TouchableOpacity>
+      </View>
+      {!isOrdered && num > item.orderedQty && num <= item.quantity && (
+        <Text style={s.mergeHint}>Ordered qty will also be set to {fmt(num)}.</Text>
+      )}
+      <View style={s.sheetBtns}>
+        <TouchableOpacity style={s.cancelBtn} onPress={onCancel}>
+          <Text style={s.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.saveBtn, { backgroundColor: accent }, saving && { opacity: 0.6 }]} onPress={onSave} disabled={saving}>
+          <Text style={s.saveText}>{saving ? 'Saving…' : 'Save'}</Text>
+        </TouchableOpacity>
+      </View>
+    </>
   );
 }
 
@@ -319,7 +346,7 @@ const s = StyleSheet.create({
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   statusText: { fontSize: 11, fontWeight: '700' },
   qtyRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  qtyBox: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  qtyBox: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 8, paddingVertical: 8, alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
   qtyNum: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
   qtyLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 1 },
   actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
@@ -333,7 +360,7 @@ const s = StyleSheet.create({
   fieldRow: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 4 },
   input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 12, minHeight: 48, fontSize: 15, color: '#0F172A', backgroundColor: '#F8FAFC' },
-  mergeHint: { fontSize: 12, color: '#3730A3', backgroundColor: '#EEF2FF', borderRadius: 8, padding: 10, marginBottom: 8 },
+  mergeHint: { fontSize: 12, color: '#3730A3', backgroundColor: '#EEF2FF', borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 8 },
   allBtn: { minHeight: 48, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', justifyContent: 'center' },
   allText: { fontSize: 13, fontWeight: '600', color: '#475569' },
   sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 12 },

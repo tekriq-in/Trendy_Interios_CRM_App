@@ -31,24 +31,32 @@ export function purchaseItemMatchKey(identity: PurchaseItemIdentity): string {
     .join('|');
 }
 
-/** Balance qty = order qty - received qty, never negative. Rounded to 3dp to avoid float noise. */
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+/** Balance qty = order qty - received qty, never negative. */
 export function purchaseItemBalance(quantity: number, receivedQty: number): number {
-  return Math.max(0, Math.round((quantity - receivedQty) * 1000) / 1000);
+  return Math.max(0, round3(quantity - receivedQty));
+}
+
+/** Yet to order = order qty - ordered qty, never negative. */
+export function purchaseItemYetToOrder(quantity: number, orderedQty: number): number {
+  return Math.max(0, round3(quantity - orderedQty));
 }
 
 /**
- * Status after a change.
- * - Fully received → 'received'
- * - Otherwise the requested status, or the current one if none was requested
- *   (a row that was 'received' but now has a balance falls back to 'pending').
+ * Status is derived from the quantities — never set by hand:
+ * - everything received          → 'received'
+ * - everything ordered           → 'ordered'  (waiting for delivery)
+ * - something still not ordered  → 'pending'  ("Yet to order")
  */
 export function derivePurchaseItemStatus(
   quantity: number,
+  orderedQty: number,
   receivedQty: number,
-  requested: PurchaseItemStatus | undefined,
-  current: PurchaseItemStatus,
 ): PurchaseItemStatus {
   if (purchaseItemBalance(quantity, receivedQty) === 0) return 'received';
-  const next = requested ?? current;
-  return next === 'received' ? 'pending' : next;
+  if (purchaseItemYetToOrder(quantity, orderedQty) === 0) return 'ordered';
+  return 'pending';
 }

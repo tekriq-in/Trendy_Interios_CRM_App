@@ -12,6 +12,7 @@ export interface PurchaseItemPdfRow {
   size: string;
   finish: string;
   quantity: number;
+  orderedQty: number;
   receivedQty: number;
   balanceQty: number;
   status: PurchaseItemStatus;
@@ -23,17 +24,18 @@ export interface PurchaseItemPdfProject {
 }
 
 const COLUMNS: { header: string; width: number; align: 'left' | 'center' | 'right'; key: keyof PurchaseItemPdfRow }[] = [
-  { header: 'S.NO', width: 32, align: 'center', key: 'slNo' },
-  { header: 'AREA', width: 82, align: 'left', key: 'area' },
-  { header: 'ITEM NAME', width: 132, align: 'left', key: 'item' },
-  { header: 'BRAND', width: 72, align: 'left', key: 'brand' },
-  { header: 'CODE', width: 72, align: 'left', key: 'code' },
-  { header: 'SIZE', width: 62, align: 'left', key: 'size' },
-  { header: 'FINISH', width: 72, align: 'left', key: 'finish' },
-  { header: 'ORDER QTY', width: 56, align: 'right', key: 'quantity' },
-  { header: 'RECEIVED QTY', width: 56, align: 'right', key: 'receivedQty' },
-  { header: 'BALANCE QTY', width: 56, align: 'right', key: 'balanceQty' },
-  { header: 'STATUS', width: 66, align: 'center', key: 'status' },
+  { header: 'S.NO', width: 30, align: 'center', key: 'slNo' },
+  { header: 'AREA', width: 76, align: 'left', key: 'area' },
+  { header: 'ITEM NAME', width: 120, align: 'left', key: 'item' },
+  { header: 'BRAND', width: 66, align: 'left', key: 'brand' },
+  { header: 'CODE', width: 66, align: 'left', key: 'code' },
+  { header: 'SIZE', width: 56, align: 'left', key: 'size' },
+  { header: 'FINISH', width: 66, align: 'left', key: 'finish' },
+  { header: 'ORDER QTY', width: 52, align: 'right', key: 'quantity' },
+  { header: 'ORDERED QTY', width: 52, align: 'right', key: 'orderedQty' },
+  { header: 'RECEIVED QTY', width: 52, align: 'right', key: 'receivedQty' },
+  { header: 'BALANCE QTY', width: 52, align: 'right', key: 'balanceQty' },
+  { header: 'STATUS', width: 70, align: 'center', key: 'status' },
 ];
 
 const MARGIN = 40;
@@ -109,8 +111,9 @@ export class PurchaseItemsPdfService {
         if (index % 2 === 1) doc.rect(left, y, tableWidth, rowHeight).fill('#f8fafc');
         if (row.balanceQty > 0 && row.receivedQty > 0) {
           // partially received — highlight balance cell
-          const balX = left + COLUMNS.slice(0, 9).reduce((s, c) => s + c.width, 0);
-          doc.rect(balX, y, COLUMNS[9].width, rowHeight).fill('#fef3c7');
+          const balIdx = COLUMNS.findIndex((c) => c.key === 'balanceQty');
+          const balX = left + COLUMNS.slice(0, balIdx).reduce((s, c) => s + c.width, 0);
+          doc.rect(balX, y, COLUMNS[balIdx].width, rowHeight).fill('#fef3c7');
         }
 
         let x = left;

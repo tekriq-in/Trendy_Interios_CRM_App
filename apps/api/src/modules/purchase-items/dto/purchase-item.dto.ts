@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -70,10 +70,12 @@ export class UpdatePurchaseItemDetailsDto extends PurchaseItemFieldsDto {
 
 /** PATCH /purchase-items/:id/progress — Purchase records ordering / receipt (manual). */
 export class UpdatePurchaseItemProgressDto {
-  /** 'received' marks the full order qty as received */
+  /** Total ordered so far (not an increment) */
   @IsOptional()
-  @IsIn(['pending', 'ordered', 'received'])
-  status?: 'pending' | 'ordered' | 'received';
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  orderedQty?: number;
 
   /** Total received so far (not an increment) */
   @IsOptional()

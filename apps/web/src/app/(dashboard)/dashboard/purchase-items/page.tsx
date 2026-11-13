@@ -3,16 +3,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Truck, CheckCircle2, Package, Search, Filter, PackageCheck, Undo2 } from 'lucide-react';
+import { ShoppingCart, Truck, CheckCircle2, Package, Search, Filter } from 'lucide-react';
 import { PERMISSIONS, PURCHASE_ITEM_STATUS_LABELS, type PurchaseItemStatus } from '@ti/shared';
 import { apiClient } from '@/lib/api-client';
 import { usePermissions } from '@/lib/usePermissions';
 import {
+  PurchaseProgressBar,
+  PurchaseRowActions,
   PurchaseStatusBadge,
-  ReceiveQtyModal,
+  QtyUpdateModal,
   fmtQty,
-  usePurchaseStatusMutation,
   type PurchaseItemRow,
+  type QtyMode,
 } from '@/components/projects/PurchaseItemsSection';
 
 interface Project { _id: string; title: string; currentStage?: { name: string } | string; }
@@ -26,7 +28,7 @@ export default function PurchaseItemsPage() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<PurchaseItemStatus | 'all'>('all');
   const [filterProject, setFilterProject] = useState('all');
-  const [receiving, setReceiving] = useState<Row | null>(null);
+  const [qtyModal, setQtyModal] = useState<{ row: Row; mode: QtyMode } | null>(null);
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects', 'purchase-items-page'],
@@ -48,8 +50,6 @@ export default function PurchaseItemsPage() {
     },
     enabled: projects.length > 0,
   });
-
-  const statusMut = usePurchaseStatusMutation();
 
   const q = search.trim().toLowerCase();
   const filtered = allItems.filter((item) => {
@@ -138,7 +138,7 @@ export default function PurchaseItemsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full min-w-[1180px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   <th className="px-3 py-3 text-left">Project</th>
@@ -150,6 +150,7 @@ export default function PurchaseItemsPage() {
                   <th className="px-3 py-3 text-left">Size</th>
                   <th className="px-3 py-3 text-left">Finish</th>
                   <th className="px-3 py-3 text-right">Order qty</th>
+                  <th className="px-3 py-3 text-right">Ordered</th>
                   <th className="px-3 py-3 text-right">Received</th>
                   <th className="px-3 py-3 text-right">Balance</th>
                   <th className="px-3 py-3 text-left">Status</th>
@@ -172,39 +173,19 @@ export default function PurchaseItemsPage() {
                     <td className="px-3 py-3 text-slate-600">{item.size || '—'}</td>
                     <td className="px-3 py-3 text-slate-600">{item.finish || '—'}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{fmtQty(item.quantity)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-blue-700">{fmtQty(item.orderedQty)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-emerald-700">{fmtQty(item.receivedQty)}</td>
                     <td className={`px-3 py-3 text-right font-semibold tabular-nums ${item.balanceQty > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
                       {fmtQty(item.balanceQty)}
                     </td>
-                    <td className="px-3 py-3"><PurchaseStatusBadge status={item.status} /></td>
+                    <td className="px-3 py-3">
+                      <PurchaseStatusBadge status={item.status} />
+                      <PurchaseProgressBar row={item} />
+                    </td>
                     {canManage && (
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1">
-                          {item.status === 'pending' && (
-                            <button
-                              onClick={() => statusMut.mutate({ id: item._id, status: 'ordered' })}
-                              disabled={statusMut.isPending}
-                              className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                            >
-                              <Truck className="h-3.5 w-3.5" /> Mark ordered
-                            </button>
-                          )}
-                          {item.status === 'ordered' && (
-                            <button
-                              onClick={() => statusMut.mutate({ id: item._id, status: 'pending' })}
-                              disabled={statusMut.isPending}
-                              title="Back to yet to order"
-                              className="inline-flex items-center rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
-                            >
-                              <Undo2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setReceiving(item)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-                          >
-                            <PackageCheck className="h-3.5 w-3.5" /> Receive
-                          </button>
+                          <PurchaseRowActions row={item} onOpen={(mode) => setQtyModal({ row: item, mode })} />
                         </div>
                       </td>
                     )}
@@ -216,7 +197,7 @@ export default function PurchaseItemsPage() {
         )}
       </div>
 
-      {receiving && <ReceiveQtyModal row={receiving} onClose={() => setReceiving(null)} />}
+      {qtyModal && <QtyUpdateModal row={qtyModal.row} mode={qtyModal.mode} onClose={() => setQtyModal(null)} />}
     </div>
   );
 }

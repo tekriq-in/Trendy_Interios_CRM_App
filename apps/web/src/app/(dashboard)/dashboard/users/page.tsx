@@ -16,6 +16,7 @@ interface User {
   name: string;
   email: string;
   phone?: string;
+  createdAt?: string;
   isActive: boolean;
   preferredLanguage: 'en' | 'ta';
   role: Role | string;
@@ -76,6 +77,9 @@ export default function UsersPage() {
     queryFn: () => apiClient.get('/users').then((r) => r.data),
     enabled: canViewUsers,
   });
+  const sortedUsers = [...users].sort(
+    (a, b) => Number(b.isActive) - Number(a.isActive),
+  );
 
   const { data: roles = [] } = useQuery<Role[]>({
     queryKey: ['roles'],
@@ -263,12 +267,13 @@ export default function UsersPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Employee</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Role</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Department</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Joined</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {users.map((u) => (
+              {sortedUsers.map((u) => (
                 <tr key={u._id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -283,6 +288,11 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{roleName(u.role)}</td>
                   <td className="px-4 py-3 text-slate-600">{deptName(u.department)}</td>
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                    {u.createdAt
+                      ? new Date(u.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })
+                      : '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${u.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                       {u.isActive ? 'Active' : 'Inactive'}

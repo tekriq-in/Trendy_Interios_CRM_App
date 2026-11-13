@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Blocker, BlockerDocument } from './schemas/blocker.schema';
+import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 
@@ -10,14 +11,25 @@ import { PERMISSIONS } from '@ti/shared';
 export class BlockersService {
   constructor(
     @InjectModel(Blocker.name) private blockerModel: Model<BlockerDocument>,
+    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
   ) {}
 
-  findAll(user: { _id: string; rolePermissions: string[] }, status?: string) {
+  async findAll(user: { _id: string; rolePermissions: string[] }, status?: string) {
     const hasReadAll = user.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL);
     const filter: Record<string, unknown> = {};
     if (status) filter.status = status;
+
+    if (!hasReadAll) {
+      const projects = await this.projectModel
+        .find({ assignedTeam: new Types.ObjectId(user._id) })
+        .select('_id')
+        .lean();
+      const projectIds = projects.map((project) => project._id);
+      if (projectIds.length === 0) return [];
+      filter.project = { $in: projectIds };
+    }
 
     return this.blockerModel
       .find(filter)

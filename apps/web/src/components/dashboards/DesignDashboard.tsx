@@ -20,7 +20,7 @@ interface Approval { _id: string; kind: string; status: string; project?: { titl
 interface Handover { _id: string; status: string; project?: { title: string }; fromDepartment?: { name: string }; toDepartment?: { name: string }; }
 interface Blocker { _id: string; title: string; status: string; project?: { title: string }; }
 interface TIDocument { _id: string; fileName: string; type: string; project?: { title: string }; }
-interface PurchaseItem { _id: string; name: string; status: string; project?: { _id: string; title: string }; }
+interface PurchaseItem { _id: string; item: string; status: string; project?: { _id: string; title: string }; }
 interface ShadeCardEntry { _id: string; area: string; codeName: string; material: string; photoUrl?: string; project?: string; }
 
 function StatCard({ icon: Icon, label, value, color, href }: {
@@ -66,7 +66,8 @@ export function DesignDashboard() {
 
   const { data: approvals = [] } = useQuery<Approval[]>({
     queryKey: ['approvals', 'design'],
-    queryFn: () => apiClient.get<Approval[]>('/approvals').then((r) => r.data),
+    queryFn: () => apiClient.get<Approval[]>('/approvals/mine').then((r) => r.data),
+    refetchInterval: 30_000,
   });
 
   const { data: handovers = [] } = useQuery<Handover[]>({
@@ -87,8 +88,22 @@ export function DesignDashboard() {
   });
 
   const { data: purchaseItems = [] } = useQuery<PurchaseItem[]>({
-    queryKey: ['purchase-items', 'design'],
-    queryFn: () => apiClient.get<PurchaseItem[]>('/purchase-items').then((r) => r.data),
+    queryKey: ['purchase-items', 'design', projects.map((project) => project._id).join(',')],
+    queryFn: async () => {
+      const results = await Promise.all(
+        projects.map((project) =>
+          apiClient.get<PurchaseItem[]>(`/projects/${project._id}/purchase-items`).then((r) =>
+            r.data.map((item) => ({
+              ...item,
+              project: { _id: project._id, title: project.title },
+            })),
+          ),
+        ),
+      );
+      return results.flat();
+    },
+    enabled: projects.length > 0,
+    refetchInterval: 30_000,
   });
 
   const pendingApprovals = approvals.filter((a) => a.status === 'pending');
@@ -210,7 +225,7 @@ export function DesignDashboard() {
                 <div key={item._id} className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{item.name}</p>
+                    <p className="text-sm font-medium text-slate-800 truncate">{item.item}</p>
                     {item.project && <p className="text-xs text-slate-400 truncate">{item.project.title}</p>}
                   </div>
                 </div>

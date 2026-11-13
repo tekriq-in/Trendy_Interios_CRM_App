@@ -66,6 +66,7 @@ export function PurchaseDashboard() {
       return results.flat();
     },
     enabled: projects.length > 0,
+    refetchInterval: 30_000,
   });
 
   const { data: handovers = [] } = useQuery<Handover[]>({

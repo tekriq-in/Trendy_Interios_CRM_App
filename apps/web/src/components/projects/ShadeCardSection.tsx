@@ -271,7 +271,9 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
             <div className="px-6 py-5 space-y-4">
               {/* Area */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Area / Room</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Area / Room <span className="text-red-500">*</span>
+                </label>
                 <AutocompleteInput
                   value={form.area}
                   onChange={(v) => setForm((f) => ({ ...f, area: v }))}
@@ -283,7 +285,10 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
 
               {/* Units */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Units <span className="text-slate-400">(one per line)</span></label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Units <span className="text-red-500">*</span>{' '}
+                  <span className="text-slate-400">(one per line)</span>
+                </label>
                 <textarea
                   value={form.units}
                   onChange={(e) => setForm((f) => ({ ...f, units: e.target.value }))}
@@ -296,7 +301,9 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
               {/* Material + Code name */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Material</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Material <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.material}
                     onChange={(e) => setForm((f) => ({ ...f, material: e.target.value as MaterialType }))}
@@ -308,7 +315,9 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Code Name / Shade</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Code Name / Shade <span className="text-red-500">*</span>
+                  </label>
                   <AutocompleteInput
                     value={form.codeName}
                     onChange={(v) => setForm((f) => ({ ...f, codeName: v }))}

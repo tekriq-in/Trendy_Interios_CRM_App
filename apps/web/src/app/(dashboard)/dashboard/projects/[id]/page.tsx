@@ -41,7 +41,7 @@ interface PurchaseItem {
 }
 const EMPTY_PI = { item: '', description: '', quantity: 1, unit: '', supplier: '' };
 const PURCHASE_ITEM_UNITS = ['pieces', 'square feet', 'meters', 'kilograms', 'liters', 'sets', 'boxes', 'sheets'];
-interface AdditionalWork { description: string; amount: number; drawingRequired?: boolean; notifiedClient?: boolean; }
+interface AdditionalWork { _id: string; description: string; amount: number; drawingRequired?: boolean; notifiedClient?: boolean; }
 const EMPTY_AW = { description: '', amount: 0, drawingRequired: false };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -66,6 +66,8 @@ export default function ProjectDetailPage({ params }: Props) {
   const { hasPermission } = usePermissions();
   const authUser = useAuthStore((s) => s.user);
   const canEditProject = hasPermission(PERMISSIONS.PROJECTS_EDIT);
+  const canManageAdditionalWork =
+    canEditProject || hasPermission(PERMISSIONS.PROJECTS_READ_OWN);
   const canAdvanceProject = hasPermission(PERMISSIONS.PROJECTS_ADVANCE_STAGE);
   const canCreateTask = hasPermission(PERMISSIONS.TASKS_CREATE);
   const canEditTask = hasPermission(PERMISSIONS.TASKS_EDIT);
@@ -92,6 +94,7 @@ export default function ProjectDetailPage({ params }: Props) {
 
   // Additional Work
   const [showAWModal, setShowAWModal] = useState(false);
+  const [editingAW, setEditingAW] = useState<AdditionalWork | null>(null);
   const [awForm, setAwForm] = useState(EMPTY_AW);
   const [awErr, setAwErr] = useState('');
 
@@ -123,7 +126,7 @@ export default function ProjectDetailPage({ params }: Props) {
 
   const { data: allUsers = [] } = useQuery<TeamMember[]>({
     queryKey: ['users'],
-    queryFn: () => apiClient.get('/users').then((r) => r.data),
+    queryFn: () => apiClient.get('/users/for-chat').then((r) => r.data),
   });
 
   const { data: purchaseItems = [] } = useQuery<PurchaseItem[]>({
@@ -247,7 +250,7 @@ export default function ProjectDetailPage({ params }: Props) {
         supplier: form.supplier || undefined,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['purchase-items', id] });
+      qc.invalidateQueries({ queryKey: ['purchase-items'] });
       toast('success', 'Purchase item added.');
       setShowPIModal(false);
       setPiForm(EMPTY_PI);
@@ -259,7 +262,7 @@ export default function ProjectDetailPage({ params }: Props) {
   const updatePIStatusMut = useMutation({
     mutationFn: ({ itemId, status }: { itemId: string; status: string }) =>
       apiClient.patch(`/purchase-items/${itemId}`, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase-items', id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase-items'] }),
     onError: () => toast('error', 'Failed to update status.'),
   });
 
@@ -273,7 +276,7 @@ export default function ProjectDetailPage({ params }: Props) {
         supplier: form.supplier.trim(),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['purchase-items', id] });
+      qc.invalidateQueries({ queryKey: ['purchase-items'] });
       toast('success', 'Purchase item updated.');
       setShowPIModal(false);
       setEditingPI(null);
@@ -284,20 +287,36 @@ export default function ProjectDetailPage({ params }: Props) {
   });
 
   const addAWMut = useMutation({
-    mutationFn: (form: typeof EMPTY_AW) =>
-      apiClient.post(`/projects/${id}/additional-work`, {
+    mutationFn: (form: typeof EMPTY_AW) => {
+      const payload = {
         description: form.description.trim(),
         amount: Number(form.amount),
         drawingRequired: form.drawingRequired,
-      }),
+      };
+      return editingAW
+        ? apiClient.patch(`/projects/${id}/additional-work/${editingAW._id}`, payload)
+        : apiClient.post(`/projects/${id}/additional-work`, payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project-full', id] });
-      toast('success', 'Additional work logged.');
+      qc.invalidateQueries({ queryKey: ['project', id] });
+      toast('success', editingAW ? 'Additional work updated.' : 'Additional work logged.');
       setShowAWModal(false);
+      setEditingAW(null);
       setAwForm(EMPTY_AW);
       setAwErr('');
     },
-    onError: () => setAwErr('Failed to log additional work.'),
+    onError: () => setAwErr(editingAW ? 'Failed to update additional work.' : 'Failed to log additional work.'),
+  });
+
+  const deleteAWMut = useMutation({
+    mutationFn: (workId: string) => apiClient.delete(`/projects/${id}/additional-work/${workId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-full', id] });
+      qc.invalidateQueries({ queryKey: ['project', id] });
+      toast('success', 'Additional work deleted.');
+    },
+    onError: () => toast('error', 'Failed to delete additional work.'),
   });
 
   if (isLoading) return <div className="flex items-center justify-center h-48"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
@@ -743,8 +762,13 @@ export default function ProjectDetailPage({ params }: Props) {
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-slate-400" /> Additional Work
           </h2>
-          {canEditProject && <button
-            onClick={() => { setShowAWModal(true); setAwForm(EMPTY_AW); setAwErr(''); }}
+          {canManageAdditionalWork && <button
+            onClick={() => {
+              setEditingAW(null);
+              setShowAWModal(true);
+              setAwForm(EMPTY_AW);
+              setAwErr('');
+            }}
             className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Log Work
@@ -761,6 +785,38 @@ export default function ProjectDetailPage({ params }: Props) {
                   {aw.drawingRequired && <span className="text-xs text-amber-600 font-semibold">Drawing required</span>}
                 </div>
                 <span className="text-sm font-bold text-slate-700 shrink-0">₹{aw.amount.toLocaleString('en-IN')}</span>
+                {canManageAdditionalWork && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingAW(aw);
+                        setAwForm({
+                          description: aw.description,
+                          amount: aw.amount,
+                          drawingRequired: aw.drawingRequired ?? false,
+                        });
+                        setAwErr('');
+                        setShowAWModal(true);
+                      }}
+                      aria-label={`Edit ${aw.description}`}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Delete "${aw.description}"?`)) deleteAWMut.mutate(aw._id);
+                      }}
+                      disabled={deleteAWMut.isPending}
+                      aria-label={`Delete ${aw.description}`}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -815,7 +871,7 @@ export default function ProjectDetailPage({ params }: Props) {
                     className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Select…</option>
-                    {allUsers.filter((u) => (u as unknown as { isActive: boolean }).isActive !== false).map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
+                    {allUsers.map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -915,8 +971,8 @@ export default function ProjectDetailPage({ params }: Props) {
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-              <h2 className="text-lg font-semibold text-slate-900">Log Additional Work</h2>
-              <button onClick={() => setShowAWModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
+              <h2 className="text-lg font-semibold text-slate-900">{editingAW ? 'Edit Additional Work' : 'Log Additional Work'}</h2>
+              <button onClick={() => { setShowAWModal(false); setEditingAW(null); }} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
@@ -937,14 +993,14 @@ export default function ProjectDetailPage({ params }: Props) {
               {awErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{awErr}</p>}
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
-              <button onClick={() => setShowAWModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
+              <button onClick={() => { setShowAWModal(false); setEditingAW(null); }} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
               <button
                 onClick={() => addAWMut.mutate(awForm)}
                 disabled={!awForm.description.trim() || addAWMut.isPending}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                {addAWMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Log Work
+                {addAWMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : editingAW ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {addAWMut.isPending ? 'Saving…' : editingAW ? 'Save Changes' : 'Log Work'}
               </button>
             </div>
           </div>
@@ -960,7 +1016,7 @@ export default function ProjectDetailPage({ params }: Props) {
               <button onClick={() => setShowTeamModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="overflow-y-auto flex-1 px-6 py-4 space-y-1.5">
-              {allUsers.filter((u) => (u as unknown as { isActive: boolean }).isActive).map((u) => {
+              {allUsers.map((u) => {
                 const isIn = teamIds.has(u._id);
                 return (
                   <label key={u._id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${isIn ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>

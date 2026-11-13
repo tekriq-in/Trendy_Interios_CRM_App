@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
-import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, UserMinus, Building2, ToggleLeft, ToggleRight, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, X, ChevronDown, ChevronRight, Users, UserMinus, Building2, ToggleLeft, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -129,15 +129,24 @@ export default function DepartmentsPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowInactive((v) => !v)}
+            onClick={() => setShowInactive((value) => !value)}
             className={`flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
               showInactive
                 ? 'bg-slate-100 text-slate-700 border-slate-300'
                 : 'text-slate-500 border-slate-200 hover:bg-slate-50'
             }`}
           >
-            {showInactive ? <ToggleRight className="w-4 h-4 text-indigo-600" /> : <ToggleLeft className="w-4 h-4" />}
-            {showInactive ? 'Showing inactive' : 'Show inactive'}
+            {showInactive ? (
+              <>
+                <ArrowLeft className="w-4 h-4" />
+                Back to active departments
+              </>
+            ) : (
+              <>
+                <ToggleLeft className="w-4 h-4" />
+                Show inactive
+              </>
+            )}
           </button>
           {canCreateDepartment && (
             <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
@@ -234,12 +243,13 @@ export default function DepartmentsPage() {
                             </div>
                             {canManageStaff && <select
                               defaultValue={d._id}
-                              onChange={(e) => reassignMut.mutate({ id: emp._id, deptId: e.target.value })}
+                              onChange={(e) => reassignMut.mutate({ id: emp._id, deptId: e.target.value || null })}
                               className="text-xs border border-slate-200 rounded-md px-2 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 shrink-0"
                             >
                               {departments.map((dept) => (
                                 <option key={dept._id} value={dept._id}>{dept.name}</option>
                               ))}
+                              <option value="">Unassigned</option>
                             </select>}
                             {canManageStaff && <button
                               type="button"
@@ -262,7 +272,7 @@ export default function DepartmentsPage() {
           })}
 
           {/* Unassigned employees */}
-          {unassigned.length > 0 && (
+          {!showInactive && unassigned.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
               <div className="px-5 py-3 flex items-center gap-2">
                 <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Unassigned staff ({unassigned.length})</span>

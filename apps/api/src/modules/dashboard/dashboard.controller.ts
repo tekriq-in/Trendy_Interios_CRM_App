@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -12,27 +12,27 @@ export class DashboardController {
   constructor(private service: DashboardService) {}
 
   @Get('board')
-  getBoard() {
-    return this.service.getBoard();
+  getBoard(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getBoard({ from, to });
   }
 
   @Get('workload')
-  getWorkload() {
-    return this.service.getWorkload();
+  getWorkload(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getWorkload({ from, to });
   }
 
   @Get('blockers')
-  getBlockers() {
-    return this.service.getBlockersSummary();
+  getBlockers(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getBlockersSummary({ from, to });
   }
 
   @Get('approvals-pending')
-  getApprovalsPending() {
-    return this.service.getApprovalsPending();
+  getApprovalsPending(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getApprovalsPending({ from, to });
   }
 
   @Get('stage-durations')
-  getStageDurations() {
-    return this.service.getStageDurations();
+  getStageDurations(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getStageDurations({ from, to });
   }
 }

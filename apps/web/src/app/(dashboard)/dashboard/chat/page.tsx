@@ -34,7 +34,7 @@ interface ChatGroup {
   name: string;
   type: 'department' | 'project' | 'individual' | 'custom';
   channel: string;
-  members: { _id: string; name: string; email: string }[];
+  members: (UserSummary | string | { _id?: string; name?: string; email?: string })[];
   projectRef?: { _id: string; title: string };
   departmentRef?: { _id: string; name: string };
   lastMessage?: { body: string; senderName: string; createdAt: string } | null;
@@ -58,6 +58,27 @@ interface UserSummary {
   _id: string;
   name: string;
   email: string;
+}
+
+function resolveGroupMembers(group: ChatGroup, users: UserSummary[]): UserSummary[] {
+  if (!Array.isArray(group.members)) return [];
+
+  return group.members.flatMap((member) => {
+    const id = typeof member === 'string' ? member : member?._id;
+    if (!id) return [];
+
+    const knownUser = users.find((user) => user._id === id);
+    const memberName =
+      typeof member === 'string' || typeof member.name !== 'string' ? undefined : member.name;
+    const memberEmail =
+      typeof member === 'string' || typeof member.email !== 'string' ? undefined : member.email;
+
+    return [{
+      _id: id,
+      name: memberName || knownUser?.name || 'Unknown employee',
+      email: memberEmail || knownUser?.email || '',
+    }];
+  });
 }
 
 // ─── Tab icons ───────────────────────────────────────────────────────────────
@@ -108,7 +129,7 @@ function NewGroupModal({
 
   useEffect(() => {
     apiClient
-      .get<UserSummary[]>('/users')
+      .get<UserSummary[]>('/users/for-chat')
       .then((r) => setAllUsers(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
   }, []);
@@ -229,7 +250,7 @@ function NewDMModal({
 
   useEffect(() => {
     apiClient
-      .get<UserSummary[]>('/users')
+      .get<UserSummary[]>('/users/for-chat')
       .then((r) => setAllUsers(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
   }, []);
@@ -333,11 +354,12 @@ export default function ChatPage() {
     queryFn: () => apiClient.get<ChatGroup[]>('/chat-groups').then((r) => r.data),
   });
   const groups: ChatGroup[] = groupsData ?? [];
+  const activeMembers = activeGroup ? resolveGroupMembers(activeGroup, allUsers) : [];
 
   // Load all users for @mention and member management
   useEffect(() => {
     apiClient
-      .get<UserSummary[]>('/users')
+      .get<UserSummary[]>('/users/for-chat')
       .then((r) => setAllUsers(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
   }, []);
@@ -399,8 +421,7 @@ export default function ChatPage() {
   }, [messages]);
 
   // @mention autocomplete
-  const members: UserSummary[] = activeGroup?.members ?? [];
-  const { suggestions, atIndex } = useMentionSuggestions(body, members);
+  const { suggestions, atIndex } = useMentionSuggestions(body, activeMembers);
 
   const insertMention = (user: UserSummary) => {
     const before = body.slice(0, atIndex);
@@ -484,7 +505,7 @@ export default function ChatPage() {
   // For DMs, display the other member's name instead of the stored group name
   const dmDisplayName = (group: ChatGroup) => {
     if (group.type !== 'individual') return group.name;
-    const other = group.members.find((m) => m._id !== currentUser?.id);
+    const other = resolveGroupMembers(group, allUsers).find((m) => m._id !== currentUser?.id);
     return other?.name ?? group.name;
   };
 
@@ -688,7 +709,8 @@ export default function ChatPage() {
           {filteredGroups.map((group) => {
             const active = activeGroup?._id === group._id;
             const Icon = TAB_ICONS[group.type];
-            const isMember = group.members.some((m) => m._id === currentUser?.id);
+            const groupMembers = resolveGroupMembers(group, allUsers);
+            const isMember = groupMembers.some((m) => m._id === currentUser?.id);
             return (
               <div
                 key={group._id}
@@ -718,7 +740,7 @@ export default function ChatPage() {
                     <p className="text-xs text-gray-400 truncate">
                       {group.lastMessage
                         ? `${group.lastMessage.senderName}: ${group.lastMessage.body}`
-                        : `${group.members.length} member${group.members.length !== 1 ? 's' : ''}`}
+                        : `${groupMembers.length} member${groupMembers.length !== 1 ? 's' : ''}`}
                     </p>
                   </div>
                 </button>
@@ -762,7 +784,7 @@ export default function ChatPage() {
               <div>
                 <p className="font-semibold text-gray-900 text-sm">{dmDisplayName(activeGroup)}</p>
                 <p className="text-xs text-gray-400">
-                  {activeGroup.members.length} member{activeGroup.members.length !== 1 ? 's' : ''}
+                  {activeMembers.length} member{activeMembers.length !== 1 ? 's' : ''}
                   {' · '}
                   <span className={connected ? 'text-green-500' : 'text-gray-300'}>
                     {connected ? 'Connected' : 'Connecting…'}
@@ -993,14 +1015,14 @@ export default function ChatPage() {
 
           <div className="flex-1 overflow-y-auto">
             <div className="p-3 space-y-1">
-              {activeGroup.members.map((m) => (
+              {activeMembers.map((m) => (
                 <div
                   key={m._id}
                   className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-100"
                 >
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
-                      {m.name[0]}
+                      {m.name.charAt(0)}
                     </div>
                     <span className="text-xs text-gray-700 truncate max-w-[100px]">{m.name}</span>
                   </div>
@@ -1032,7 +1054,7 @@ export default function ChatPage() {
                     .filter(
                       (u) =>
                         u.name.toLowerCase().includes(addMemberSearch.toLowerCase()) &&
-                        !activeGroup.members.some((m) => m._id === u._id),
+                        !activeMembers.some((m) => m._id === u._id),
                     )
                     .slice(0, 8)
                     .map((u) => (
@@ -1057,7 +1079,7 @@ export default function ChatPage() {
                   {allUsers.filter(
                     (u) =>
                       u.name.toLowerCase().includes(addMemberSearch.toLowerCase()) &&
-                      !activeGroup.members.some((m) => m._id === u._id),
+                      !activeMembers.some((m) => m._id === u._id),
                   ).length === 0 && (
                     <p className="text-xs text-gray-400 text-center py-3">No employees found.</p>
                   )}

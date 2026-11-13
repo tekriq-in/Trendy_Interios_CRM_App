@@ -54,8 +54,8 @@ export default function PurchaseItemsPage() {
   });
 
   const updateStatus = useMutation({
-    mutationFn: ({ projectId, itemId, status }: { projectId: string; itemId: string; status: Status }) =>
-      apiClient.patch(`/projects/${projectId}/purchase-items/${itemId}`, { status }),
+    mutationFn: ({ itemId, status }: { itemId: string; status: Status }) =>
+      apiClient.patch(`/purchase-items/${itemId}`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase-items'] }),
   });
 
@@ -183,7 +183,7 @@ export default function PurchaseItemsPage() {
                         <div className="flex items-center gap-1">
                           {item.status === 'pending' && (
                             <button
-                              onClick={() => updateStatus.mutate({ projectId: item.projectId, itemId: item._id, status: 'ordered' })}
+                              onClick={() => updateStatus.mutate({ itemId: item._id, status: 'ordered' })}
                               disabled={updateStatus.isPending}
                               className="px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
                             >
@@ -192,7 +192,7 @@ export default function PurchaseItemsPage() {
                           )}
                           {item.status === 'ordered' && (
                             <button
-                              onClick={() => updateStatus.mutate({ projectId: item.projectId, itemId: item._id, status: 'received' })}
+                              onClick={() => updateStatus.mutate({ itemId: item._id, status: 'received' })}
                               disabled={updateStatus.isPending}
                               className="px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
                             >

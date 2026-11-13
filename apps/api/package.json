@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
-    "start": "node dist/main",
+    "build": "tsc --project tsconfig.build.json --incremental false",
+    "prestart": "npm run build",
+    "start": "node dist/main.js",
     "test": "jest",
     "test:e2e": "jest --config jest-e2e.json",
     "lint": "eslint src --ext .ts",

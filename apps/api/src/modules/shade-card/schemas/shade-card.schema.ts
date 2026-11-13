@@ -34,6 +34,13 @@ export class ShadeCardEntry {
   /** Display order within the project */
   @Prop({ type: Number, default: 0 })
   slNo: number;
+
+  /**
+   * Shade-card revision in which this entry was first sent to the client (R1, R2, …).
+   * Unset = added since the last send (draft; will go out in the next revision).
+   */
+  @Prop({ type: Number })
+  revision?: number;
 }
 
 export const ShadeCardEntrySchema = SchemaFactory.createForClass(ShadeCardEntry);

@@ -23,6 +23,8 @@ interface ShadeCardEntry {
   photoUrl?: string;
   remarks?: string;
   slNo: number;
+  /** Revision in which it was first sent; undefined = not sent yet */
+  revision?: number;
 }
 
 interface EntryForm {
@@ -49,10 +51,12 @@ const MATERIAL_COLORS: Record<string, string> = {
   Other: 'bg-slate-50 text-slate-700',
 };
 
-export function ShadeCardSection({ projectId, projectTitle, clientName }: {
+export function ShadeCardSection({ projectId, projectTitle, clientName, sentRevision = 0 }: {
   projectId: string;
   projectTitle: string;
   clientName?: string;
+  /** Last revision sent to the client (0 = never sent) */
+  sentRevision?: number;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -137,6 +141,9 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
     saveMut.mutate({ ...form, units, photoUrl: form.photoUrl });
   }
 
+  const lastSent = Math.max(sentRevision, ...entries.map((e) => e.revision ?? 0));
+  const unsentCount = entries.filter((e) => e.revision == null).length;
+
   // Group entries by area for display
   const grouped = entries.reduce<Record<string, ShadeCardEntry[]>>((acc, e) => {
     (acc[e.area] = acc[e.area] ?? []).push(e);
@@ -150,6 +157,18 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
         <div className="flex items-center gap-2">
           <Palette className="w-4 h-4 text-indigo-500" />
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Shade Card / Material Selection</h2>
+          {lastSent > 0 ? (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600" title="Last revision sent to the client">
+              Sent: R{lastSent}
+            </span>
+          ) : entries.length > 0 ? (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Not sent yet</span>
+          ) : null}
+          {lastSent > 0 && unsentCount > 0 && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+              {unsentCount} new → R{lastSent + 1}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {entries.length > 0 && (
@@ -227,6 +246,11 @@ export function ShadeCardSection({ projectId, projectTitle, clientName }: {
 
                     {/* Sl No + Actions */}
                     <div className="flex items-center gap-2 shrink-0">
+                      {entry.revision != null ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600" title={`First sent in revision R${entry.revision}`}>R{entry.revision}</span>
+                      ) : lastSent > 0 ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700" title={`Not sent yet — goes out in R${lastSent + 1}`}>NEW</span>
+                      ) : null}
                       <span className="text-xs text-slate-400 font-mono">#{entry.slNo}</span>
                       {isDesign && (
                         <>

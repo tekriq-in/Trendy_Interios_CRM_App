@@ -9,16 +9,18 @@ import { usePermissions } from '@/lib/usePermissions';
 import { useAuthStore } from '@/store/auth.store';
 import { ProjectChat } from '@/components/chat/ProjectChat';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, ShoppingCart, AlertCircle, Pencil, Eye, Palette, Send } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CheckCircle2, Loader2, UserPlus, X, Upload, FileText, Trash2, Plus, ClipboardList, AlertCircle, Pencil, Eye, Palette, Send } from 'lucide-react';
 import { FileUpload, UploadedFile } from '@/components/ui/FileUpload';
 import { FileViewerModal } from '@/components/ui/FileViewerModal';
 import { ShadeCardSection } from '@/components/projects/ShadeCardSection';
+import { PurchaseItemsSection } from '@/components/projects/PurchaseItemsSection';
 
 interface Dept { _id: string; name: string; order: number; }
 interface TeamMember { _id: string; name: string; email: string; }
 interface StageHistory { stage: string | Dept; enteredAt: string; completedAt?: string; }
 interface Project {
   _id: string; title: string; status: string; progressPct: number;
+  shadeCardRevision?: number;
   currentStage?: Dept | string;
   stageHistory?: StageHistory[];
   assignedTeam?: TeamMember[];
@@ -35,12 +37,6 @@ interface TaskForm {
 }
 const EMPTY_TASK: TaskForm = { title: '', departmentId: '', assignedToId: '', dueDate: '' };
 interface TIDocument { _id: string; fileName: string; mimeType: string; driveLink: string; type: string; }
-interface PurchaseItem {
-  _id: string; item: string; description?: string; quantity: number; unit?: string; supplier?: string;
-  status: 'pending' | 'ordered' | 'received';
-}
-const EMPTY_PI = { item: '', description: '', quantity: 1, unit: '', supplier: '' };
-const PURCHASE_ITEM_UNITS = ['pieces', 'square feet', 'meters', 'kilograms', 'liters', 'sets', 'boxes', 'sheets'];
 interface AdditionalWork { _id: string; description: string; amount: number; drawingRequired?: boolean; notifiedClient?: boolean; }
 const EMPTY_AW = { description: '', amount: 0, drawingRequired: false };
 
@@ -73,7 +69,6 @@ export default function ProjectDetailPage({ params }: Props) {
   const canEditTask = hasPermission(PERMISSIONS.TASKS_EDIT);
   const canUploadDocuments = hasPermission(PERMISSIONS.DOCUMENTS_UPLOAD);
   const canDeleteDocuments = hasPermission(PERMISSIONS.DOCUMENTS_DELETE);
-  const canManagePurchaseItems = hasPermission(PERMISSIONS.PURCHASE_ITEMS_MANAGE);
   const [advancing, setAdvancing] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [drawingType, setDrawingType] = useState<'drawing_2d' | 'drawing_3d'>('drawing_2d');
@@ -85,12 +80,6 @@ export default function ProjectDetailPage({ params }: Props) {
   const [taskForm, setTaskForm] = useState<TaskForm>(EMPTY_TASK);
   const [taskPhotos, setTaskPhotos] = useState<UploadedFile[]>([]);
   const [taskErr, setTaskErr] = useState('');
-
-  // Purchase Items
-  const [showPIModal, setShowPIModal] = useState(false);
-  const [editingPI, setEditingPI] = useState<PurchaseItem | null>(null);
-  const [piForm, setPiForm] = useState(EMPTY_PI);
-  const [piErr, setPiErr] = useState('');
 
   // Additional Work
   const [showAWModal, setShowAWModal] = useState(false);
@@ -127,11 +116,6 @@ export default function ProjectDetailPage({ params }: Props) {
   const { data: allUsers = [] } = useQuery<TeamMember[]>({
     queryKey: ['users'],
     queryFn: () => apiClient.get('/users/for-chat').then((r) => r.data),
-  });
-
-  const { data: purchaseItems = [] } = useQuery<PurchaseItem[]>({
-    queryKey: ['purchase-items', id],
-    queryFn: () => apiClient.get(`/projects/${id}/purchase-items`).then((r) => r.data),
   });
 
   const { data: projectFull } = useQuery<{ additionalWork?: AdditionalWork[] }>({
@@ -172,10 +156,12 @@ export default function ProjectDetailPage({ params }: Props) {
   const sendShadeCardApprovalMut = useMutation({
     mutationFn: () =>
       apiClient.post(`/projects/${id}/shade-card/send-approval`),
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['project', id] });
+      qc.invalidateQueries({ queryKey: ['shade-card', id] });
       qc.invalidateQueries({ queryKey: ['approvals', 'project', id] });
-      toast('success', 'Material Approval Sheet sent to customer as PDF via WhatsApp.');
+      const rev = (res.data as { revision?: number })?.revision;
+      toast('success', `Material Approval Sheet${rev ? ` R${rev}` : ''} sent to customer as PDF via WhatsApp.`);
     },
     onError: () => toast('error', 'Failed to send shade card to customer.'),
   });
@@ -238,52 +224,6 @@ export default function ProjectDetailPage({ params }: Props) {
       toast('success', 'Drawing removed.');
     },
     onError: () => toast('error', 'Failed to delete drawing.'),
-  });
-
-  const createPIMut = useMutation({
-    mutationFn: (form: typeof EMPTY_PI) =>
-      apiClient.post(`/projects/${id}/purchase-items`, {
-        item: form.item.trim(),
-        description: form.description || undefined,
-        quantity: Number(form.quantity),
-        unit: form.unit || undefined,
-        supplier: form.supplier || undefined,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['purchase-items'] });
-      toast('success', 'Purchase item added.');
-      setShowPIModal(false);
-      setPiForm(EMPTY_PI);
-      setPiErr('');
-    },
-    onError: () => setPiErr('Failed to add item.'),
-  });
-
-  const updatePIStatusMut = useMutation({
-    mutationFn: ({ itemId, status }: { itemId: string; status: string }) =>
-      apiClient.patch(`/purchase-items/${itemId}`, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['purchase-items'] }),
-    onError: () => toast('error', 'Failed to update status.'),
-  });
-
-  const updatePIMut = useMutation({
-    mutationFn: ({ itemId, form }: { itemId: string; form: typeof EMPTY_PI }) =>
-      apiClient.patch(`/purchase-items/${itemId}`, {
-        item: form.item.trim(),
-        description: form.description.trim(),
-        quantity: Number(form.quantity),
-        unit: form.unit,
-        supplier: form.supplier.trim(),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['purchase-items'] });
-      toast('success', 'Purchase item updated.');
-      setShowPIModal(false);
-      setEditingPI(null);
-      setPiForm(EMPTY_PI);
-      setPiErr('');
-    },
-    onError: () => setPiErr('Failed to update item.'),
   });
 
   const addAWMut = useMutation({
@@ -675,85 +615,14 @@ export default function ProjectDetailPage({ params }: Props) {
       </div>
 
       {/* Purchase Items */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4 text-slate-400" /> Purchase Items
-          </h2>
-          {canManagePurchaseItems && <button
-            onClick={() => { setEditingPI(null); setShowPIModal(true); setPiForm(EMPTY_PI); setPiErr(''); }}
-            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Item
-          </button>}
-        </div>
-        {purchaseItems.length === 0 ? (
-          <p className="text-sm text-slate-400">No purchase items yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-slate-400 uppercase">
-                  <th className="text-left py-2 pr-3 font-semibold">Item</th>
-                  <th className="text-left py-2 pr-3 font-semibold">Qty</th>
-                  <th className="text-left py-2 pr-3 font-semibold">Supplier</th>
-                  <th className="text-left py-2 font-semibold">Status</th>
-                  <th className="text-right py-2 font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {purchaseItems.map((pi) => (
-                  <tr key={pi._id}>
-                    <td className="py-2.5 pr-3">
-                      <p className="font-medium text-slate-800">{pi.item}</p>
-                      {pi.description && <p className="text-xs text-slate-400">{pi.description}</p>}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600">{pi.quantity}{pi.unit ? ` ${pi.unit}` : ''}</td>
-                    <td className="py-2.5 pr-3 text-slate-500">{pi.supplier ?? '—'}</td>
-                    <td className="py-2.5">
-                      {canManagePurchaseItems ? <select
-                        value={pi.status}
-                        onChange={(e) => updatePIStatusMut.mutate({ itemId: pi._id, status: e.target.value })}
-                        className={`text-xs font-semibold rounded-full px-2.5 py-1 border-0 focus:ring-2 focus:ring-indigo-500 cursor-pointer ${
-                          pi.status === 'received' ? 'bg-emerald-50 text-emerald-700' :
-                          pi.status === 'ordered' ? 'bg-blue-50 text-blue-700' :
-                          'bg-amber-50 text-amber-700'
-                        }`}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="ordered">Ordered</option>
-                        <option value="received">Received</option>
-                      </select> : <span className="text-xs font-semibold capitalize">{pi.status}</span>}
-                    </td>
-                    <td className="py-2.5 text-right">
-                      {canManagePurchaseItems && <button
-                        type="button"
-                        aria-label={`Edit ${pi.item}`}
-                        title="Edit purchase item"
-                        onClick={() => {
-                          setEditingPI(pi);
-                          setPiForm({ item: pi.item, description: pi.description ?? '', quantity: pi.quantity, unit: pi.unit ?? '', supplier: pi.supplier ?? '' });
-                          setPiErr('');
-                          setShowPIModal(true);
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
-                      >
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </button>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <PurchaseItemsSection projectId={id} projectTitle={project?.title ?? ''} />
 
       {/* Shade Card */}
       <ShadeCardSection
         projectId={id}
         projectTitle={project?.title ?? ''}
         clientName={project?.client?.name}
+        sentRevision={project?.shadeCardRevision ?? 0}
       />
 
       {/* Additional Work */}
@@ -904,63 +773,6 @@ export default function ProjectDetailPage({ params }: Props) {
                 {createTaskMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {createTaskMut.isPending ? 'Creating…' : 'Create Task'}
           </button>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Purchase Item Modal */}
-      {showPIModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-              <h2 className="text-lg font-semibold text-slate-900">{editingPI ? 'Edit Purchase Item' : 'Add Purchase Item'}</h2>
-              <button onClick={() => setShowPIModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Item name *</label>
-                <input type="text" value={piForm.item} onChange={(e) => setPiForm((p) => ({ ...p, item: e.target.value }))}
-                  placeholder="e.g. Laminate sheets" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
-                <input type="text" value={piForm.description} onChange={(e) => setPiForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Optional details" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Quantity *</label>
-                  <input type="number" min={1} value={piForm.quantity} onChange={(e) => setPiForm((p) => ({ ...p, quantity: Number(e.target.value) }))}
-                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Unit</label>
-                  <select value={piForm.unit} onChange={(e) => setPiForm((p) => ({ ...p, unit: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">Select unit</option>
-                    {piForm.unit && !PURCHASE_ITEM_UNITS.includes(piForm.unit) && <option value={piForm.unit}>{piForm.unit}</option>}
-                    {PURCHASE_ITEM_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Supplier</label>
-                <input type="text" value={piForm.supplier} onChange={(e) => setPiForm((p) => ({ ...p, supplier: e.target.value }))}
-                  placeholder="Vendor name" className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              {piErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{piErr}</p>}
-            </div>
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
-              <button onClick={() => setShowPIModal(false)} className="px-4 py-2 text-sm text-slate-600 font-medium">Cancel</button>
-              <button
-                onClick={() => editingPI ? updatePIMut.mutate({ itemId: editingPI._id, form: piForm }) : createPIMut.mutate(piForm)}
-                disabled={!piForm.item.trim() || Number(piForm.quantity) <= 0 || createPIMut.isPending || updatePIMut.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-              >
-                {(createPIMut.isPending || updatePIMut.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingPI ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                {editingPI ? 'Save Changes' : 'Add Item'}
-              </button>
             </div>
           </div>
         </div>

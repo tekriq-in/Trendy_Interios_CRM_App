@@ -5,9 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth.store';
 import { FolderKanban, ShoppingCart, AlertTriangle, ArrowLeftRight, Package, Truck, CheckCircle2 } from 'lucide-react';
+import { PURCHASE_ITEM_STATUS_LABELS } from '@ti/shared';
 
 interface Project { _id: string; title: string; progressPct: number; currentStage?: { _id: string; name: string } | string; }
-interface PurchaseItem { _id: string; item: string; quantity: number; unit: string; supplier?: string; status: 'pending' | 'ordered' | 'received'; project?: { _id: string; title: string }; }
+interface PurchaseItem { _id: string; item: string; area?: string; brand?: string; quantity: number; receivedQty?: number; balanceQty?: number; status: 'pending' | 'ordered' | 'received'; project?: { _id: string; title: string }; }
 interface Handover { _id: string; status: string; project?: { title: string }; fromDepartment?: { name: string }; toDepartment?: { name: string }; }
 interface Blocker { _id: string; title: string; status: string; project?: { title: string }; }
 
@@ -95,7 +96,7 @@ export function PurchaseDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={FolderKanban}  label="Projects in Purchase" value={projects.length}  color="bg-indigo-50 text-indigo-600" />
-        <StatCard icon={ShoppingCart}  label="Pending Orders"        value={pending.length}   color="bg-slate-50 text-slate-600" />
+        <StatCard icon={ShoppingCart}  label="Yet to Order"          value={pending.length}   color="bg-slate-50 text-slate-600" />
         <StatCard icon={Truck}         label="Items Ordered"          value={ordered.length}   color="bg-amber-50 text-amber-600" />
         <StatCard icon={CheckCircle2}  label="Items Received"         value={received.length}  color="bg-emerald-50 text-emerald-600" />
       </div>
@@ -141,7 +142,7 @@ export function PurchaseDashboard() {
           {/* Status summary pills */}
           <div className="flex gap-2 mb-4">
             {[
-              { label: 'Pending',  count: pending.length,  cls: 'bg-slate-100 text-slate-700' },
+              { label: 'Yet to order', count: pending.length,  cls: 'bg-slate-100 text-slate-700' },
               { label: 'Ordered',  count: ordered.length,  cls: 'bg-amber-100 text-amber-700' },
               { label: 'Received', count: received.length, cls: 'bg-emerald-100 text-emerald-700' },
             ].map((s) => (
@@ -163,10 +164,10 @@ export function PurchaseDashboard() {
                     <Icon className={`w-3.5 h-3.5 shrink-0 ${item.status === 'ordered' ? 'text-amber-500' : 'text-slate-400'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-800 truncate">{item.item}</p>
-                      <p className="text-xs text-slate-400 truncate">{item.project?.title} · Qty {item.quantity} {item.unit}</p>
+                      <p className="text-xs text-slate-400 truncate">{item.project?.title}{item.area ? ` · ${item.area}` : ''} · Balance {item.balanceQty ?? item.quantity} of {item.quantity}</p>
                     </div>
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${STATUS_STYLE[item.status]}`}>
-                      {item.status}
+                      {PURCHASE_ITEM_STATUS_LABELS[item.status]}
                     </span>
                   </div>
                 );
@@ -202,15 +203,15 @@ export function PurchaseDashboard() {
           )}
         </div>
 
-        {/* Suppliers summary */}
-        {allItems.filter((i) => i.supplier).length > 0 && (
+        {/* Brands summary */}
+        {allItems.filter((i) => i.brand).length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-4">
-              <Truck className="w-4 h-4 text-blue-500" /> Suppliers in Use
+              <Truck className="w-4 h-4 text-blue-500" /> Brands in Use
             </h2>
             <div className="space-y-2">
-              {Array.from(new Set(allItems.filter((i) => i.supplier).map((i) => i.supplier!))).slice(0, 6).map((s) => {
-                const count = allItems.filter((i) => i.supplier === s).length;
+              {Array.from(new Set(allItems.filter((i) => i.brand).map((i) => i.brand!))).slice(0, 6).map((s) => {
+                const count = allItems.filter((i) => i.brand === s).length;
                 return (
                   <div key={s} className="flex items-center justify-between p-2.5 rounded-lg bg-blue-50 border border-blue-100">
                     <span className="text-sm text-slate-800 font-medium">{s}</span>

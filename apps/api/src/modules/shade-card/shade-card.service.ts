@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ShadeCardEntry, ShadeCardEntryDocument } from './schemas/shade-card.schema';
@@ -10,7 +10,9 @@ import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 import { Approval, ApprovalDocument } from '../approvals/schemas/approval.schema';
 
 @Injectable()
-export class ShadeCardService {
+export class ShadeCardService implements OnModuleInit {
+  private readonly logger = new Logger(ShadeCardService.name);
+
   constructor(
     @InjectModel(ShadeCardEntry.name) private model: Model<ShadeCardEntryDocument>,
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
@@ -19,6 +21,44 @@ export class ShadeCardService {
     @Inject(DRIVE_SERVICE) private drive: IDriveService,
     @Inject(WHATSAPP_SERVICE) private whatsapp: IWhatsAppService,
   ) {}
+
+  /**
+   * One-time backfill for cards sent before revisions existed. Each earlier shade_card
+   * approval counts as one send; an entry belongs to the first send made at/after its creation.
+   */
+  async onModuleInit() {
+    try {
+      const sends = (await this.approvalModel
+        .find({ kind: 'shade_card' })
+        .sort({ createdAt: 1 })
+        .select('project createdAt')
+        .lean()) as unknown as Array<{ project: Types.ObjectId; createdAt: Date }>;
+      const byProject = new Map<string, Date[]>();
+      for (const send of sends) {
+        const key = String(send.project);
+        byProject.set(key, [...(byProject.get(key) ?? []), new Date(send.createdAt)]);
+      }
+
+      for (const [projectId, dates] of byProject) {
+        const project = await this.projectModel.findById(projectId).select('shadeCardRevision').lean();
+        if (!project || (project.shadeCardRevision ?? 0) > 0) continue;
+
+        const entries = (await this.model
+          .find({ project: new Types.ObjectId(projectId), revision: { $exists: false } })
+          .select('_id createdAt')
+          .lean()) as unknown as Array<{ _id: Types.ObjectId; createdAt: Date }>;
+        const ops = entries
+          .map((e) => ({ id: e._id, rev: dates.findIndex((d) => d >= new Date(e.createdAt)) + 1 }))
+          .filter((e) => e.rev > 0)
+          .map((e) => ({ updateOne: { filter: { _id: e.id }, update: { $set: { revision: e.rev } } } }));
+        if (ops.length) await this.model.bulkWrite(ops);
+        await this.projectModel.updateOne({ _id: projectId }, { $set: { shadeCardRevision: dates.length } });
+        this.logger.log(`Backfilled shade card revisions for project ${projectId} (R${dates.length})`);
+      }
+    } catch (err) {
+      this.logger.error(`Shade card revision backfill failed: ${(err as Error).message}`);
+    }
+  }
 
   async findByProject(projectId: string) {
     return this.model
@@ -102,9 +142,13 @@ export class ShadeCardService {
 
     const client = project.client as unknown as { name: string; phone?: string };
 
+    // One card per project: every send is a new revision. Entries not sent before go out in it.
+    const revision = (project.shadeCardRevision ?? 0) + 1;
+    const newEntries = entries.filter((e) => e.revision == null).length;
+
     // Generate PDF
     const pdfBuffer = await this.pdfService.generate(
-      { title: project.title, clientName: client?.name },
+      { title: project.title, clientName: client?.name, revision },
       entries.map((e) => ({
         slNo: e.slNo,
         area: e.area,
@@ -112,32 +156,40 @@ export class ShadeCardService {
         material: e.material,
         codeName: e.codeName,
         remarks: e.remarks,
+        revision: e.revision ?? revision,
       })),
     );
 
     // Upload to drive to get a public URL
-    const fileName = `Material_Approval_Sheet_${project.title.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+    const fileName = `Material_Approval_Sheet_${project.title.replace(/\s+/g, '_')}_R${revision}_${Date.now()}.pdf`;
     const uploaded = await this.drive.uploadFile(pdfBuffer, fileName, 'application/pdf', 'shade-cards');
 
     // Send via WhatsApp if client has a phone number
     if (client?.phone) {
-      const caption = `Dear ${client.name}, please find the Material Approval Sheet for your project "${project.title}". Kindly review and confirm your approval.`;
+      const caption = `Dear ${client.name}, please find the Material Approval Sheet (Revision R${revision}) for your project "${project.title}". Kindly review and confirm your approval.`;
       await this.whatsapp.sendDocument(client.phone, uploaded.webViewLink, fileName, caption);
     }
 
-    // Set project status to waiting_for_client_approval
-    await this.projectModel.findByIdAndUpdate(projectId, { status: 'waiting_for_client_approval' });
+    // Sent — stamp the revision on the new entries and on the project
+    await this.model.updateMany(
+      { project: new Types.ObjectId(projectId), revision: { $exists: false } },
+      { $set: { revision } },
+    );
+    await this.projectModel.findByIdAndUpdate(projectId, {
+      status: 'waiting_for_client_approval',
+      shadeCardRevision: revision,
+    });
 
     // Create a shade_card approval record so MD/GM can confirm in Approvals page
     await this.approvalModel.create({
       project: new Types.ObjectId(projectId),
       kind: 'shade_card',
-      rawNotes: `Material Approval Sheet sent to ${client?.name ?? 'customer'} via WhatsApp PDF. Waiting for client confirmation.`,
+      rawNotes: `Material Approval Sheet R${revision} (${newEntries} new ${newEntries === 1 ? 'entry' : 'entries'}) sent to ${client?.name ?? 'customer'} via WhatsApp PDF. Waiting for client confirmation.`,
       requestedBy: new Types.ObjectId(actorId),
       createdBy: new Types.ObjectId(actorId),
     });
 
-    return { pdfUrl: uploaded.webViewLink, sentToPhone: client?.phone ?? null };
+    return { pdfUrl: uploaded.webViewLink, sentToPhone: client?.phone ?? null, revision, newEntries };
   }
 
   async reorder(projectId: string, orderedIds: string[]) {

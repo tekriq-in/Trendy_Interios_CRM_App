@@ -9,11 +9,15 @@ export interface ShadeCardPdfEntry {
   material: string;
   codeName: string;
   remarks?: string;
+  /** Revision in which the entry was first sent */
+  revision: number;
 }
 
 export interface ShadeCardPdfProject {
   title: string;
   clientName?: string;
+  /** Revision being sent now */
+  revision: number;
 }
 
 @Injectable()
@@ -35,20 +39,21 @@ export class ShadeCardPdfService {
 
       // ── Header row ───────────────────────────────────────────────────────────
       const headerY = 90;
-      const colW = (doc.page.width - 100) / 3;
+      const colW = (doc.page.width - 100) / 4;
       doc.rect(50, headerY, doc.page.width - 100, 24).stroke('#334155');
       doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold');
       doc.text(`CLIENT: ${(project.clientName ?? '—').toUpperCase()}`, 55, headerY + 7, { width: colW - 5 });
       doc.text(`ORDER NO: ${project.title}`, 55 + colW, headerY + 7, { width: colW - 5 });
       doc.text(`DATE: ${today}`, 55 + colW * 2, headerY + 7, { width: colW - 5 });
+      doc.text(`REVISION: R${project.revision}`, 55 + colW * 3, headerY + 7, { width: colW - 5 });
 
       // ── Column headers ───────────────────────────────────────────────────────
       const tableTop = 124;
-      const colWidths = [35, 110, 85, 120, 100]; // SL NO, AREA/UNITS, MATERIAL, CODE NAME, REMARKS
-      const cols = [50, 85, 195, 280, 400];
+      const colWidths = [35, 110, 80, 115, 75, 80]; // SL NO, AREA/UNITS, MATERIAL, CODE NAME, REMARKS, REV
+      const cols = [50, 85, 195, 275, 390, 465];
 
       doc.rect(50, tableTop, doc.page.width - 100, 18).fill('#334155');
-      const headers = ['SL NO', 'AREA / UNITS', 'MATERIAL', 'CODE NAME', 'REMARKS'];
+      const headers = ['SL NO', 'AREA / UNITS', 'MATERIAL', 'CODE NAME', 'REMARKS', 'REV'];
       headers.forEach((h, i) => {
         doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold')
           .text(h, cols[i] + 2, tableTop + 5, { width: colWidths[i], align: 'center' });
@@ -71,6 +76,8 @@ export class ShadeCardPdfService {
           const rowHeight = Math.max(20, entry.units.length * 12 + 8);
           if (y + rowHeight > doc.page.height - 80) { doc.addPage(); y = 50; }
 
+          const isNew = entry.revision === project.revision && project.revision > 1;
+          if (isNew) doc.rect(50, y, doc.page.width - 100, rowHeight).fill('#fef9c3');
           doc.rect(50, y, doc.page.width - 100, rowHeight).stroke('#e2e8f0');
           doc.fillColor('#1e293b').fontSize(8).font('Helvetica');
 
@@ -88,6 +95,9 @@ export class ShadeCardPdfService {
           // REMARKS
           doc.font('Helvetica').fillColor('#475569')
             .text(entry.remarks ?? '', cols[4] + 2, y + 6, { width: colWidths[4] - 4 });
+          // REV
+          doc.font(isNew ? 'Helvetica-Bold' : 'Helvetica').fillColor(isNew ? '#a16207' : '#475569')
+            .text(isNew ? `R${entry.revision} NEW` : `R${entry.revision}`, cols[5] + 2, y + 6, { width: colWidths[5] - 4, align: 'center' });
 
           y += rowHeight;
         });

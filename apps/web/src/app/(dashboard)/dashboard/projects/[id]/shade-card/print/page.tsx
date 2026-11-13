@@ -13,6 +13,7 @@ interface ShadeCardEntry {
   photoUrl?: string;
   remarks?: string;
   slNo: number;
+  revision?: number;
 }
 
 interface Project {
@@ -20,6 +21,7 @@ interface Project {
   title: string;
   client?: { name: string };
   targetDate?: string;
+  shadeCardRevision?: number;
 }
 
 interface Props { params: { id: string }; }
@@ -46,6 +48,10 @@ export default function ShadeCardPrintPage({ params }: Props) {
   }
 
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const sent = Math.max(project?.shadeCardRevision ?? 0, ...entries.map((e) => e.revision ?? 0));
+  const hasUnsent = entries.some((e) => e.revision == null);
+  const revisionLabel = hasUnsent ? `R${sent + 1} (draft)` : `R${sent}`;
 
   // Group by area in order of first appearance
   const areas: string[] = [];
@@ -81,14 +87,17 @@ export default function ShadeCardPrintPage({ params }: Props) {
         <table className="w-full border-collapse text-xs mb-0">
           <tbody>
             <tr className="border border-slate-800">
-              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/3">
+              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/4">
                 CLIENT NAME: <span className="font-bold uppercase">{project?.client?.name ?? '—'}</span>
               </td>
-              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/3">
+              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/4">
                 ORDER NO: {project?.title ?? '—'}
               </td>
-              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/3">
+              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/4">
                 DATE: {today}
+              </td>
+              <td className="border border-slate-800 px-2 py-1.5 font-semibold w-1/4">
+                REVISION: {revisionLabel}
               </td>
             </tr>
           </tbody>
@@ -104,6 +113,7 @@ export default function ShadeCardPrintPage({ params }: Props) {
               <th className="border border-slate-800 px-2 py-1.5 text-left w-36">CODE NAME</th>
               <th className="border border-slate-800 px-2 py-1.5 text-left w-40">PHOTOS</th>
               <th className="border border-slate-800 px-2 py-1.5 text-left w-28">REMARKS</th>
+              <th className="border border-slate-800 px-2 py-1.5 text-center w-16">REV</th>
             </tr>
           </thead>
           <tbody>
@@ -114,12 +124,12 @@ export default function ShadeCardPrintPage({ params }: Props) {
                   {/* Area header row — only on first entry of this area */}
                   {idx === 0 && (
                     <tr key={`area-${area}`} className="bg-green-100">
-                      <td colSpan={6} className="border border-slate-800 px-2 py-1 font-bold uppercase text-xs tracking-wide">
+                      <td colSpan={7} className="border border-slate-800 px-2 py-1 font-bold uppercase text-xs tracking-wide">
                         {area}
                       </td>
                     </tr>
                   )}
-                  <tr key={entry._id} className="align-top">
+                  <tr key={entry._id} className={`align-top ${entry.revision == null && sent > 0 ? 'bg-yellow-50' : ''}`}>
                     <td className="border border-slate-800 px-2 py-2 text-center font-mono">{entry.slNo}</td>
                     <td className="border border-slate-800 px-2 py-2">
                       {entry.units.map((u, i) => (
@@ -141,6 +151,9 @@ export default function ShadeCardPrintPage({ params }: Props) {
                       )}
                     </td>
                     <td className="border border-slate-800 px-2 py-2 text-xs text-slate-600">{entry.remarks ?? ''}</td>
+                    <td className="border border-slate-800 px-2 py-2 text-center text-xs font-semibold">
+                      {entry.revision != null ? `R${entry.revision}` : `R${sent + 1}${sent > 0 ? ' NEW' : ''}`}
+                    </td>
                   </tr>
                 </>
               ));

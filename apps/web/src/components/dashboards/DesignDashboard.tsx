@@ -149,7 +149,7 @@ export function DesignDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={FolderKanban} label="Assigned Projects" value={projects.length} color="bg-indigo-50 text-indigo-600" href="/dashboard/projects" />
         <StatCard icon={Palette} label="Shade Card Entries" value={totalShadeEntries} color="bg-violet-50 text-violet-600" />
-        <StatCard icon={ShoppingCart} label="Purchase Pending" value={pendingPurchase.length} color="bg-amber-50 text-amber-600" href="/dashboard/purchase-items" />
+        <StatCard icon={ShoppingCart} label="Purchase: Yet to Order" value={pendingPurchase.length} color="bg-amber-50 text-amber-600" href="/dashboard/purchase-items" />
         <StatCard icon={CheckSquare} label="Pending Approvals" value={pendingApprovals.length} color="bg-rose-50 text-rose-600" href="/dashboard/approvals" />
       </div>
 
@@ -210,7 +210,7 @@ export function DesignDashboard() {
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-center">
               <p className="text-xl font-bold text-amber-700">{pendingPurchase.length}</p>
-              <p className="text-xs text-amber-600 mt-0.5">Pending</p>
+              <p className="text-xs text-amber-600 mt-0.5">Yet to order</p>
             </div>
             <div className="rounded-lg bg-sky-50 border border-sky-100 p-3 text-center">
               <p className="text-xl font-bold text-sky-700">{orderedPurchase.length}</p>
@@ -218,7 +218,7 @@ export function DesignDashboard() {
             </div>
           </div>
           {pendingPurchase.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-3">No pending purchase items.</p>
+            <p className="text-sm text-slate-400 text-center py-3">Nothing waiting to be ordered.</p>
           ) : (
             <div className="space-y-1.5">
               {pendingPurchase.slice(0, 4).map((item) => (

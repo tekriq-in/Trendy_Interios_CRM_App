@@ -57,6 +57,10 @@ export class Project {
   @Prop({ default: true })
   requiresDrawing: boolean;
 
+  /** Last shade-card revision sent to the client (0 = never sent) */
+  @Prop({ type: Number, default: 0 })
+  shadeCardRevision: number;
+
   @Prop({ type: [AdditionalWorkSchema], default: [] })
   additionalWork: Array<{
     description: string;

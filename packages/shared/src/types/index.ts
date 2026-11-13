@@ -107,6 +107,8 @@ export interface Project extends BaseEntity {
   targetDate?: string;
   status: ProjectStatus;
   requiresDrawing: boolean;
+  /** Last shade-card revision sent to the client (0 = never sent) */
+  shadeCardRevision?: number;
   additionalWork: AdditionalWork[];
 }
 
@@ -138,15 +140,25 @@ export interface Handover extends BaseEntity {
 
 export interface PurchaseItem extends BaseEntity {
   project: ID | Project;
+  /** Display order (S.No) within the project */
+  slNo: number;
+  area: string;
+  /** Item name */
   item: string;
-  description?: string;
+  brand: string;
+  code: string;
+  size: string;
+  finish: string;
+  /** Order qty — cumulative total requested by Design */
   quantity: number;
-  unit?: string;
-  supplier?: string;
+  /** Received qty — entered manually by Purchase */
+  receivedQty: number;
+  /** Balance qty = quantity - receivedQty (computed by the API) */
+  balanceQty: number;
+  /** 'pending' is shown as "Yet to order" in the UI */
   status: PurchaseItemStatus;
   orderedAt?: string;
   receivedAt?: string;
-  linkedDocument?: ID;
 }
 
 export interface Blocker extends BaseEntity {

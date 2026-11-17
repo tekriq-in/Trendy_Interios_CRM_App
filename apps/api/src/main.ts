@@ -1,8 +1,11 @@
-import { NestFactory, HttpAdapterHost } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { requestContext } from './common/middleware/request-id.middleware';
 
 const logger = new Logger('Bootstrap');
 
@@ -26,9 +29,23 @@ async function bootstrap() {
     }
   }
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // needed for webhook HMAC signature verification
   });
+
+  // Render (and most PaaS hosts) terminate TLS at a reverse proxy. Trust one
+  // hop so req.ip / req.protocol reflect the real client. Without this the
+  // rate limiter would see every user as the proxy's IP and throttle them
+  // all together.
+  app.set('trust proxy', 1);
+  app.disable('x-powered-by');
+
+  // Let SIGTERM (sent on every Render deploy) drain in-flight requests and
+  // close the Mongo connection instead of dropping them.
+  app.enableShutdownHooks();
+
+  app.use(requestContext);
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   app.use(
     helmet({
@@ -41,7 +58,7 @@ async function bootstrap() {
   );
   app.useWebSocketAdapter(new IoAdapter(app));
   app.setGlobalPrefix('api/v1', {
-    exclude: ['health'], // health check has no prefix
+    exclude: ['health', 'health/(.*)'], // health checks (incl. /live, /ready) have no prefix
   });
 
   app.useGlobalPipes(

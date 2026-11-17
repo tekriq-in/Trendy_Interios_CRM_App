@@ -1,0 +1,85 @@
+name: Deploy
+
+# Production deploys run only from `main`, and only after the full CI pipeline
+# passes. Render and Vercel auto-deploy is disabled (see render.yaml and
+# apps/web/vercel.json) so this workflow is the single path to production.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # manual re-deploy / rollback to a given commit
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never abort a deploy mid-flight
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+
+  deploy-api:
+    name: Deploy API → Render
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set"; exit 1
+          fi
+          curl --fail --silent --show-error -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
+
+      - name: Wait for API to report healthy
+        env:
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL }} # e.g. https://ti-api.onrender.com/health/ready
+        run: |
+          if [ -z "$API_HEALTH_URL" ]; then
+            echo "API_HEALTH_URL variable not set, skipping health wait"; exit 0
+          fi
+          for i in $(seq 1 30); do
+            if curl --fail --silent "$API_HEALTH_URL" > /dev/null; then
+              echo "API healthy after $i attempt(s)"; exit 0
+            fi
+            echo "Waiting for API... ($i/30)"; sleep 10
+          done
+          echo "::error::API did not become healthy in 5 minutes"; exit 1
+
+  deploy-web:
+    name: Deploy web → Vercel
+    needs: [ci, deploy-api] # ship API first so the web never calls a missing endpoint
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install Vercel CLI
+        run: pnpm add --global vercel@latest
+
+      - name: Pull Vercel production settings
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}

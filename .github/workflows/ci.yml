@@ -44,7 +44,7 @@ jobs:
         run: pnpm type-check
 
       - name: API unit tests
-        run: pnpm --filter @ti/api test --ci
+        run: pnpm --filter @ti/api test # Jest auto-enables CI mode via CI=true
 
       - name: Build API
         run: pnpm --filter @ti/api build

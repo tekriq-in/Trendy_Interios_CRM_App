@@ -33,7 +33,9 @@ Settings → Secrets and variables → Actions:
 
 | Kind | Name | Value |
 |---|---|---|
-| Secret | `RENDER_DEPLOY_HOOK_URL` | Render deploy hook URL |
+| Secret | `RENDER_DEPLOY_HOOK_URL` | Render deploy hook URL (service → Settings → Deploy Hook) |
+| Secret | `RENDER_API_KEY` | *Alternative to the hook:* Render Account Settings → API Keys |
+| Secret | `RENDER_SERVICE_ID` | *Alternative to the hook:* the `srv-...` id in the service URL |
 | Secret | `VERCEL_TOKEN` | Vercel token |
 | Secret | `VERCEL_ORG_ID` | from `.vercel/project.json` (`orgId`) |
 | Secret | `VERCEL_PROJECT_ID` | from `.vercel/project.json` (`projectId`) |

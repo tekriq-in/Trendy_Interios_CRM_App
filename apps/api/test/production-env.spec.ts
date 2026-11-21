@@ -32,8 +32,14 @@ describe('validateProductionEnv', () => {
     expect(problems).toContain('JWT_SECRET and JWT_REFRESH_SECRET must be different');
   });
 
-  it('rejects the default seed password', () => {
+  it('rejects the default or a missing seed password', () => {
     expect(validateProductionEnv({ ...good, SEED_MD_PASSWORD: 'ChangeMe123!' })).toHaveLength(1);
+    expect(validateProductionEnv({ ...good, SEED_MD_PASSWORD: undefined })).toHaveLength(1);
+  });
+
+  it('rejects the mock drive provider but allows cloudinary', () => {
+    expect(validateProductionEnv({ ...good, DRIVE_PROVIDER: 'mock' })).toHaveLength(1);
+    expect(validateProductionEnv({ ...good, DRIVE_PROVIDER: 'cloudinary' })).toEqual([]);
   });
 
   it.each(['*', 'http://localhost:3000', 'https://ok.app,http://127.0.0.1:3000'])(

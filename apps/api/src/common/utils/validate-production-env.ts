@@ -23,8 +23,16 @@ export function validateProductionEnv(env: NodeJS.ProcessEnv): string[] {
     problems.push('JWT_SECRET and JWT_REFRESH_SECRET must be different');
   }
 
-  if (env.SEED_MD_PASSWORD === DEFAULT_SEED_PASSWORD) {
-    problems.push('SEED_MD_PASSWORD is still the default; set a strong password');
+  // The seed falls back to the default password when this is unset, which would
+  // create a production admin with a publicly known password.
+  if (!env.SEED_MD_PASSWORD || env.SEED_MD_PASSWORD === DEFAULT_SEED_PASSWORD) {
+    problems.push('SEED_MD_PASSWORD must be set to a strong, non-default password');
+  }
+
+  // The mock drive writes to the container's ephemeral disk; uploads would be
+  // lost on every restart or deploy.
+  if (env.DRIVE_PROVIDER === 'mock') {
+    problems.push('DRIVE_PROVIDER=mock loses files on restart; use cloudinary in production');
   }
 
   const origins = (env.CORS_ORIGIN ?? '').split(',').map((o) => o.trim()).filter(Boolean);

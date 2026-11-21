@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { requestContext } from './common/middleware/request-id.middleware';
+import { validateProductionEnv } from './common/utils/validate-production-env';
 
 const logger = new Logger('Bootstrap');
 
@@ -22,6 +23,10 @@ async function bootstrap() {
   requireEnv('JWT_REFRESH_SECRET');
   if (process.env.NODE_ENV === 'production') {
     requireEnv('CORS_ORIGIN');
+    const problems = validateProductionEnv(process.env);
+    if (problems.length > 0) {
+      throw new Error(`Unsafe production configuration:\n - ${problems.join('\n - ')}`);
+    }
     if (process.env.WHATSAPP_PROVIDER === 'meta') {
       requireEnv('WHATSAPP_API_TOKEN');
       requireEnv('WHATSAPP_PHONE_NUMBER_ID');

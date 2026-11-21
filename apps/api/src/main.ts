@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, ForbiddenException } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -85,7 +85,11 @@ async function bootstrap() {
         return callback(null, true);
       }
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`Origin ${origin} not allowed by CORS`));
+      // A plain Error becomes an opaque 500. Answer with a clear 403 (the
+      // exception filter adds the request id) and log it so a misconfigured
+      // CORS_ORIGIN is obvious in the Render logs.
+      logger.warn(`Blocked request from origin not in CORS_ORIGIN: ${origin.slice(0, 200)}`);
+      callback(new ForbiddenException('Origin not allowed by CORS'));
     },
     credentials: true,
   });

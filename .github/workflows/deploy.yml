@@ -50,20 +50,27 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for API to report healthy
+      # Waits for the NEW build, not just any healthy instance: Render keeps
+      # serving the previous version until the new one passes its health check,
+      # so a bare "is it healthy?" poll succeeds instantly against old code.
+      # /health/ready reports the commit it is running (RENDER_GIT_COMMIT).
+      - name: Wait for the new API version to be live
         env:
           API_HEALTH_URL: ${{ vars.API_HEALTH_URL }} # e.g. https://ti-api.onrender.com/health/ready
         run: |
           if [ -z "$API_HEALTH_URL" ]; then
-            echo "API_HEALTH_URL variable not set, skipping health wait"; exit 0
+            echo "::warning::API_HEALTH_URL variable not set, skipping health wait"; exit 0
           fi
-          for i in $(seq 1 30); do
-            if curl --fail --silent "$API_HEALTH_URL" > /dev/null; then
-              echo "API healthy after $i attempt(s)"; exit 0
+          last="(no response)"
+          for i in $(seq 1 60); do
+            body=$(curl --silent --max-time 15 "$API_HEALTH_URL" || true)
+            last=$(echo "$body" | jq -r '.commit // "(no commit field)"' 2>/dev/null || echo "(unparseable)")
+            if [ "$last" = "$GITHUB_SHA" ]; then
+              echo "New version live after $i attempt(s): $last"; exit 0
             fi
-            echo "Waiting for API... ($i/30)"; sleep 10
+            echo "Waiting for $GITHUB_SHA, API reports: $last ($i/60)"; sleep 10
           done
-          echo "::error::API did not become healthy in 5 minutes"; exit 1
+          echo "::error::API did not report commit $GITHUB_SHA within 10 minutes (last seen: $last)"; exit 1
 
   deploy-web:
     name: Deploy web → Vercel

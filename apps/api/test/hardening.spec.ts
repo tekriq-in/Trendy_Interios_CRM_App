@@ -129,6 +129,7 @@ describe('HealthController', () => {
     await expect(make(1, jest.fn().mockResolvedValue({ ok: 1 })).ready()).resolves.toEqual({
       status: 'ok',
       db: 'connected',
+      commit: expect.any(String), // lets the deploy workflow verify which build is live
     });
   });
 

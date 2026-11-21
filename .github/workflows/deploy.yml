@@ -1,12 +1,13 @@
 name: Deploy
 
-# Production deploys run only from `main`, and only after the full CI pipeline
-# passes. Render and Vercel auto-deploy is disabled (see render.yaml and
-# apps/web/vercel.json) so this workflow is the single path to production.
+# Flow: open a PR into `dev` -> ci.yml runs the tests. Merge the PR -> this
+# workflow runs the full CI again as a gate, then deploys the API to Render and
+# the web app to Vercel. Render and Vercel git auto-deploy are disabled (see
+# render.yaml and apps/web/vercel.json) so this is the only path to deploy.
 on:
   push:
-    branches: [main]
-  workflow_dispatch: # manual re-deploy / rollback to a given commit
+    branches: [dev]
+  workflow_dispatch: # manual re-deploy of the selected branch
 
 concurrency:
   group: deploy-production

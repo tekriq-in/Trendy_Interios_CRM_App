@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [dev, main]
   push:
-    branches: [dev, main]
-  workflow_call: # reused by deploy.yml so production never ships unverified code
+    branches: [main] # dev pushes are verified by deploy.yml, which calls this workflow
+  workflow_call: # reused by deploy.yml so nothing ships unverified
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

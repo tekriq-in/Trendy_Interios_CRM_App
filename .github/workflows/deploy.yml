@@ -28,14 +28,27 @@ jobs:
     environment: production
     timeout-minutes: 15
     steps:
-      - name: Trigger Render deploy hook
+      # Either a deploy hook URL, or a Render API key + service id, works.
+      - name: Trigger Render deploy
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
         run: |
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set"; exit 1
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Triggering deploy via deploy hook"
+            curl --fail --silent --show-error -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}" > /dev/null
+          elif [ -n "$RENDER_API_KEY" ] && [ -n "$RENDER_SERVICE_ID" ]; then
+            echo "Triggering deploy via Render API"
+            curl --fail --silent --show-error -X POST \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H "Accept: application/json" -H "Content-Type: application/json" \
+              -d "{\"commitId\":\"${GITHUB_SHA}\"}" > /dev/null
+          else
+            echo "::error::Set RENDER_DEPLOY_HOOK_URL, or both RENDER_API_KEY and RENDER_SERVICE_ID"
+            exit 1
           fi
-          curl --fail --silent --show-error -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
 
       - name: Wait for API to report healthy
         env:

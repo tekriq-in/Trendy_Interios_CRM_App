@@ -2,6 +2,11 @@ import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 
+// Render sets RENDER_GIT_COMMIT to the commit being served. The deploy
+// workflow compares it with the commit it just shipped to confirm the NEW
+// version is live (not the previous instance that is still answering).
+const COMMIT = process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? 'unknown';
+
 @Controller('health')
 export class HealthController {
   constructor(@InjectConnection() private readonly db: Connection) {}
@@ -43,6 +48,6 @@ export class HealthController {
     } catch {
       throw new ServiceUnavailableException({ status: 'unavailable', db: 'unreachable' });
     }
-    return { status: 'ok', db: 'connected' };
+    return { status: 'ok', db: 'connected', commit: COMMIT };
   }
 }

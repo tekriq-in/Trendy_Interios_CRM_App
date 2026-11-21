@@ -1,0 +1,75 @@
+# Render Blueprint for the API. The web app is hosted on Vercel (see
+# apps/web/vercel.json). MongoDB lives on Atlas, so there is no database here.
+#
+# Deploys are triggered by .github/workflows/deploy.yml (via the deploy hook)
+# after CI passes on `main`, so Render's own git auto-deploy is turned off.
+services:
+  - type: web
+    name: ti-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    branch: main
+    # Use at least "starter": the free plan sleeps after inactivity, which
+    # breaks Socket.IO chat, the SLA cron and WhatsApp webhooks.
+    plan: starter
+    region: singapore # closest Render region to India; change if your Atlas cluster is elsewhere
+    autoDeploy: false
+    # Render only routes traffic to a new instance once this returns 200, so a
+    # failed DB connection never replaces a healthy release.
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- Secrets: set these in the Render dashboard (never commit values) ---
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: SEED_MD_EMAIL
+        sync: false
+      - key: SEED_MD_PASSWORD
+        sync: false
+      # Exact Vercel origin(s), comma-separated, e.g. https://ti-crm.vercel.app
+      - key: CORS_ORIGIN
+        sync: false
+      # --- Non-secret defaults ---
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 7d
+      - key: THROTTLE_LIMIT_GLOBAL
+        value: '100'
+      - key: DRIVE_PROVIDER
+        value: cloudinary
+      - key: LLM_PROVIDER
+        value: mock
+      - key: WHATSAPP_PROVIDER
+        value: mock
+      # --- Integrations: fill in only the providers you enable ---
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: WHATSAPP_API_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WA_VERIFY_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: FCM_PROJECT_ID
+        sync: false
+      - key: FCM_PRIVATE_KEY
+        sync: false
+      - key: FCM_CLIENT_EMAIL
+        sync: false

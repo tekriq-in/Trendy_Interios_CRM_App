@@ -2,14 +2,14 @@
 # apps/web/vercel.json). MongoDB lives on Atlas, so there is no database here.
 #
 # Deploys are triggered by .github/workflows/deploy.yml (via the deploy hook)
-# after CI passes on `main`, so Render's own git auto-deploy is turned off.
+# after CI passes on `dev`, so Render's own git auto-deploy is turned off.
 services:
   - type: web
     name: ti-api
     runtime: docker
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    branch: main
+    branch: dev
     # Use at least "starter": the free plan sleeps after inactivity, which
     # breaks Socket.IO chat, the SLA cron and WhatsApp webhooks.
     plan: starter

@@ -62,6 +62,12 @@ docs/           Architecture, setup, integrations, roadmap
 
 ---
 
+## Continuous integration
+
+GitHub Actions runs `pnpm test` when a pull request targets the `dev` branch, and reruns the tests when new commits are pushed or the pull request is reopened.
+
+---
+
 ## Key business rules
 
 1. Employees see only projects they are assigned to — enforced server-side on every query.

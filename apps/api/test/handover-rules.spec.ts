@@ -11,6 +11,11 @@ const mockHandoverModel = {
   findById: jest.fn(),
   create: jest.fn(),
   findByIdAndUpdate: jest.fn(),
+  aggregate: jest.fn(),
+};
+
+const mockProjectModel = {
+  find: jest.fn(),
 };
 
 const mockActivityLog = { record: jest.fn() };
@@ -25,6 +30,7 @@ describe('Handover Rules', () => {
       providers: [
         HandoversService,
         { provide: getModelToken('Handover'), useValue: mockHandoverModel },
+        { provide: getModelToken('Project'), useValue: mockProjectModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
@@ -51,6 +57,24 @@ describe('Handover Rules', () => {
         actor,
       ),
     ).rejects.toThrow('handover.proof_required');
+  });
+
+  it('lists only handovers for projects assigned to the employee', async () => {
+    const projectId = new Types.ObjectId();
+    mockProjectModel.find.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([{ _id: projectId }]),
+    });
+    mockHandoverModel.aggregate.mockResolvedValue([]);
+
+    await service.findAll({ _id: actorId, rolePermissions: [] });
+
+    expect(mockProjectModel.find).toHaveBeenCalledWith({
+      assignedTeam: new Types.ObjectId(actorId),
+    });
+    const [firstStage] = mockHandoverModel.aggregate.mock.calls[0][0];
+    const [scopedProjectId] = firstStage.$match.project.$in;
+    expect(String(scopedProjectId)).toBe(String(projectId));
   });
 
   it('throws BadRequestException when proofFileIds is missing', async () => {

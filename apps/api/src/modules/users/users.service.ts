@@ -11,6 +11,7 @@ import { User, UserDocument } from './schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
+import { PERMISSIONS } from '@ti/shared';
 export { CreateUserDto, UpdateUserDto };
 
 function getDuplicateUserField(error: unknown): 'phone' | 'email' | undefined {
@@ -56,6 +57,18 @@ export class UsersService {
       .populate('department', 'name')
       .populate('reportsTo', 'name email')
       .select('-passwordHash -refreshTokens -mfaSecret')
+      .lean();
+  }
+
+  findForDashboard(actor: { _id: string; rolePermissions: string[] }) {
+    const filter: Record<string, unknown> = { isActive: true };
+    if (!actor.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL)) {
+      filter._id = new Types.ObjectId(actor._id);
+    }
+
+    return this.userModel
+      .find(filter)
+      .select('_id name department isActive')
       .lean();
   }
 

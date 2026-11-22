@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Handover, HandoverDocument } from './schemas/handover.schema';
+import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 
@@ -15,17 +16,32 @@ import { PERMISSIONS } from '@ti/shared';
 export class HandoversService {
   constructor(
     @InjectModel(Handover.name) private handoverModel: Model<HandoverDocument>,
+    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
   ) {}
 
-  async findAll(projectId?: string) {
-    const matchStage = projectId
-      ? { $match: { project: new Types.ObjectId(projectId) } }
-      : { $match: {} };
+  async findAll(
+    actor: { _id: string; rolePermissions: string[] },
+    projectId?: string,
+  ) {
+    const projectFilters: Record<string, unknown>[] = [];
+    if (projectId) projectFilters.push({ project: new Types.ObjectId(projectId) });
+
+    if (!actor.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL)) {
+      const projects = await this.projectModel
+        .find({ assignedTeam: new Types.ObjectId(actor._id) })
+        .select('_id')
+        .lean();
+      projectFilters.push({ project: { $in: projects.map((project) => project._id) } });
+    }
+
+    const match = projectFilters.length > 1
+      ? { $and: projectFilters }
+      : projectFilters[0] ?? {};
 
     return this.handoverModel.aggregate([
-      matchStage,
+      { $match: match },
       { $sort: { createdAt: -1 } },
       {
         $lookup: {

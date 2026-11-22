@@ -36,6 +36,12 @@ export class UsersController {
     );
   }
 
+  @Get('for-dashboard')
+  @RequirePermissions(PERMISSIONS.DASHBOARD_VIEW)
+  findForDashboard(@CurrentUser() actor: { _id: string; rolePermissions: string[] }) {
+    return this.usersService.findForDashboard(actor);
+  }
+
   @Get()
   @RequirePermissions(PERMISSIONS.USERS_READ)
   findAll(@Query('departmentId') departmentId?: string, @Query('isActive') isActive?: string) {

@@ -6,6 +6,7 @@ import { ChatGroupsService } from '../src/modules/chat-groups/chat-groups.servic
 
 const mockUserModel = {
   findOne: jest.fn(),
+  find: jest.fn(),
   create: jest.fn(),
 };
 
@@ -62,5 +63,24 @@ describe('UsersService', () => {
     await expect(service.create(createDto, actorId)).rejects.toThrow(
       'Phone number already exists.',
     );
+  });
+
+  it('returns only the logged-in employee with dashboard-safe fields', async () => {
+    const employeeId = '66acb0000000000000000003';
+    const activeEmployees = [{ _id: employeeId, name: 'Active Employee', department: 'dept-id', isActive: true }];
+    const select = jest.fn().mockReturnThis();
+    mockUserModel.find.mockReturnValue({
+      select,
+      lean: jest.fn().mockResolvedValue(activeEmployees),
+    });
+
+    await expect(
+      service.findForDashboard({ _id: employeeId, rolePermissions: [] }),
+    ).resolves.toEqual(activeEmployees);
+
+    const [filter] = mockUserModel.find.mock.calls[0];
+    expect(filter.isActive).toBe(true);
+    expect(String(filter._id)).toBe(employeeId);
+    expect(select).toHaveBeenCalledWith('_id name department isActive');
   });
 });

@@ -9,8 +9,11 @@ export class HandoversController {
   constructor(private service: HandoversService) {}
 
   @Get()
-  findAll(@Query('projectId') projectId?: string) {
-    return this.service.findAll(projectId);
+  findAll(
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.service.findAll(actor, projectId);
   }
 
   @Post()

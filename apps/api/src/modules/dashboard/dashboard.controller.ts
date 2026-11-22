@@ -3,6 +3,7 @@ import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '@ti/shared';
 
 @Controller('dashboard')
@@ -12,27 +13,47 @@ export class DashboardController {
   constructor(private service: DashboardService) {}
 
   @Get('board')
-  getBoard(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.service.getBoard({ from, to });
+  getBoard(
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getBoard({ from, to }, actor);
   }
 
   @Get('workload')
-  getWorkload(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.service.getWorkload({ from, to });
+  getWorkload(
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getWorkload({ from, to }, actor);
   }
 
   @Get('blockers')
-  getBlockers(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.service.getBlockersSummary({ from, to });
+  getBlockers(
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getBlockersSummary({ from, to }, actor);
   }
 
   @Get('approvals-pending')
-  getApprovalsPending(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.service.getApprovalsPending({ from, to });
+  getApprovalsPending(
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getApprovalsPending({ from, to }, actor);
   }
 
   @Get('stage-durations')
-  getStageDurations(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.service.getStageDurations({ from, to });
+  getStageDurations(
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getStageDurations({ from, to }, actor);
   }
 }

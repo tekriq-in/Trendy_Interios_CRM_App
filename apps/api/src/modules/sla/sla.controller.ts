@@ -17,8 +17,8 @@ export class SlaController {
   }
 
   @Get('report')
-  getReport() {
-    return this.service.getReport();
+  getReport(@CurrentUser() actor: { _id: string; rolePermissions: string[] }) {
+    return this.service.getReport(actor);
   }
 
   @Patch(':departmentId')

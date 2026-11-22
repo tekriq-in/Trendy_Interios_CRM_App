@@ -13,6 +13,30 @@ import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 export { CreateUserDto, UpdateUserDto };
 
+function getDuplicateUserField(error: unknown): 'phone' | 'email' | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 11000) {
+    return undefined;
+  }
+
+  const keyPattern = 'keyPattern' in error && typeof error.keyPattern === 'object' && error.keyPattern
+    ? error.keyPattern
+    : {};
+  const keyValue = 'keyValue' in error && typeof error.keyValue === 'object' && error.keyValue
+    ? error.keyValue
+    : {};
+
+  if ('phone' in keyPattern || 'phone' in keyValue) return 'phone';
+  if ('email' in keyPattern || 'email' in keyValue) return 'email';
+  return undefined;
+}
+
+function throwDuplicateUserConflict(error: unknown): never {
+  const field = getDuplicateUserField(error);
+  if (field === 'phone') throw new ConflictException('Phone number already exists.');
+  if (field === 'email') throw new ConflictException('Email address already exists.');
+  throw error;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -51,20 +75,28 @@ export class UsersService {
   async create(dto: CreateUserDto, actorId: string) {
     const existing = await this.userModel.findOne({ email: dto.email.toLowerCase() });
     if (existing) throw new ConflictException('user.email_taken');
+    if (dto.phone && await this.userModel.findOne({ phone: dto.phone })) {
+      throw new ConflictException('Phone number already exists.');
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.userModel.create({
-      name: dto.name,
-      email: dto.email.toLowerCase(),
-      phone: dto.phone,
-      passwordHash,
-      role: new Types.ObjectId(dto.roleId),
-      department: dto.departmentId ? new Types.ObjectId(dto.departmentId) : undefined,
-      reportsTo: dto.reportsToId ? new Types.ObjectId(dto.reportsToId) : undefined,
-      preferredLanguage: dto.preferredLanguage ?? 'en',
-      createdBy: new Types.ObjectId(actorId),
-    });
+    let user: UserDocument;
+    try {
+      user = await this.userModel.create({
+        name: dto.name,
+        email: dto.email.toLowerCase(),
+        phone: dto.phone,
+        passwordHash,
+        role: new Types.ObjectId(dto.roleId),
+        department: dto.departmentId ? new Types.ObjectId(dto.departmentId) : undefined,
+        reportsTo: dto.reportsToId ? new Types.ObjectId(dto.reportsToId) : undefined,
+        preferredLanguage: dto.preferredLanguage ?? 'en',
+        createdBy: new Types.ObjectId(actorId),
+      });
+    } catch (error: unknown) {
+      throwDuplicateUserConflict(error);
+    }
 
     if (dto.departmentId) {
       await this.chatGroups.addDepartmentMember(dto.departmentId, String(user._id));
@@ -82,6 +114,14 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto, actorId: string) {
+    if (dto.phone) {
+      const existingPhone = await this.userModel.findOne({
+        phone: dto.phone,
+        _id: { $ne: new Types.ObjectId(id) },
+      });
+      if (existingPhone) throw new ConflictException('Phone number already exists.');
+    }
+
     const existingUser = dto.departmentId !== undefined
       ? await this.userModel.findById(id).select('department')
       : null;
@@ -99,7 +139,12 @@ export class UsersService {
     if (dto.isActive !== undefined) update.isActive = dto.isActive;
     if (dto.fcmToken !== undefined) update.fcmToken = dto.fcmToken;
 
-    const user = await this.userModel.findByIdAndUpdate(id, update, { new: true });
+    let user: UserDocument | null;
+    try {
+      user = await this.userModel.findByIdAndUpdate(id, update, { new: true });
+    } catch (error: unknown) {
+      throwDuplicateUserConflict(error);
+    }
     if (!user) throw new NotFoundException('user.not_found');
 
     if (existingUser) {

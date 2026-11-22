@@ -114,7 +114,7 @@ export default function ProjectDetailPage({ params }: Props) {
   });
 
   const { data: allUsers = [] } = useQuery<TeamMember[]>({
-    queryKey: ['users'],
+    queryKey: ['users', 'active-project-assignees'],
     queryFn: () => apiClient.get('/users/for-chat').then((r) => r.data),
   });
 

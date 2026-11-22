@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   CLIENTS_READ: 'clients:read',
   CLIENTS_CREATE: 'clients:create',
   CLIENTS_EDIT: 'clients:edit',
+  CLIENTS_DELETE: 'clients:delete',
 
   // Projects
   PROJECTS_READ_ALL: 'projects:read_all',

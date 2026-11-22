@@ -4,11 +4,13 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { User, UserSchema } from './schemas/user.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { ChatGroupsModule } from '../chat-groups/chat-groups.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     ActivityLogModule,
+    ChatGroupsModule,
   ],
   providers: [UsersService],
   controllers: [UsersController],

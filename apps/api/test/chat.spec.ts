@@ -35,6 +35,10 @@ const mockMessageModel = {
   aggregate: jest.fn(),
 };
 
+const mockDepartmentModel = {
+  findById: jest.fn(),
+};
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('ChatGroupsService', () => {
@@ -47,6 +51,7 @@ describe('ChatGroupsService', () => {
         ChatGroupsService,
         { provide: getModelToken('ChatGroup'), useValue: mockGroupModel },
         { provide: getModelToken('Message'), useValue: mockMessageModel },
+        { provide: getModelToken('Department'), useValue: mockDepartmentModel },
       ],
     }).compile();
 
@@ -183,6 +188,42 @@ describe('ChatGroupsService', () => {
       expect(result).toBeDefined();
     });
 
+    describe('addDepartmentMember', () => {
+      it('adds an employee to the existing department group', async () => {
+        const deptId = new Types.ObjectId().toHexString();
+        const group = makeGroup({ channel: `dept:${deptId}`, type: 'department' });
+        mockGroupModel.findOne.mockResolvedValue(group);
+        mockGroupModel.findByIdAndUpdate.mockResolvedValue(group);
+
+        await service.addDepartmentMember(deptId, userId);
+
+        const [updatedGroupId, update] = mockGroupModel.findByIdAndUpdate.mock.calls[0];
+        expect(String(updatedGroupId)).toBe(String(group._id));
+        expect(String(update.$addToSet.members)).toBe(userId);
+      });
+
+      it('creates the department group if missing before adding the employee', async () => {
+        const deptId = new Types.ObjectId().toHexString();
+        const group = makeGroup({ channel: `dept:${deptId}`, type: 'department' });
+        mockGroupModel.findOne.mockResolvedValue(null);
+        mockDepartmentModel.findById.mockReturnValue({
+          select: jest.fn().mockReturnThis(),
+          lean: jest.fn().mockResolvedValue({ name: 'Design' }),
+        });
+        mockGroupModel.create.mockResolvedValue(group);
+        mockGroupModel.findByIdAndUpdate.mockResolvedValue(group);
+
+        await service.addDepartmentMember(deptId, userId);
+
+        expect(mockGroupModel.create).toHaveBeenCalledWith(expect.objectContaining({
+          name: 'Design',
+          type: 'department',
+          channel: `dept:${deptId}`,
+        }));
+        expect(mockGroupModel.findByIdAndUpdate).toHaveBeenCalled();
+      });
+    });
+
     it('returns existing group without creating a duplicate', async () => {
       const deptId = new Types.ObjectId().toHexString();
       const existing = makeGroup({ channel: `dept:${deptId}`, type: 'department' });
@@ -236,6 +277,38 @@ describe('ChatGroupsService', () => {
         String(group._id),
         { $pull: { members: expect.any(Types.ObjectId) } },
       );
+    });
+
+    it('allows admins with user edit permission to remove department members', async () => {
+      const targetId = new Types.ObjectId().toHexString();
+      const actorId = new Types.ObjectId().toHexString();
+      const group = makeGroup({ type: 'department', members: [new Types.ObjectId(targetId)] });
+      mockGroupModel.findById.mockResolvedValue(group);
+      mockGroupModel.findByIdAndUpdate.mockResolvedValue(group);
+
+      await service.removeMember(
+        String(group._id),
+        targetId,
+        actorId,
+        ['users:edit'],
+      );
+
+      expect(mockGroupModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        String(group._id),
+        { $pull: { members: new Types.ObjectId(targetId) } },
+      );
+    });
+
+    it('prevents non-admins from removing other department members', async () => {
+      const targetId = new Types.ObjectId().toHexString();
+      const actorId = new Types.ObjectId().toHexString();
+      const group = makeGroup({ type: 'department', members: [new Types.ObjectId(targetId)] });
+      mockGroupModel.findById.mockResolvedValue(group);
+
+      await expect(
+        service.removeMember(String(group._id), targetId, actorId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockGroupModel.findByIdAndUpdate).not.toHaveBeenCalled();
     });
   });
 

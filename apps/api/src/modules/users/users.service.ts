@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 export { CreateUserDto, UpdateUserDto };
 
 @Injectable()
@@ -17,6 +18,7 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private activityLog: ActivityLogService,
+    private chatGroups: ChatGroupsService,
   ) {}
 
   async findAll(query: { departmentId?: string; isActive?: boolean } = {}) {
@@ -64,6 +66,10 @@ export class UsersService {
       createdBy: new Types.ObjectId(actorId),
     });
 
+    if (dto.departmentId) {
+      await this.chatGroups.addDepartmentMember(dto.departmentId, String(user._id));
+    }
+
     await this.activityLog.record({
       actor: actorId,
       action: 'user.created',
@@ -76,6 +82,13 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto, actorId: string) {
+    const existingUser = dto.departmentId !== undefined
+      ? await this.userModel.findById(id).select('department')
+      : null;
+    if (dto.departmentId !== undefined && !existingUser) {
+      throw new NotFoundException('user.not_found');
+    }
+
     const update: Record<string, unknown> = {};
     if (dto.name !== undefined) update.name = dto.name;
     if (dto.phone !== undefined) update.phone = dto.phone;
@@ -88,6 +101,19 @@ export class UsersService {
 
     const user = await this.userModel.findByIdAndUpdate(id, update, { new: true });
     if (!user) throw new NotFoundException('user.not_found');
+
+    if (existingUser) {
+      const previousDepartmentId = existingUser.department ? String(existingUser.department) : undefined;
+      const nextDepartmentId = dto.departmentId || undefined;
+      if (previousDepartmentId !== nextDepartmentId) {
+        if (previousDepartmentId) {
+          await this.chatGroups.removeDepartmentMember(previousDepartmentId, id);
+        }
+        if (nextDepartmentId) {
+          await this.chatGroups.addDepartmentMember(nextDepartmentId, id);
+        }
+      }
+    }
 
     await this.activityLog.record({
       actor: actorId,

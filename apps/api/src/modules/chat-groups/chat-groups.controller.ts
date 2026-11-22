@@ -61,9 +61,9 @@ export class ChatGroupsController {
   removeMember(
     @Param('id') id: string,
     @Param('userId') userId: string,
-    @Request() req: { user: { _id: string } },
+    @Request() req: { user: { _id: string; rolePermissions?: string[] } },
   ) {
-    return this.service.removeMember(id, userId, req.user._id);
+    return this.service.removeMember(id, userId, req.user._id, req.user.rolePermissions ?? []);
   }
 
   @Patch(':id/join')

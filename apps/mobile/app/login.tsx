@@ -16,10 +16,12 @@ import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
 import { Toast, useToast } from '../src/components/Toast';
 
-function decodeJwtSub(token: string): string | null {
+function decodeJwtPayload(token: string): { sub?: string; mustChangePassword?: boolean } | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.sub ?? null;
+    const encoded = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+    if (!encoded) return null;
+    const padded = encoded + '='.repeat((4 - encoded.length % 4) % 4);
+    return JSON.parse(atob(padded)) as { sub?: string; mustChangePassword?: boolean };
   } catch {
     return null;
   }
@@ -45,20 +47,21 @@ export default function LoginScreen() {
         userId?: string;
         accessToken?: string;
         refreshToken?: string;
-      }>('/auth/login', { email, password });
+      }>('/auth/login', { identifier: email, password });
 
       if (res.data.requiresMfa) {
         setMfaRequired(true);
         setUserId(res.data.userId!);
       } else {
-        dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken!, userId: decodeJwtSub(res.data.accessToken!) ?? undefined }));
+        const payload = decodeJwtPayload(res.data.accessToken!);
+        dispatch(setAuth({ accessToken: res.data.accessToken!, refreshToken: res.data.refreshToken!, userId: payload?.sub }));
         // expo-notifications is native-only — skip on web
         if (Platform.OS !== 'web') {
           import('../src/services/notifications.service').then(({ registerForPushNotifications }) => {
             registerForPushNotifications().catch(() => {});
           });
         }
-        router.replace('/(app)/projects');
+        router.replace(payload?.mustChangePassword ? '/change-password' : '/(app)/projects');
       }
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -87,8 +90,9 @@ export default function LoginScreen() {
         '/auth/mfa/verify',
         { userId, token: mfaToken },
       );
-      dispatch(setAuth({ accessToken: res.data.accessToken, refreshToken: res.data.refreshToken, userId: decodeJwtSub(res.data.accessToken) ?? undefined }));
-      router.replace('/(app)/projects');
+      const payload = decodeJwtPayload(res.data.accessToken);
+      dispatch(setAuth({ accessToken: res.data.accessToken, refreshToken: res.data.refreshToken, userId: payload?.sub }));
+      router.replace(payload?.mustChangePassword ? '/change-password' : '/(app)/projects');
     } catch {
       showToast('Invalid MFA token. Please try again.', 'error');
     } finally {

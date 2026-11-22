@@ -79,6 +79,17 @@ function AppTabs() {
   );
 }
 
+function needsPasswordChange(token: string): boolean {
+  try {
+    const encoded = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+    if (!encoded) return false;
+    const padded = encoded + '='.repeat((4 - encoded.length % 4) % 4);
+    return JSON.parse(atob(padded)).mustChangePassword === true;
+  } catch {
+    return false;
+  }
+}
+
 export default function AppLayout() {
   const token = useSelector((s: RootState) => s.auth.accessToken);
   const wasConnected = useRef<boolean | null>(null);
@@ -101,6 +112,7 @@ export default function AppLayout() {
   }, []);
 
   if (!token) return <Redirect href="/login" />;
+  if (needsPasswordChange(token)) return <Redirect href="/change-password" />;
 
   return (
     <View style={styles.root}>

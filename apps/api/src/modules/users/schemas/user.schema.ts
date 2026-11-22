@@ -18,6 +18,9 @@ export class User {
   @Prop({ required: true, select: false })
   passwordHash: string;
 
+  @Prop({ default: false })
+  mustChangePassword: boolean;
+
   @Prop({ type: Types.ObjectId, ref: 'Role', required: true })
   role: Types.ObjectId;
 

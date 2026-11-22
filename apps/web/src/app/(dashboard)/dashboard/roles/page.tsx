@@ -16,7 +16,7 @@ interface Role {
 }
 
 const PERMISSION_GROUPS: { label: string; color: string; slugs: string[] }[] = [
-  { label: 'Users',          color: 'bg-indigo-50 text-indigo-700 border-indigo-200',   slugs: ['users:read', 'users:create', 'users:edit', 'users:delete'] },
+  { label: 'Users',          color: 'bg-indigo-50 text-indigo-700 border-indigo-200',   slugs: ['users:read', 'users:create', 'users:edit', 'users:delete', 'users:reset_password'] },
   { label: 'Roles',          color: 'bg-violet-50 text-violet-700 border-violet-200',   slugs: ['roles:read', 'roles:create', 'roles:edit', 'roles:delete'] },
   { label: 'Departments',    color: 'bg-sky-50 text-sky-700 border-sky-200',             slugs: ['departments:read', 'departments:create', 'departments:edit', 'departments:delete'] },
   { label: 'Clients',        color: 'bg-teal-50 text-teal-700 border-teal-200',          slugs: ['clients:read', 'clients:create', 'clients:edit'] },
@@ -34,7 +34,7 @@ const PERMISSION_GROUPS: { label: string; color: string; slugs: string[] }[] = [
 ];
 
 const SLUG_LABEL: Record<string, string> = {
-  'users:read': 'View users',            'users:create': 'Create users',      'users:edit': 'Edit users',          'users:delete': 'Delete users',
+  'users:read': 'View users',            'users:create': 'Create users',      'users:edit': 'Edit users',          'users:delete': 'Delete users', 'users:reset_password': 'Reset passwords',
   'roles:read': 'View roles',            'roles:create': 'Create roles',      'roles:edit': 'Edit roles',          'roles:delete': 'Delete roles',
   'departments:read': 'View',            'departments:create': 'Create',      'departments:edit': 'Edit',          'departments:delete': 'Delete',
   'clients:read': 'View clients',        'clients:create': 'Add clients',     'clients:edit': 'Edit clients',

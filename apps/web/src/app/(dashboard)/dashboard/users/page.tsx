@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
-import { UserPlus, Pencil, UserX, UserCheck, X, Users, ShieldAlert } from 'lucide-react';
+import { UserPlus, Pencil, UserX, UserCheck, X, Users, ShieldAlert, KeyRound } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -24,10 +24,11 @@ interface User {
 }
 
 const EMPTY_FORM = {
-  name: '', email: '', phone: '', password: '',
+  name: '', email: '', phone: '', password: '', passwordConfirmation: '',
   roleId: '', departmentId: '', reportsToId: '', preferredLanguage: 'en' as 'en' | 'ta',
 };
 type FormState = typeof EMPTY_FORM;
+const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$/;
 
 function roleName(r: Role | string | undefined): string {
   if (!r) return '—';
@@ -63,6 +64,7 @@ export default function UsersPage() {
   const canCreateUsers = hasPermission(PERMISSIONS.USERS_CREATE);
   const canEditUsers = hasPermission(PERMISSIONS.USERS_EDIT);
   const canDeleteUsers = hasPermission(PERMISSIONS.USERS_DELETE);
+  const canResetPasswords = hasPermission(PERMISSIONS.USERS_RESET_PASSWORD);
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
@@ -71,6 +73,12 @@ export default function UsersPage() {
   const [err, setErr] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
+  const [resettingUser, setResettingUser] = useState<User | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState('');
+  const [resetComplete, setResetComplete] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -118,6 +126,7 @@ export default function UsersPage() {
       email: u.email,
       phone: u.phone ?? '',
       password: '',
+      passwordConfirmation: '',
       roleId: typeof u.role === 'object' ? u.role._id : (u.role ?? ''),
       departmentId: typeof u.department === 'object' ? (u.department?._id ?? '') : (u.department ?? ''),
       reportsToId: '',
@@ -149,8 +158,13 @@ export default function UsersPage() {
         errors.password = 'Password is required for new employees.';
       } else if (form.password.length < 8) {
         errors.password = 'Password must be at least 8 characters.';
+      } else if (form.password.length > 128) {
+        errors.password = 'Password must not exceed 128 characters.';
       } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.password)) {
         errors.password = 'Password must include an uppercase letter, a lowercase letter, and a number.';
+      }
+      if (form.passwordConfirmation !== form.password) {
+        errors.passwordConfirmation = 'Passwords do not match.';
       }
     } else {
       if (form.email.trim() && !emailRegex.test(form.email.trim())) {
@@ -194,6 +208,7 @@ export default function UsersPage() {
           preferredLanguage: form.preferredLanguage,
         });
       }
+
       qc.invalidateQueries({ queryKey: ['users'] });
       setShowModal(false);
     } catch (e: unknown) {
@@ -201,6 +216,41 @@ export default function UsersPage() {
       setErr(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to save. Please try again.'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openResetPassword(user: User) {
+    setResettingUser(user);
+    setResetPassword('');
+    setResetPasswordConfirmation('');
+    setResetComplete(false);
+    setResetError('');
+  }
+
+  async function handleResetPassword() {
+    if (!resettingUser) return;
+    if (!PASSWORD_POLICY.test(resetPassword)) {
+      setResetError('Password must be 8–128 characters and include an uppercase letter, a lowercase letter, and a number.');
+      return;
+    }
+    if (resetPasswordConfirmation !== resetPassword) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+
+    setResetting(true);
+    setResetError('');
+    try {
+      await apiClient.post(
+        `/users/${resettingUser._id}/reset-password`,
+        { password: resetPassword, confirmPassword: resetPasswordConfirmation },
+      );
+      setResetComplete(true);
+    } catch (e: unknown) {
+      const raw = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setResetError(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to reset password. Please try again.'));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -298,13 +348,22 @@ export default function UsersPage() {
                       {u.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="w-[260px] px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       {canEditUsers && <button
                         onClick={() => openEdit(u)}
                         className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>}
+                      {canResetPasswords && <button
+                        onClick={() => openResetPassword(u)}
+                        type="button"
+                        title={`Reset password for ${u.name}`}
+                        aria-label={`Reset password for ${u.name}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-200 text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                      >
+                        <KeyRound className="h-4 w-4" />
                       </button>}
                       {u.isActive ? (
                         canDeleteUsers && <button
@@ -365,6 +424,99 @@ export default function UsersPage() {
         </div>
       )}
 
+      {canResetPasswords && resettingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Reset password for {resettingUser.name}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  The employee must choose a new password before accessing the workspace.
+                </p>
+              </div>
+              {!resetComplete && (
+                <button
+                  type="button"
+                  onClick={() => setResettingUser(null)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                  aria-label="Close reset password dialog"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {resetComplete ? (
+              <div role="status" className="space-y-3">
+                <p className="text-sm text-emerald-700">Password reset successfully. The employee must change it when they sign in.</p>
+                <button
+                  type="button"
+                  onClick={() => setResettingUser(null)}
+                  className="w-full px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div>
+                    <label className={labelCls}>New password</label>
+                    <input
+                      type="password"
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      maxLength={128}
+                      autoComplete="new-password"
+                      className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Confirm new password</label>
+                    <input
+                      type="password"
+                      value={resetPasswordConfirmation}
+                      onChange={(e) => setResetPasswordConfirmation(e.target.value)}
+                      maxLength={128}
+                      autoComplete="new-password"
+                      className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">Use 8–128 characters with at least one uppercase letter, one lowercase letter, and one number.</p>
+                </div>
+
+                {resetError && (
+                  <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {resetError}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setResettingUser(null)}
+                    disabled={resetting}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={resetting}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {resetting ? 'Resetting…' : 'Reset password'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {showModal && (editing ? canEditUsers : canCreateUsers) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-16 px-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mb-8">
@@ -390,11 +542,18 @@ export default function UsersPage() {
                 </div>
 
                 {!editing && (
-                  <div className="col-span-2">
-                    <label className={labelCls}>Password *</label>
-                    <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Enter password" autoComplete="new-password" className={inputCls('password')} />
-                    {fieldErr('password')}
-                  </div>
+                  <>
+                    <div className="col-span-2">
+                      <label className={labelCls}>Initial password *</label>
+                      <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Enter initial password" autoComplete="new-password" maxLength={128} className={inputCls('password')} />
+                      {fieldErr('password')}
+                    </div>
+                    <div className="col-span-2">
+                      <label className={labelCls}>Confirm password *</label>
+                      <input type="password" value={form.passwordConfirmation} onChange={(e) => set('passwordConfirmation', e.target.value)} placeholder="Confirm initial password" autoComplete="new-password" maxLength={128} className={inputCls('passwordConfirmation')} />
+                      {fieldErr('passwordConfirmation')}
+                    </div>
+                  </>
                 )}
 
                 <div>

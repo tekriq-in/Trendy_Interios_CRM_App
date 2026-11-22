@@ -43,8 +43,12 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       client.data.name = payload.name ?? payload.email;
 
       // Auto-join approver room so client.replied notifications reach MD/GM
-      const user = await this.userModel.findById(payload.sub).select('role').lean();
-      if (user?.role) {
+      const user = await this.userModel.findById(payload.sub).select('role isActive mustChangePassword').lean();
+      if (!user?.isActive || user.mustChangePassword) {
+        client.disconnect();
+        return;
+      }
+      if (user.role) {
         const role = await this.roleModel.findById(user.role).select('permissions').lean();
         if (role?.permissions?.includes(PERMISSIONS.APPROVALS_DECIDE)) {
           client.join('role:approver');
@@ -57,6 +61,21 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(_client: Socket) {}
 
+  private async canUseChat(client: Socket): Promise<boolean> {
+    const userId = client.data.userId;
+    if (typeof userId !== 'string') {
+      client.disconnect();
+      return false;
+    }
+
+    const user = await this.userModel.findById(userId).select('isActive mustChangePassword').lean();
+    if (!user?.isActive || user.mustChangePassword) {
+      client.disconnect();
+      return false;
+    }
+    return true;
+  }
+
   emitMessageUpdated(message: Record<string, unknown>) {
     if (this.server && typeof message.channel === 'string') {
       this.server.to(message.channel).emit('message_updated', message);
@@ -68,7 +87,8 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('join_channel')
-  handleJoinChannel(@ConnectedSocket() client: Socket, @MessageBody() channel: string) {
+  async handleJoinChannel(@ConnectedSocket() client: Socket, @MessageBody() channel: string) {
+    if (!await this.canUseChat(client)) return;
     client.join(channel);
     return { event: 'joined', data: channel };
   }
@@ -90,7 +110,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       mediaUrl?: string;
     },
   ) {
-    if (!client.data.userId) return;
+    if (!await this.canUseChat(client)) return;
 
     // Parse @mentions: match @Name patterns
     const mentionHandles = (payload.body.match(/@([\w\s]+?)(?=\s|$|@)/g) ?? [])
@@ -142,7 +162,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { channel: string; messageId: string },
   ) {
-    if (!client.data.userId) return;
+    if (!await this.canUseChat(client)) return;
     await this.messageModel.updateMany(
       { channel: payload.channel, 'readBy.user': { $ne: client.data.userId } },
       { $push: { readBy: { user: client.data.userId, readAt: new Date() } } },

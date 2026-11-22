@@ -12,6 +12,8 @@ import * as speakeasy from 'speakeasy';
 import * as qrcode from 'qrcode';
 import { ConfigService } from '@nestjs/config';
 import { User, UserDocument } from '../users/schemas/user.schema';
+import { ChangePasswordDto } from '../users/dto/user.dto';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +21,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
     private config: ConfigService,
+    private activityLog: ActivityLogService,
   ) {}
 
   async login(identifier: string, password: string) {
@@ -134,14 +137,64 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(user: { _id: unknown; email: string; name?: string; role?: { name: string } | string; department?: { _id: string | object; name?: string } | null }) {
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('Password confirmation does not match.');
+    }
+
+    const user = await this.userModel.findById(userId).select('+passwordHash').lean();
+    if (!user) throw new UnauthorizedException('auth.invalid_token');
+
+    const currentPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!currentPasswordValid) throw new UnauthorizedException('auth.invalid_credentials');
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password must be different from the current password.');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const updatedUser = await this.userModel.findByIdAndUpdate(
+      userId,
+      { passwordHash, mustChangePassword: false, refreshTokens: [] },
+      { new: true },
+    )
+      .populate<{ role: { _id: string; permissions: string[]; name: string } }>('role', 'permissions name')
+      .populate<{ department: { _id: string; name: string } | null }>('department', 'name')
+      .lean();
+
+    if (!updatedUser) throw new UnauthorizedException('auth.invalid_token');
+
+    await this.activityLog.record({
+      actor: userId,
+      action: 'user.password_changed',
+      entity: 'users',
+      entityId: userId,
+    });
+
+    return this.generateTokens(updatedUser);
+  }
+
+  private async generateTokens(user: {
+    _id: unknown;
+    email: string;
+    name?: string;
+    role?: { name: string } | string;
+    department?: { _id: string | object; name?: string } | null;
+    mustChangePassword?: boolean;
+  }) {
     const sub = String(user._id);
     const roleName = typeof user.role === 'object' && user.role ? user.role.name : (user.role ?? 'Staff');
     const dept = user.department && typeof user.department === 'object' && 'name' in user.department && user.department.name
       ? { id: String(user.department._id), name: user.department.name }
       : null;
     const accessToken = this.jwtService.sign(
-      { sub, email: user.email, name: user.name ?? '', role: roleName, department: dept },
+      {
+        sub,
+        email: user.email,
+        name: user.name ?? '',
+        role: roleName,
+        department: dept,
+        mustChangePassword: user.mustChangePassword === true,
+      },
       { expiresIn: this.config.get('JWT_ACCESS_EXPIRES', '15m') },
     );
     const refreshToken = this.jwtService.sign(

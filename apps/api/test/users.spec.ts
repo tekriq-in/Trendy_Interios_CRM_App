@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
+import * as bcrypt from 'bcrypt';
 import { UsersService } from '../src/modules/users/users.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
 import { ChatGroupsService } from '../src/modules/chat-groups/chat-groups.service';
@@ -7,6 +8,7 @@ import { ChatGroupsService } from '../src/modules/chat-groups/chat-groups.servic
 const mockUserModel = {
   findOne: jest.fn(),
   find: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
   create: jest.fn(),
 };
 
@@ -82,5 +84,35 @@ describe('UsersService', () => {
     expect(filter.isActive).toBe(true);
     expect(String(filter._id)).toBe(employeeId);
     expect(select).toHaveBeenCalledWith('_id name department isActive');
+  });
+
+  it('stores reset passwords as hashes and requires a password change', async () => {
+    mockUserModel.findByIdAndUpdate.mockResolvedValue({ _id: 'target-user' });
+
+    const result = await service.resetPassword(
+      'target-user',
+      { password: 'StrongPass123', confirmPassword: 'StrongPass123' },
+      actorId,
+    );
+
+    const [, update] = mockUserModel.findByIdAndUpdate.mock.calls[0];
+    expect(update.mustChangePassword).toBe(true);
+    expect(update.refreshTokens).toEqual([]);
+    expect(update.passwordHash).not.toBe('StrongPass123');
+    await expect(bcrypt.compare('StrongPass123', update.passwordHash)).resolves.toBe(true);
+    expect(result).toEqual({ success: true });
+    expect(mockActivityLog.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'user.password_reset',
+    }));
+  });
+
+  it('rejects a reset when the entered password confirmation differs', async () => {
+    await expect(service.resetPassword(
+      'target-user',
+      { password: 'StrongPass123', confirmPassword: 'DifferentPass123' },
+      actorId,
+    )).rejects.toThrow('Password confirmation does not match.');
+
+    expect(mockUserModel.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 });

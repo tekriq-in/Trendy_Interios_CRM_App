@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UsersService, CreateUserDto, UpdateUserDto } from './users.service';
+import { UsersService, CreateUserDto, ResetPasswordDto, UpdateUserDto } from './users.service';
 import { PERMISSIONS } from '@ti/shared';
 
 @Controller('users')
@@ -77,6 +77,16 @@ export class UsersController {
     @CurrentUser() actor: { _id: string },
   ) {
     return this.usersService.update(id, dto, actor._id);
+  }
+
+  @Post(':id/reset-password')
+  @RequirePermissions(PERMISSIONS.USERS_RESET_PASSWORD)
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.usersService.resetPassword(id, dto, actor._id);
   }
 
   @Delete(':id')

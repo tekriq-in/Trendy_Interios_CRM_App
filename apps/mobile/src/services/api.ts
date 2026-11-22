@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { router } from 'expo-router';
 import { store } from '../store';
 import { clearAuth } from '../store/slices/auth.slice';
 
@@ -17,6 +18,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    if (err.response?.status === 403 && err.response?.data?.message === 'auth.password_change_required') {
+      router.replace('/change-password');
+      return Promise.reject(err);
+    }
     if (err.response?.status === 401) {
       store.dispatch(clearAuth());
     }

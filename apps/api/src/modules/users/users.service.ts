@@ -9,10 +9,10 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { CreateUserDto, ResetPasswordDto, UpdateUserDto } from './dto/user.dto';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 import { PERMISSIONS } from '@ti/shared';
-export { CreateUserDto, UpdateUserDto };
+export { CreateUserDto, ResetPasswordDto, UpdateUserDto };
 
 function getDuplicateUserField(error: unknown): 'phone' | 'email' | undefined {
   if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 11000) {
@@ -182,6 +182,32 @@ export class UsersService {
     });
 
     return this.findById(id);
+  }
+
+  async resetPassword(id: string, dto: ResetPasswordDto, actorId: string) {
+    if (!dto.password || !dto.confirmPassword) {
+      throw new BadRequestException('Password and password confirmation are required.');
+    }
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Password confirmation does not match.');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const user = await this.userModel.findByIdAndUpdate(
+      id,
+      { passwordHash, mustChangePassword: true, refreshTokens: [] },
+      { new: true },
+    );
+    if (!user) throw new NotFoundException('user.not_found');
+
+    await this.activityLog.record({
+      actor: actorId,
+      action: 'user.password_reset',
+      entity: 'users',
+      entityId: id,
+    });
+
+    return { success: true };
   }
 
   async deactivate(id: string, actorId: string) {

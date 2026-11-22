@@ -24,10 +24,13 @@ const KIND_LABELS: Record<string, string> = {
 function buildPrompt(dto: GenerateMessageDto): string {
   const lang = dto.language === 'ta' ? 'Tamil' : 'English';
   const kindLabel = KIND_LABELS[dto.updateKind] ?? dto.updateKind;
+  const closing = dto.language === 'ta'
+    ? '— டீம் ட்ரெண்டி இன்டீரியோஸ்'
+    : '— Team Trendy Interios';
   return `You are a professional customer communication assistant for Trendy Interios, an interior design company in Chennai, India.
 
 Write a polite, warm WhatsApp message in ${lang} to send to the client. Keep it under 140 words.
-When Tamil is requested, write the entire message in natural Tamil using Tamil script. Translate the staff notes into Tamil; do not copy English sentences from the notes into the message. Proper names and project names may remain as written.
+When Tamil is requested, write every sentence and the closing in natural Tamil using Tamil script. Translate the staff notes into Tamil; do not copy English sentences from the notes into the message. Only proper names and project names may remain as written.
 
 Details:
 - Client name: ${dto.clientName}
@@ -39,7 +42,7 @@ Rules:
 - Address the client by name
 - Be professional yet warm (Chennai business tone)
 - Do not invent dates or promises not in the staff notes
-- End the message with "— Team Trendy Interios"
+- End the message with "${closing}"
 - Plain text only (no markdown, no asterisks for bold)
 - Output only the message, nothing else`;
 }
@@ -179,7 +182,10 @@ export class MessageGeneratorService {
       body: JSON.stringify({
         model: 'qwen/qwen3.8-27b',
         messages: [
-          { role: 'system', content: 'You are a professional customer communication assistant.' },
+          {
+            role: 'system',
+            content: 'You are a professional customer communication assistant. Follow the requested output language exactly.',
+          },
           { role: 'user', content: prompt },
         ],
         max_completion_tokens: 300,

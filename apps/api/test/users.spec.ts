@@ -17,6 +17,20 @@ const mockActivityLog = {
 };
 
 const mockChatGroups = {};
+const deletionModelNames = [
+  'Role',
+  'Project',
+  'Task',
+  'TIDocument',
+  'Handover',
+  'Blocker',
+  'Approval',
+  'PurchaseItem',
+  'ShadeCardEntry',
+  'ChatGroup',
+  'Message',
+  'SlaSettings',
+];
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -26,6 +40,10 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: getModelToken('User'), useValue: mockUserModel },
+        ...deletionModelNames.map((name) => ({
+          provide: getModelToken(name),
+          useValue: {},
+        })),
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: ChatGroupsService, useValue: mockChatGroups },
       ],

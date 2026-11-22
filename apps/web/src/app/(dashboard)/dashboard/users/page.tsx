@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
-import { UserPlus, Pencil, UserX, UserCheck, X, Users, ShieldAlert, KeyRound } from 'lucide-react';
+import { UserPlus, Pencil, UserX, UserCheck, X, Users, ShieldAlert, KeyRound, Trash2 } from 'lucide-react';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -73,6 +73,7 @@ export default function UsersPage() {
   const [err, setErr] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [resettingUser, setResettingUser] = useState<User | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState('');
@@ -88,6 +89,19 @@ export default function UsersPage() {
   const sortedUsers = [...users].sort(
     (a, b) => Number(b.isActive) - Number(a.isActive),
   );
+  const hasDeletableEmployees = users.some(
+    (user) => roleName(user.role).toUpperCase() !== 'MD',
+  );
+
+  function confirmDeleteAll() {
+    const confirmed = window.confirm(
+      'Permanently delete ALL employees except the MD admin account, including the General Manager, department heads, and inactive employees? All chat groups and message history (direct, project, department, and custom) will be permanently cleared. Employee-linked operational data will also be deleted. Shared projects will remain with assignments removed. Immutable audit history and Google Drive files will be retained. This cannot be undone.',
+    );
+    if (!confirmed) return;
+
+    setDeleteError('');
+    deleteAllMut.mutate();
+  }
 
   const { data: roles = [] } = useQuery<Role[]>({
     queryKey: ['roles'],
@@ -102,8 +116,20 @@ export default function UsersPage() {
   });
 
   const deactivateMut = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/users/${id}`),
+    mutationFn: (id: string) => apiClient.patch(`/users/${id}/deactivate`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setConfirmDeactivate(null); },
+  });
+
+  const deleteAllMut = useMutation({
+    mutationFn: () => apiClient.delete('/users'),
+    onSuccess: () => {
+      setDeleteError('');
+      void qc.invalidateQueries();
+    },
+    onError: (error: unknown) => {
+      const raw = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setDeleteError(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to permanently delete employees. Some prior deletions may have completed; refresh and retry.'));
+    },
   });
 
   const reactivateMut = useMutation({
@@ -286,15 +312,35 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Employees</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage staff accounts and role assignments.</p>
         </div>
-        {canCreateUsers && <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-          <UserPlus className="w-4 h-4" /> Add Employee
-        </button>}
+        <div className="flex items-center gap-3">
+          {canDeleteUsers && hasDeletableEmployees && (
+            <button
+              type="button"
+              onClick={confirmDeleteAll}
+              disabled={deleteAllMut.isPending}
+              aria-label={deleteAllMut.isPending ? 'Deleting all employees' : 'Delete all employees permanently'}
+              title={deleteAllMut.isPending ? 'Deleting all employees…' : 'Delete all employees permanently'}
+              className="flex items-center justify-center bg-red-600 text-white p-2.5 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+          {canCreateUsers && <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+            <UserPlus className="w-4 h-4" /> Add Employee
+          </button>}
+        </div>
       </div>
+
+      {deleteError && (
+        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {deleteError}
+        </p>
+      )}
 
       {isLoading ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

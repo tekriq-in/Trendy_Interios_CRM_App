@@ -3,15 +3,29 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './schemas/user.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { CreateUserDto, ResetPasswordDto, UpdateUserDto } from './dto/user.dto';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 import { PERMISSIONS } from '@ti/shared';
+import { Role, RoleDocument } from '../roles/schemas/role.schema';
+import { Project, ProjectDocument } from '../projects/schemas/project.schema';
+import { Task, TaskDocument } from '../tasks/schemas/task.schema';
+import { TIDocument, DocumentDoc } from '../documents/schemas/document.schema';
+import { Handover, HandoverDocument } from '../handovers/schemas/handover.schema';
+import { Blocker, BlockerDocument } from '../blockers/schemas/blocker.schema';
+import { Approval, ApprovalDocument } from '../approvals/schemas/approval.schema';
+import { PurchaseItem, PurchaseItemDocument } from '../purchase-items/schemas/purchase-item.schema';
+import { ShadeCardEntry, ShadeCardEntryDocument } from '../shade-card/schemas/shade-card.schema';
+import { ChatGroup, ChatGroupDocument } from '../chat-groups/chat-group.schema';
+import { Message, MessageDocument } from '../messages/messages.schema';
+import { SlaSettings, SlaSettingsDocument } from '../sla/schemas/sla-settings.schema';
 export { CreateUserDto, ResetPasswordDto, UpdateUserDto };
 
 function getDuplicateUserField(error: unknown): 'phone' | 'email' | undefined {
@@ -42,6 +56,18 @@ function throwDuplicateUserConflict(error: unknown): never {
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Role.name) private roleModel: Model<RoleDocument>,
+    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
+    @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
+    @InjectModel(TIDocument.name) private documentModel: Model<DocumentDoc>,
+    @InjectModel(Handover.name) private handoverModel: Model<HandoverDocument>,
+    @InjectModel(Blocker.name) private blockerModel: Model<BlockerDocument>,
+    @InjectModel(Approval.name) private approvalModel: Model<ApprovalDocument>,
+    @InjectModel(PurchaseItem.name) private purchaseItemModel: Model<PurchaseItemDocument>,
+    @InjectModel(ShadeCardEntry.name) private shadeCardModel: Model<ShadeCardEntryDocument>,
+    @InjectModel(ChatGroup.name) private chatGroupModel: Model<ChatGroupDocument>,
+    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(SlaSettings.name) private slaSettingsModel: Model<SlaSettingsDocument>,
     private activityLog: ActivityLogService,
     private chatGroups: ChatGroupsService,
   ) {}
@@ -222,6 +248,199 @@ export class UsersService {
     });
 
     return { success: true };
+  }
+
+  async deleteAllPermanently(actorId: string) {
+    const adminRoles = await this.roleModel
+      .find()
+      .select('_id name')
+      .lean();
+    const protectedRoleIds = adminRoles
+      .filter((role) => role.name.toUpperCase() === 'MD')
+      .map((role) => role._id);
+    const employees = await this.userModel
+      .find({
+        role: { $nin: protectedRoleIds },
+        _id: { $ne: new Types.ObjectId(actorId) },
+      })
+      .select('_id')
+      .lean();
+
+    await this.messageModel.deleteMany({});
+    await this.chatGroupModel.deleteMany({});
+
+    for (const employee of employees) {
+      await this.deletePermanently(String(employee._id), actorId);
+    }
+
+    return { success: true, deletedCount: employees.length };
+  }
+
+  async deletePermanently(id: string, actorId: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('user.not_found');
+    if (id === actorId) throw new ForbiddenException('user.cannot_delete_self');
+
+    const userId = new Types.ObjectId(id);
+    const db = this.userModel.db.db;
+    if (!db) throw new ServiceUnavailableException('database.unavailable');
+
+    const hello = await db.admin().command({ hello: 1 });
+    const supportsTransactions = Boolean(
+      hello.setName || hello.msg === 'isdbgrid' || hello.serviceId,
+    );
+    const session = await this.userModel.db.startSession();
+
+    const deleteEmployeeData = async (transactionSession?: ClientSession) => {
+      const options = transactionSession ? { session: transactionSession } : {};
+      const userQuery = this.userModel.findById(userId).select('role');
+      if (transactionSession) userQuery.session(transactionSession);
+      const employee = await userQuery.lean();
+      if (!employee) throw new NotFoundException('user.not_found');
+
+      const roleQuery = this.roleModel.findById(employee.role).select('name');
+      if (transactionSession) roleQuery.session(transactionSession);
+      const role = await roleQuery.lean();
+      if (role && role.name.toUpperCase() === 'MD') {
+        throw new ForbiddenException('user.cannot_delete_admin');
+      }
+
+      const documentsQuery = this.documentModel
+        .find({ $or: [{ uploadedBy: userId }, { createdBy: userId }] })
+        .select('_id');
+      if (transactionSession) documentsQuery.session(transactionSession);
+      const documents = await documentsQuery.lean();
+      const documentIds = documents.map((document) => document._id);
+
+      const groupsQuery = this.chatGroupModel
+        .find({ members: userId })
+        .select('_id channel type');
+      if (transactionSession) groupsQuery.session(transactionSession);
+      const groups = await groupsQuery.lean();
+      const directGroups = groups.filter((group) => group.type === 'individual');
+      const directGroupIds = directGroups.map((group) => group._id);
+      const directChannels = directGroups.map((group) => group.channel);
+      const userHexId = userId.toHexString();
+      const directMessageChannel = new RegExp(
+        `^dm:(?:${userHexId}_[0-9a-f]{24}|[0-9a-f]{24}_${userHexId})$`,
+        'i',
+      );
+
+      await this.taskModel.deleteMany(
+        { $or: [{ assignedTo: userId }, { createdBy: userId }] },
+        options,
+      );
+      await this.documentModel.deleteMany(
+        { _id: { $in: documentIds } },
+        options,
+      );
+      await this.handoverModel.deleteMany(
+        {
+          $or: [
+            { raisedBy: userId },
+            { confirmedBy: userId },
+            { acceptedBy: userId },
+            { createdBy: userId },
+            ...(documentIds.length > 0 ? [{ proofFiles: { $in: documentIds } }] : []),
+          ],
+        },
+        options,
+      );
+      await this.blockerModel.deleteMany({
+        $or: [
+          { raisedBy: userId },
+          { slaTriggeredBy: userId },
+          { resolvedBy: userId },
+          { createdBy: userId },
+        ],
+      }, options);
+      await this.approvalModel.deleteMany(
+        {
+          $or: [
+            { requestedBy: userId },
+            { approver: userId },
+            { createdBy: userId },
+            ...(documentIds.length > 0 ? [{ linkedDocument: { $in: documentIds } }] : []),
+          ],
+        },
+        options,
+      );
+      await this.purchaseItemModel.deleteMany({ createdBy: userId }, options);
+      await this.shadeCardModel.deleteMany({ createdBy: userId }, options);
+      await this.messageModel.deleteMany(
+        {
+          $or: [
+            { sender: userId },
+            { channel: { $in: directChannels } },
+            { channel: { $regex: directMessageChannel } },
+          ],
+        },
+        options,
+      );
+      await this.messageModel.updateMany(
+        {
+          $or: [
+            { mentions: userId },
+            { 'readBy.user': userId },
+            { attachments: { $in: documentIds } },
+          ],
+        },
+        {
+          $pull: {
+            mentions: userId,
+            readBy: { user: userId },
+            attachments: { $in: documentIds },
+          },
+        },
+        options,
+      );
+
+      if (directGroupIds.length > 0) {
+        await this.chatGroupModel.deleteMany({ _id: { $in: directGroupIds } }, options);
+      }
+      await this.chatGroupModel.updateMany(
+        { members: userId },
+        { $pull: { members: userId } },
+        options,
+      );
+      await this.projectModel.updateMany(
+        { assignedTeam: userId },
+        { $pull: { assignedTeam: userId } },
+        options,
+      );
+      await this.slaSettingsModel.updateMany(
+        { updatedBy: userId },
+        { $unset: { updatedBy: '' } },
+        options,
+      );
+      await this.userModel.updateMany(
+        { reportsTo: userId },
+        { $unset: { reportsTo: '', createdBy: '' } },
+        options,
+      );
+
+      for (const collection of Object.values(this.userModel.db.collections)) {
+        if (collection.collectionName === 'activitylogs') continue;
+        await collection.updateMany(
+          { createdBy: userId },
+          { $unset: { createdBy: '' } },
+          options,
+        );
+      }
+
+      const result = await this.userModel.deleteOne({ _id: userId }, options);
+      if (result.deletedCount !== 1) throw new NotFoundException('user.not_found');
+    };
+
+    try {
+      if (supportsTransactions) {
+        await session.withTransaction(() => deleteEmployeeData(session));
+      } else {
+        await deleteEmployeeData();
+      }
+      return { success: true };
+    } finally {
+      await session.endSession();
+    }
   }
 
   async getOrgChart() {

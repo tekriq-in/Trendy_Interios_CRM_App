@@ -89,10 +89,17 @@ export class UsersController {
     return this.usersService.resetPassword(id, dto, actor._id);
   }
 
-  @Delete(':id')
+  @Patch(':id/deactivate')
   @RequirePermissions(PERMISSIONS.USERS_DELETE)
   @HttpCode(HttpStatus.OK)
   deactivate(@Param('id') id: string, @CurrentUser() actor: { _id: string }) {
     return this.usersService.deactivate(id, actor._id);
+  }
+
+  @Delete()
+  @RequirePermissions(PERMISSIONS.USERS_DELETE)
+  @HttpCode(HttpStatus.OK)
+  deleteAllPermanently(@CurrentUser() actor: { _id: string }) {
+    return this.usersService.deleteAllPermanently(actor._id);
   }
 }

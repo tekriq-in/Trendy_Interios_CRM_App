@@ -7,3 +7,6 @@ dist
 coverage
 .turbo
 *.log
+
+# Hand-off files written by the multi-agent pipeline (docs/agents). Never commit.
+.agent-run/

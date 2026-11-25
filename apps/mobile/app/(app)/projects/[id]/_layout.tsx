@@ -5,7 +5,7 @@ export default function ProjectDetailLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="chat" />
-      <Stack.Screen name="purchase-items" options={{ title: 'Purchase Items', headerShown: true }} />
+      <Stack.Screen name="purchase-items" />
     </Stack>
   );
 }

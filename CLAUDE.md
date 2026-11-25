@@ -161,3 +161,5 @@ EXPO_PUBLIC_WS_URL=http://localhost:3001
 - **Never add `Co-Authored-By: Claude` (or any Claude authorship line) to commit messages.** Commits are authored by the developer only.
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `security:`, `docs:`, `refactor:`, `chore:`).
 - Never commit `.env` files or secrets.
+- **Never open (or retarget) a pull request against `dev` or `main`.** Claude does not have the rights to, and must not try. Open pull requests into `dev-env` only (`gh pr create --base dev-env`); a developer promotes `dev-env` to `dev` and `main`. Pushing feature branches is fine.
+- `dev-env` is not covered by CI (`ci.yml` runs only for `dev` and `main`), so run type-check and tests locally before opening a PR into it and say so in the PR description.

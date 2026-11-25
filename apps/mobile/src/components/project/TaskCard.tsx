@@ -17,6 +17,8 @@ interface TaskCardProps {
   busy?: boolean;
   /** Hide the action buttons for users without the tasks:edit permission. */
   canEdit?: boolean;
+  /** Shown above the title when the card is listed outside its project (Tasks tab). */
+  projectTitle?: string;
   onStart: () => void;
   onDone: () => void;
   onPhoto: () => void;
@@ -40,7 +42,7 @@ function formatDue(iso: string | undefined, locale: string): string | null {
  * Buttons are full 52dp and labelled, never icon-only, so they are readable
  * and tappable with a work-worn hand.
  */
-export function TaskCard({ task, busy = false, canEdit = true, onStart, onDone, onPhoto }: TaskCardProps) {
+export function TaskCard({ task, busy = false, canEdit = true, projectTitle, onStart, onDone, onPhoto }: TaskCardProps) {
   const { t, i18n } = useTranslation();
   const due = formatDue(task.dueDate, i18n.language);
   const assignee = typeof task.assignedTo === 'object' ? task.assignedTo?.name : undefined;
@@ -49,6 +51,11 @@ export function TaskCard({ task, busy = false, canEdit = true, onStart, onDone, 
 
   return (
     <Card style={styles.card}>
+      {projectTitle ? (
+        <Text style={styles.project} numberOfLines={1}>
+          {projectTitle}
+        </Text>
+      ) : null}
       <View style={styles.top}>
         <Text style={[styles.title, isDone && styles.titleDone]}>{task.title}</Text>
         <Badge label={t(`status.${task.status}`, { defaultValue: task.status })} tone={taskStatusTone[task.status] ?? 'neutral'} />
@@ -80,6 +87,7 @@ export function TaskCard({ task, busy = false, canEdit = true, onStart, onDone, 
 
 const styles = StyleSheet.create({
   card: { marginBottom: spacing.md },
+  project: { color: colors.primary, fontSize: 13, fontWeight: '800', marginBottom: 6 },
   top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
   title: { ...font.h3, flex: 1 },
   titleDone: { color: colors.textSubtle, textDecorationLine: 'line-through' },

@@ -2,23 +2,21 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { useCallback, useMemo, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { PERMISSIONS } from '@ti/shared';
 import { api, describeApiError } from '../../../../src/services/api';
-import { uploadProjectPhoto } from '../../../../src/services/uploads';
-import { enqueue } from '../../../../src/store/slices/offline-queue.slice';
 import { usePermissions } from '../../../../src/hooks/usePermissions';
-import { pickPhoto } from '../../../../src/utils/photo';
+import { useTaskActions } from '../../../../src/hooks/useTaskActions';
 import { Toast, useToast } from '../../../../src/components/Toast';
-import { Badge, Button, Card, ErrorState, ProgressBar, ScreenHeader, Sheet, TextField } from '../../../../src/components/ui';
+import { Badge, Button, Card, ErrorState, ProgressBar, ScreenHeader } from '../../../../src/components/ui';
 import { StageStepper, type StageDept } from '../../../../src/components/project/StageStepper';
 import { TaskCard, type TaskRow } from '../../../../src/components/project/TaskCard';
 import { HandoverItem, type HandoverRow } from '../../../../src/components/project/HandoverItem';
 import { RaiseHandoverSheet } from '../../../../src/components/project/RaiseHandoverSheet';
 import { RaiseBlockerSheet } from '../../../../src/components/project/RaiseBlockerSheet';
+import { RejectHandoverSheet } from '../../../../src/components/project/RejectHandoverSheet';
 import { colors, font, radius, spacing } from '../../../../src/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -42,7 +40,6 @@ interface DocRow {
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, i18n } = useTranslation();
-  const dispatch = useDispatch();
   const { can } = usePermissions();
   const { toast, show: showToast, hide: hideToast } = useToast();
 
@@ -59,8 +56,6 @@ export default function ProjectDetailScreen() {
   const [showHandover, setShowHandover] = useState(false);
   const [showBlocker, setShowBlocker] = useState(false);
   const [rejecting, setRejecting] = useState<HandoverRow | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectError, setRejectError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -112,59 +107,14 @@ export default function ProjectDetailScreen() {
       : d.toLocaleDateString(i18n.language === 'ta' ? 'ta-IN' : 'en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
   }, [project?.targetDate, i18n.language]);
 
-  // ---- task actions -------------------------------------------------------
+  // ---- task actions (shared with the Tasks tab) ---------------------------
 
-  /** Updates a task. With no signal, it is saved to the offline queue and shown as updated. */
-  async function updateTask(taskId: string, status: 'in_progress' | 'done') {
-    setBusyId(taskId);
-    const apply = () => setTasks((prev) => prev.map((x) => (x._id === taskId ? { ...x, status } : x)));
-    try {
-      await api.patch(`/tasks/${taskId}`, { status });
-      apply();
-    } catch (err) {
-      if (describeApiError(err, '') === 'offline') {
-        dispatch(enqueue({ type: 'task_update', payload: { taskId, data: { status } } }));
-        apply();
-        showToast(t('task.savedOffline'), 'info');
-      } else {
-        showToast(describeApiError(err, t('common.checkConnection')), 'error');
-      }
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  /** Photo for the whole project (not a specific task). */
-  async function addProjectPhoto(taskId?: string) {
-    const result = await pickPhoto('camera');
-    if (result.status === 'denied') {
-      showToast(t('handover.cameraDenied'), 'error');
-      return;
-    }
-    if (result.status !== 'ok') return;
-    if (taskId) setBusyId(taskId);
-    try {
-      const docId = await uploadProjectPhoto(result.photo, id, currentStage?._id);
-      if (taskId) await api.patch(`/tasks/${taskId}`, { photoId: docId });
-      showToast(t('project.photoSaved'), 'success');
-      void load();
-    } catch (err) {
-      if (describeApiError(err, '') === 'offline') {
-        // Queue it as a project photo; it uploads when the signal is back.
-        dispatch(
-          enqueue({
-            type: 'document_upload',
-            payload: { uri: result.photo.uri, mimeType: result.photo.mimeType, fileName: result.photo.fileName, projectId: id, type: 'photo' },
-          }),
-        );
-        showToast(t('project.photoQueued'), 'info');
-      } else {
-        showToast(describeApiError(err, t('common.checkConnection')), 'error');
-      }
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const taskActions = useTaskActions({
+    onStatusChanged: (taskId, status) =>
+      setTasks((prev) => prev.map((x) => (x._id === taskId ? { ...x, status } : x))),
+    onReload: () => void load(),
+    notify: showToast,
+  });
 
   // ---- handover actions ---------------------------------------------------
 
@@ -175,25 +125,6 @@ export default function ProjectDetailScreen() {
       void load();
     } catch (err) {
       showToast(describeApiError(err, t('common.checkConnection')), 'error');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function submitReject() {
-    if (!rejecting) return;
-    if (!rejectReason.trim()) {
-      setRejectError(t('handover.rejectRequired'));
-      return;
-    }
-    setBusyId(rejecting._id);
-    try {
-      await api.patch(`/handovers/${rejecting._id}/reject`, { reason: rejectReason.trim() });
-      setRejecting(null);
-      setRejectReason('');
-      void load();
-    } catch (err) {
-      setRejectError(describeApiError(err, t('common.checkConnection')));
     } finally {
       setBusyId(null);
     }
@@ -262,7 +193,7 @@ export default function ProjectDetailScreen() {
         {/* Quick actions */}
         <Text style={styles.section}>{t('project.actions')}</Text>
         <View style={styles.grid}>
-          {canUpload ? <Action icon="camera" label={t('project.addPhoto')} onPress={() => addProjectPhoto()} /> : null}
+          {canUpload ? <Action icon="camera" label={t('project.addPhoto')} onPress={() => taskActions.addPhoto({ projectId: id, departmentId: currentStage?._id })} /> : null}
           {canRaiseBlocker ? <Action icon="warning" label={t('project.raiseBlocker')} onPress={() => setShowBlocker(true)} tone="danger" /> : null}
           <Action icon="chatbubbles" label={t('project.chat')} onPress={() => router.push(`/projects/${id}/chat` as never)} />
           <Action icon="cart" label={t('project.items')} onPress={() => router.push(`/projects/${id}/purchase-items` as never)} />
@@ -279,11 +210,11 @@ export default function ProjectDetailScreen() {
             <TaskCard
               key={task._id}
               task={task}
-              busy={busyId === task._id}
+              busy={taskActions.busyId === task._id}
               canEdit={canEditTasks}
-              onStart={() => updateTask(task._id, 'in_progress')}
-              onDone={() => updateTask(task._id, 'done')}
-              onPhoto={() => addProjectPhoto(task._id)}
+              onStart={() => taskActions.setStatus(task._id, 'in_progress')}
+              onDone={() => taskActions.setStatus(task._id, 'done')}
+              onPhoto={() => taskActions.addPhoto({ projectId: id, departmentId: currentStage?._id, taskId: task._id })}
             />
           ))
         )}
@@ -313,11 +244,7 @@ export default function ProjectDetailScreen() {
               busy={busyId === h._id}
               onConfirm={() => handoverAction(h, 'confirm')}
               onAccept={() => handoverAction(h, 'accept')}
-              onReject={() => {
-                setRejecting(h);
-                setRejectReason('');
-                setRejectError('');
-              }}
+              onReject={() => setRejecting(h)}
             />
           ))
         )}
@@ -367,19 +294,7 @@ export default function ProjectDetailScreen() {
         projectId={id}
         onRaised={() => showToast(t('blocker.raised'), 'success')}
       />
-      <Sheet visible={rejecting !== null} title={t('handover.reject')} onClose={() => setRejecting(null)}>
-        <TextField
-          label={t('handover.rejectReason')}
-          value={rejectReason}
-          onChangeText={(v) => {
-            setRejectReason(v);
-            if (rejectError) setRejectError('');
-          }}
-          error={rejectError}
-          multiline
-        />
-        <Button label={t('handover.reject')} variant="danger" onPress={submitReject} loading={busyId === rejecting?._id} />
-      </Sheet>
+      <RejectHandoverSheet handover={rejecting} onClose={() => setRejecting(null)} onRejected={() => void load()} />
     </View>
   );
 }

@@ -110,6 +110,7 @@ export default function HomeScreen() {
             tone={waitingHandovers > 0 ? 'warning' : 'success'}
             value={waitingHandovers}
             label={t('home.handovers')}
+            onPress={() => router.push('/(app)/handovers')}
           />
         </View>
 

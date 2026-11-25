@@ -12,6 +12,7 @@ export interface HandoverRow {
   fromDepartment?: { name?: string };
   toDepartment?: { name?: string };
   raisedBy?: { name?: string };
+  project?: { _id?: string; title?: string };
   proofFiles?: unknown[];
   createdAt?: string;
 }
@@ -21,6 +22,8 @@ interface HandoverItemProps {
   canConfirm: boolean;
   canAccept: boolean;
   busy?: boolean;
+  /** Show the project's name above the route (for the cross-project inbox). */
+  showProject?: boolean;
   onConfirm: () => void;
   onAccept: () => void;
   onReject: () => void;
@@ -32,12 +35,17 @@ interface HandoverItemProps {
  * (with a reason). Buttons only appear when the viewer's role allows them AND
  * the handover is in the matching state.
  */
-export function HandoverItem({ handover, canConfirm, canAccept, busy = false, onConfirm, onAccept, onReject }: HandoverItemProps) {
+export function HandoverItem({ handover, canConfirm, canAccept, busy = false, showProject = false, onConfirm, onAccept, onReject }: HandoverItemProps) {
   const { t } = useTranslation();
   const proofs = handover.proofFiles?.length ?? 0;
 
   return (
     <Card style={styles.card}>
+      {showProject && handover.project?.title ? (
+        <Text style={styles.project} numberOfLines={1}>
+          {handover.project.title}
+        </Text>
+      ) : null}
       <View style={styles.route}>
         <Text style={styles.dept} numberOfLines={1}>
           {handover.fromDepartment?.name ?? '?'}
@@ -85,6 +93,7 @@ export function HandoverItem({ handover, canConfirm, canAccept, busy = false, on
 
 const styles = StyleSheet.create({
   card: { marginBottom: spacing.md },
+  project: { color: colors.primary, fontSize: 13, fontWeight: '800', marginBottom: 6 },
   route: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dept: { ...font.h3, flexShrink: 1 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm },

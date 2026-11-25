@@ -1,362 +1,429 @@
-import {
-  View, Text, TouchableOpacity, StyleSheet, Alert,
-  ActivityIndicator, TextInput, ScrollView,
-} from 'react-native';
-import { useState, useEffect, useCallback } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
-import { api } from '../../../../src/services/api';
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
+import { PERMISSIONS } from '@ti/shared';
+import { api, describeApiError } from '../../../../src/services/api';
+import { uploadProjectPhoto } from '../../../../src/services/uploads';
 import { enqueue } from '../../../../src/store/slices/offline-queue.slice';
-import type { RootState } from '../../../../src/store';
-import type { Task } from '@ti/shared';
+import { usePermissions } from '../../../../src/hooks/usePermissions';
+import { pickPhoto } from '../../../../src/utils/photo';
+import { Toast, useToast } from '../../../../src/components/Toast';
+import { Badge, Button, Card, ErrorState, ProgressBar, ScreenHeader, Sheet, TextField } from '../../../../src/components/ui';
+import { StageStepper, type StageDept } from '../../../../src/components/project/StageStepper';
+import { TaskCard, type TaskRow } from '../../../../src/components/project/TaskCard';
+import { HandoverItem, type HandoverRow } from '../../../../src/components/project/HandoverItem';
+import { RaiseHandoverSheet } from '../../../../src/components/project/RaiseHandoverSheet';
+import { RaiseBlockerSheet } from '../../../../src/components/project/RaiseBlockerSheet';
+import { colors, font, radius, spacing } from '../../../../src/theme';
 
-type TaskPopulated = Task & { assignedTo?: { name: string } };
-interface Dept { _id: string; name: string; order: number; }
-interface Project {
-  _id: string; title: string; progressPct: number; status: string;
-  currentStage?: Dept | string;
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+interface ProjectData {
+  _id: string;
+  title: string;
+  progressPct: number;
+  targetDate?: string;
+  client?: { name?: string; phone?: string };
+  currentStage?: { _id: string; name: string } | string;
 }
-interface TIDocument { _id: string; fileName: string; driveLink: string; mimeType: string; type: string; }
-
-const STATUS_DOT: Record<string, string> = {
-  done: '#10B981', in_progress: '#3B82F6', blocked: '#EF4444', pending: '#94A3B8',
-};
+interface DocRow {
+  _id: string;
+  fileName: string;
+  driveLink: string;
+  mimeType: string;
+  type: string;
+}
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { t } = useTranslation();
-  const router = useRouter();
+  const { t, i18n } = useTranslation();
   const dispatch = useDispatch();
-  const offlineQueue = useSelector((s: RootState) => s.offlineQueue.queue);
+  const { can } = usePermissions();
+  const { toast, show: showToast, hide: hideToast } = useToast();
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<TaskPopulated[]>([]);
-  const [departments, setDepartments] = useState<Dept[]>([]);
-  const [documents, setDocuments] = useState<TIDocument[]>([]);
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [stages, setStages] = useState<StageDept[]>([]);
+  const [docs, setDocs] = useState<DocRow[]>([]);
+  const [handovers, setHandovers] = useState<HandoverRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Handover state
   const [showHandover, setShowHandover] = useState(false);
-  const [proofUri, setProofUri] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [showBlocker, setShowBlocker] = useState(false);
+  const [rejecting, setRejecting] = useState<HandoverRow | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectError, setRejectError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [projRes, tasksRes, deptsRes, docsRes] = await Promise.all([
-        api.get<Project>(`/projects/${id}`),
-        api.get<TaskPopulated[]>(`/projects/${id}/tasks`),
-        api.get<Dept[]>('/departments'),
-        api.get<TIDocument[]>('/documents', { params: { projectId: id } }),
+      const [proj, taskRes, deptRes, docRes, hoRes] = await Promise.allSettled([
+        api.get<ProjectData>(`/projects/${id}`),
+        api.get<TaskRow[]>(`/projects/${id}/tasks`),
+        api.get<StageDept[]>('/departments'),
+        api.get<DocRow[]>('/documents', { params: { projectId: id } }),
+        api.get<HandoverRow[]>('/handovers', { params: { projectId: id } }),
       ]);
-      setProject(projRes.data);
-      setTasks(tasksRes.data);
-      setDepartments(deptsRes.data.sort((a, b) => a.order - b.order));
-      setDocuments(docsRes.data);
+      // The project itself is required; the rest degrade to empty lists.
+      if (proj.status === 'rejected') throw proj.reason;
+      setProject(proj.value.data);
+      if (taskRes.status === 'fulfilled') setTasks(taskRes.value.data);
+      if (deptRes.status === 'fulfilled') setStages([...deptRes.value.data].sort((a, b) => a.order - b.order));
+      if (docRes.status === 'fulfilled') setDocs(docRes.value.data);
+      if (hoRes.status === 'fulfilled') setHandovers(hoRes.value.data);
+      setFailed(false);
     } catch {
-      // offline
+      setFailed(true);
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  async function markDone(taskId: string) {
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
+  const currentId = typeof project?.currentStage === 'object' ? project.currentStage._id : (project?.currentStage ?? '');
+  const currentIdx = stages.findIndex((s) => s._id === currentId);
+  const currentStage = stages[currentIdx];
+  const nextStage = stages[currentIdx + 1];
+  const stageName = typeof project?.currentStage === 'object' ? project.currentStage.name : currentStage?.name;
+
+  const dueFmt = useMemo(() => {
+    if (!project?.targetDate) return null;
+    const d = new Date(project.targetDate);
+    return Number.isNaN(d.getTime())
+      ? null
+      : d.toLocaleDateString(i18n.language === 'ta' ? 'ta-IN' : 'en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
+  }, [project?.targetDate, i18n.language]);
+
+  // ---- task actions -------------------------------------------------------
+
+  /** Updates a task. With no signal, it is saved to the offline queue and shown as updated. */
+  async function updateTask(taskId: string, status: 'in_progress' | 'done') {
+    setBusyId(taskId);
+    const apply = () => setTasks((prev) => prev.map((x) => (x._id === taskId ? { ...x, status } : x)));
     try {
-      await api.patch(`/tasks/${taskId}`, { status: 'done' });
-      setTasks((prev) => prev.map((t) => t._id === taskId ? { ...t, status: 'done' as const } : t));
-    } catch {
-      dispatch(enqueue({ type: 'task_update', payload: { taskId, data: { status: 'done' } } }));
-      Alert.alert('Offline', t('offline'));
-      setTasks((prev) => prev.map((t) => t._id === taskId ? { ...t, status: 'done' as const } : t));
+      await api.patch(`/tasks/${taskId}`, { status });
+      apply();
+    } catch (err) {
+      if (describeApiError(err, '') === 'offline') {
+        dispatch(enqueue({ type: 'task_update', payload: { taskId, data: { status } } }));
+        apply();
+        showToast(t('task.savedOffline'), 'info');
+      } else {
+        showToast(describeApiError(err, t('common.checkConnection')), 'error');
+      }
+    } finally {
+      setBusyId(null);
     }
   }
 
-  async function openDocument(url: string) {
-    await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
-  }
-
-  async function uploadPhoto(taskId: string) {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission required', 'Allow photo access.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    try {
-      const form = new FormData();
-      form.append('file', { uri: asset.uri, type: asset.mimeType ?? 'image/jpeg', name: asset.fileName ?? 'photo.jpg' } as unknown as Blob);
-      form.append('projectId', id);
-      form.append('type', 'photo');
-      await api.post('/documents/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      Alert.alert('Uploaded', 'Photo uploaded successfully.');
-    } catch {
-      dispatch(enqueue({ type: 'document_upload', payload: { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg', fileName: asset.fileName ?? 'photo.jpg', projectId: id, type: 'photo' } }));
-      Alert.alert('Offline', 'Photo queued for upload.');
-    }
-  }
-
-  async function pickProof() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission required', 'Allow photo access.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
-    if (!result.canceled && result.assets[0]) setProofUri(result.assets[0].uri);
-  }
-
-  async function submitHandover() {
-    if (!proofUri) { Alert.alert('Proof required', 'Take a photo as proof before raising handover.'); return; }
-
-    const currentStageId = typeof project?.currentStage === 'object' ? project.currentStage._id : project?.currentStage;
-    const currentIdx = departments.findIndex((d) => d._id === currentStageId);
-    const fromDept = departments[currentIdx];
-    const toDept = departments[currentIdx + 1];
-
-    if (!fromDept || !toDept) {
-      Alert.alert('Cannot raise handover', 'This project is already at the final stage.');
+  /** Photo for the whole project (not a specific task). */
+  async function addProjectPhoto(taskId?: string) {
+    const result = await pickPhoto('camera');
+    if (result.status === 'denied') {
+      showToast(t('handover.cameraDenied'), 'error');
       return;
     }
-
-    setSubmitting(true);
+    if (result.status !== 'ok') return;
+    if (taskId) setBusyId(taskId);
     try {
-      // 1. Upload proof photo
-      const form = new FormData();
-      form.append('file', { uri: proofUri, type: 'image/jpeg', name: 'handover-proof.jpg' } as unknown as Blob);
-      form.append('projectId', id);
-      form.append('type', 'photo');
-      const docRes = await api.post<{ _id: string }>('/documents/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-
-      // 2. Raise handover
-      await api.post('/handovers', {
-        projectId: id,
-        fromDepartmentId: fromDept._id,
-        toDepartmentId: toDept._id,
-        proofFileIds: [docRes.data._id],
-        notes: notes.trim() || undefined,
-      });
-
-      Alert.alert('Done', `Handover from ${fromDept.name} to ${toDept.name} raised successfully.`);
-      setShowHandover(false);
-      setProofUri(null);
-      setNotes('');
-    } catch {
-      Alert.alert('Error', 'Failed to raise handover. Please try again.');
+      const docId = await uploadProjectPhoto(result.photo, id, currentStage?._id);
+      if (taskId) await api.patch(`/tasks/${taskId}`, { photoId: docId });
+      showToast(t('project.photoSaved'), 'success');
+      void load();
+    } catch (err) {
+      if (describeApiError(err, '') === 'offline') {
+        // Queue it as a project photo; it uploads when the signal is back.
+        dispatch(
+          enqueue({
+            type: 'document_upload',
+            payload: { uri: result.photo.uri, mimeType: result.photo.mimeType, fileName: result.photo.fileName, projectId: id, type: 'photo' },
+          }),
+        );
+        showToast(t('project.photoQueued'), 'info');
+      } else {
+        showToast(describeApiError(err, t('common.checkConnection')), 'error');
+      }
     } finally {
-      setSubmitting(false);
+      setBusyId(null);
     }
   }
 
-  if (loading) return <View style={s.center}><ActivityIndicator color="#4F46E5" size="large" /></View>;
+  // ---- handover actions ---------------------------------------------------
 
-  const currentStageId = typeof project?.currentStage === 'object' ? project?.currentStage?._id : project?.currentStage;
-  const currentIdx = departments.findIndex((d) => d._id === currentStageId);
-  const currentDept = departments[currentIdx];
-  const nextDept = departments[currentIdx + 1];
-  const pendingCount = offlineQueue.length;
+  async function handoverAction(h: HandoverRow, action: 'confirm' | 'accept') {
+    setBusyId(h._id);
+    try {
+      await api.patch(`/handovers/${h._id}/${action}`);
+      void load();
+    } catch (err) {
+      showToast(describeApiError(err, t('common.checkConnection')), 'error');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function submitReject() {
+    if (!rejecting) return;
+    if (!rejectReason.trim()) {
+      setRejectError(t('handover.rejectRequired'));
+      return;
+    }
+    setBusyId(rejecting._id);
+    try {
+      await api.patch(`/handovers/${rejecting._id}/reject`, { reason: rejectReason.trim() });
+      setRejecting(null);
+      setRejectReason('');
+      void load();
+    } catch (err) {
+      setRejectError(describeApiError(err, t('common.checkConnection')));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // ---- render -------------------------------------------------------------
+
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <ScreenHeader title={t('common.loading')} back />
+      </View>
+    );
+  }
+
+  if (failed || !project) {
+    return (
+      <View style={styles.root}>
+        <ScreenHeader title={t('project.loadFailed')} back />
+        <ErrorState
+          title={t('common.couldNotLoad')}
+          message={`${t('common.checkConnection')}\n${t('common.serverWaking')}`}
+          retryLabel={t('common.retry')}
+          onRetry={() => {
+            setLoading(true);
+            void load();
+          }}
+        />
+      </View>
+    );
+  }
+
+  const canRaiseHandover = can(PERMISSIONS.HANDOVERS_RAISE) && !!currentStage && !!nextStage;
+  const canRaiseBlocker = can(PERMISSIONS.BLOCKERS_RAISE);
+  const canUpload = can(PERMISSIONS.DOCUMENTS_UPLOAD);
+  const canEditTasks = can(PERMISSIONS.TASKS_EDIT);
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 48 }}>
-      {pendingCount > 0 && (
-        <View style={s.offlineBanner}>
-          <Text style={s.offlineBannerText}>{pendingCount} action{pendingCount > 1 ? 's' : ''} pending sync</Text>
-        </View>
-      )}
+    <View style={styles.root}>
+      <Toast message={toast.message} kind={toast.kind} visible={toast.visible} onHide={hideToast} />
+      <ScreenHeader title={project.title} subtitle={project.client?.name} back />
 
-      {/* Header */}
-      <View style={s.topRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.projectTitle}>{project?.title ?? '…'}</Text>
-          {currentDept && <Text style={s.stageName}>{currentDept.name}</Text>}
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8, flexShrink: 0 }}>
-          <TouchableOpacity style={s.chatBtn} onPress={() => router.push(`/projects/${id}/purchase-items` as never)}>
-            <Text style={s.chatBtnText}>🛒 Items</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.chatBtn} onPress={() => router.push(`/projects/${id}/chat` as never)}>
-            <Text style={s.chatBtnText}>💬 Chat</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Progress bar */}
-      <View style={s.progressBg}>
-        <View style={[s.progressFill, { width: `${project?.progressPct ?? 0}%` as unknown as number }]} />
-      </View>
-      <Text style={s.progressLabel}>{project?.progressPct ?? 0}% complete</Text>
-
-      {/* Tasks */}
-      <Text style={s.sectionLabel}>TASKS</Text>
-      {tasks.length === 0 && <Text style={s.empty}>No tasks yet.</Text>}
-      {tasks.map((task) => (
-        <View key={task._id} style={s.taskCard}>
-          <View style={[s.statusDot, { backgroundColor: STATUS_DOT[task.status] ?? '#94A3B8' }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.taskTitle}>{task.title}</Text>
-            <Text style={s.taskSub}>{task.assignedTo?.name ?? ''} · {task.status.replace('_', ' ')}</Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* Readiness */}
+        <Card>
+          <View style={styles.rowBetween}>
+            <Text style={font.h3}>{t('projects.readiness')}</Text>
+            {stageName ? <Badge label={stageName} tone="primary" /> : null}
           </View>
-          <View style={s.taskBtns}>
-            {task.status !== 'done' && (
-              <TouchableOpacity style={s.doneBtn} onPress={() => markDone(task._id)} accessibilityLabel="Mark done">
-                <Text style={s.doneBtnText}>✓</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.photoBtn} onPress={() => uploadPhoto(task._id)} accessibilityLabel="Upload photo">
-              <Text style={s.photoBtnText}>📷</Text>
-            </TouchableOpacity>
-          </View>
+          <View style={{ height: 12 }} />
+          <ProgressBar value={project.progressPct} height={12} />
+          {dueFmt ? <Text style={styles.target}>{t('project.targetDate')}: {dueFmt}</Text> : null}
+        </Card>
+
+        {/* Stage stepper */}
+        {stages.length > 0 ? (
+          <>
+            <Text style={styles.section}>{t('project.stages')}</Text>
+            <StageStepper stages={stages} currentId={currentId} />
+          </>
+        ) : null}
+
+        {/* Quick actions */}
+        <Text style={styles.section}>{t('project.actions')}</Text>
+        <View style={styles.grid}>
+          {canUpload ? <Action icon="camera" label={t('project.addPhoto')} onPress={() => addProjectPhoto()} /> : null}
+          {canRaiseBlocker ? <Action icon="warning" label={t('project.raiseBlocker')} onPress={() => setShowBlocker(true)} tone="danger" /> : null}
+          <Action icon="chatbubbles" label={t('project.chat')} onPress={() => router.push(`/projects/${id}/chat` as never)} />
+          <Action icon="cart" label={t('project.items')} onPress={() => router.push(`/projects/${id}/purchase-items` as never)} />
         </View>
-      ))}
 
-      {/* Documents */}
-      {documents.length > 0 && (
-        <>
-          <Text style={[s.sectionLabel, { marginTop: 20 }]}>DOCUMENTS & DRAWINGS</Text>
-          {documents.map((doc) => (
-            <TouchableOpacity
-              key={doc._id}
-              style={s.docCard}
-              onPress={() => openDocument(doc.driveLink)}
-              accessibilityLabel={`View ${doc.fileName}`}
-            >
-              <View style={s.docIcon}>
-                <Text style={s.docIconText}>
-                  {doc.mimeType === 'application/pdf' || doc.fileName.endsWith('.pdf') ? '📄' : '🖼️'}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.docName} numberOfLines={1}>{doc.fileName}</Text>
-                <Text style={s.docType}>{doc.type.replace('drawing_', '').replace('_', ' ')}</Text>
-              </View>
-              <Text style={s.docViewBtn}>View</Text>
-            </TouchableOpacity>
-          ))}
-        </>
-      )}
-
-      {/* Handover section */}
-      <View style={s.sectionRow}>
-        <Text style={s.sectionLabel}>HANDOVER</Text>
-        {!showHandover && nextDept && (
-          <TouchableOpacity style={s.raiseBtn} onPress={() => setShowHandover(true)}>
-            <Text style={s.raiseBtnText}>Raise Handover</Text>
-          </TouchableOpacity>
+        {/* Tasks */}
+        <Text style={styles.section}>{t('project.tasks')}</Text>
+        {tasks.length === 0 ? (
+          <Card>
+            <Text style={styles.empty}>{t('project.noTasks')}</Text>
+          </Card>
+        ) : (
+          tasks.map((task) => (
+            <TaskCard
+              key={task._id}
+              task={task}
+              busy={busyId === task._id}
+              canEdit={canEditTasks}
+              onStart={() => updateTask(task._id, 'in_progress')}
+              onDone={() => updateTask(task._id, 'done')}
+              onPhoto={() => addProjectPhoto(task._id)}
+            />
+          ))
         )}
-        {!nextDept && <Text style={s.finalStageText}>Final stage</Text>}
-      </View>
 
-      {showHandover && nextDept && (
-        <View style={s.handoverCard}>
-          {/* From → To */}
-          <View style={s.handoverRoute}>
-            <View style={s.routePill}>
-              <Text style={s.routeLabel}>FROM</Text>
-              <Text style={s.routeName}>{currentDept?.name}</Text>
-            </View>
-            <Text style={s.routeArrow}>→</Text>
-            <View style={[s.routePill, s.routePillTo]}>
-              <Text style={[s.routeLabel, { color: '#4F46E5' }]}>TO</Text>
-              <Text style={[s.routeName, { color: '#4F46E5' }]}>{nextDept.name}</Text>
-            </View>
-          </View>
-
-          {/* Proof photo */}
-          <TouchableOpacity style={proofUri ? [s.proofBtn, s.proofBtnDone] : s.proofBtn} onPress={pickProof} accessibilityLabel="Add proof photo">
-            <Text style={proofUri ? [s.proofBtnText, s.proofBtnTextDone] : s.proofBtnText}>
-              {proofUri ? '✅ Proof photo added' : '📷 Add Proof Photo (required)'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Notes */}
-          <TextInput
-            style={s.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Notes (optional)"
-            placeholderTextColor="#94A3B8"
-            multiline
-            numberOfLines={3}
-          />
-
-          <View style={s.handoverBtns}>
-            <TouchableOpacity style={s.cancelBtn} onPress={() => { setShowHandover(false); setProofUri(null); setNotes(''); }}>
-              <Text style={s.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.submitBtn, (!proofUri || submitting) && s.submitBtnDisabled]}
-              onPress={submitHandover}
-              disabled={!proofUri || submitting}
-              accessibilityLabel="Submit handover"
-            >
-              <Text style={s.submitBtnText}>{submitting ? 'Submitting…' : 'Submit Handover'}</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Handover */}
+        <View style={styles.rowBetween}>
+          <Text style={styles.section}>{t('project.handover')}</Text>
         </View>
-      )}
-    </ScrollView>
+        {canRaiseHandover ? (
+          <View style={{ marginBottom: spacing.md }}>
+            <Button label={`${t('handover.raise')}: ${nextStage?.name ?? ''}`} icon="swap-horizontal" onPress={() => setShowHandover(true)} />
+          </View>
+        ) : !nextStage && currentStage ? (
+          <Text style={styles.final}>{t('project.finalStage')}</Text>
+        ) : null}
+        {handovers.length === 0 ? (
+          <Card>
+            <Text style={styles.empty}>{t('handover.none')}</Text>
+          </Card>
+        ) : (
+          handovers.map((h) => (
+            <HandoverItem
+              key={h._id}
+              handover={h}
+              canConfirm={can(PERMISSIONS.HANDOVERS_CONFIRM_FROM)}
+              canAccept={can(PERMISSIONS.HANDOVERS_ACCEPT_TO)}
+              busy={busyId === h._id}
+              onConfirm={() => handoverAction(h, 'confirm')}
+              onAccept={() => handoverAction(h, 'accept')}
+              onReject={() => {
+                setRejecting(h);
+                setRejectReason('');
+                setRejectError('');
+              }}
+            />
+          ))
+        )}
+
+        {/* Documents */}
+        {docs.length > 0 ? (
+          <>
+            <Text style={styles.section}>{t('project.documents')}</Text>
+            {docs.map((d) => (
+              <Card
+                key={d._id}
+                style={styles.doc}
+                onPress={() => WebBrowser.openBrowserAsync(d.driveLink)}
+                accessibilityLabel={d.fileName}
+              >
+                <View style={styles.docIcon}>
+                  <Ionicons name={d.mimeType.includes('pdf') ? 'document-text' : 'image'} size={22} color={colors.primary} />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={font.bodyStrong} numberOfLines={1}>{d.fileName}</Text>
+                  <Text style={font.caption}>{d.type.replace('drawing_', '').replace(/_/g, ' ')}</Text>
+                </View>
+                <Text style={styles.view}>{t('project.view')}</Text>
+              </Card>
+            ))}
+          </>
+        ) : null}
+      </ScrollView>
+
+      {/* Sheets */}
+      {currentStage && nextStage ? (
+        <RaiseHandoverSheet
+          visible={showHandover}
+          onClose={() => setShowHandover(false)}
+          projectId={id}
+          from={currentStage}
+          to={nextStage}
+          onRaised={() => {
+            showToast(t('handover.submitted'), 'success');
+            void load();
+          }}
+        />
+      ) : null}
+      <RaiseBlockerSheet
+        visible={showBlocker}
+        onClose={() => setShowBlocker(false)}
+        projectId={id}
+        onRaised={() => showToast(t('blocker.raised'), 'success')}
+      />
+      <Sheet visible={rejecting !== null} title={t('handover.reject')} onClose={() => setRejecting(null)}>
+        <TextField
+          label={t('handover.rejectReason')}
+          value={rejectReason}
+          onChangeText={(v) => {
+            setRejectReason(v);
+            if (rejectError) setRejectError('');
+          }}
+          error={rejectError}
+          multiline
+        />
+        <Button label={t('handover.reject')} variant="danger" onPress={submitReject} loading={busyId === rejecting?._id} />
+      </Sheet>
+    </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC', paddingHorizontal: 16, paddingTop: 56 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  offlineBanner: { backgroundColor: '#FEF3C7', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12 },
-  offlineBannerText: { color: '#92400E', fontSize: 13 },
+function Action({
+  icon,
+  label,
+  onPress,
+  tone = 'primary',
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  tone?: 'primary' | 'danger';
+}) {
+  const fg = tone === 'danger' ? colors.danger : colors.primary;
+  const bg = tone === 'danger' ? colors.dangerSoft : colors.primarySoft;
+  return (
+    <View style={styles.actionCell}>
+      <Card onPress={onPress} accessibilityLabel={label} style={styles.action}>
+        <View style={[styles.actionIcon, { backgroundColor: bg }]}>
+          <Ionicons name={icon} size={26} color={fg} />
+        </View>
+        <Text style={styles.actionLabel} numberOfLines={2}>{label}</Text>
+      </Card>
+    </View>
+  );
+}
 
-  topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
-  projectTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A', flexShrink: 1 },
-  stageName: { fontSize: 13, color: '#4F46E5', fontWeight: '600', marginTop: 2 },
-  chatBtn: { backgroundColor: '#EEF2FF', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, flexShrink: 0 },
-  chatBtnText: { color: '#4F46E5', fontWeight: '600', fontSize: 13 },
-
-  progressBg: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
-  progressFill: { height: '100%' as unknown as number, backgroundColor: '#4F46E5', borderRadius: 3 },
-  progressLabel: { fontSize: 11, color: '#94A3B8', marginBottom: 20, textAlign: 'right' },
-
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1, marginBottom: 8 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 8 },
-  raiseBtn: { backgroundColor: '#4F46E5', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-  raiseBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-  finalStageText: { fontSize: 12, color: '#10B981', fontWeight: '600' },
-  empty: { color: '#94A3B8', fontSize: 14, textAlign: 'center', marginVertical: 16 },
-
-  taskCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  statusDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  taskTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-  taskSub: { fontSize: 12, color: '#64748B', marginTop: 1, textTransform: 'capitalize' },
-  taskBtns: { flexDirection: 'row', gap: 6, flexShrink: 0 },
-  doneBtn: { width: 44, height: 44, backgroundColor: '#F0FDF4', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  doneBtnText: { fontSize: 18, color: '#10B981' },
-  photoBtn: { width: 44, height: 44, backgroundColor: '#EFF6FF', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  photoBtnText: { fontSize: 18 },
-
-  handoverCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', gap: 12 },
-  handoverRoute: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  routePill: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  routePillTo: { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF' },
-  routeLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.8, textTransform: 'uppercase' },
-  routeName: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginTop: 2 },
-  routeArrow: { fontSize: 18, color: '#94A3B8', flexShrink: 0 },
-
-  proofBtn: { paddingVertical: 14, backgroundColor: '#F1F5F9', borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed' },
-  proofBtnDone: { backgroundColor: '#F0FDF4', borderColor: '#A7F3D0', borderStyle: 'solid' },
-  proofBtnText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
-  proofBtnTextDone: { color: '#10B981' },
-
-  notesInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 12, fontSize: 14, color: '#0F172A', backgroundColor: '#F8FAFC', minHeight: 72, textAlignVertical: 'top' },
-
-  docCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  docIcon: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#EEF2FF', justifyContent: 'center' as const, alignItems: 'center' as const, flexShrink: 0 },
-  docIconText: { fontSize: 18 },
-  docName: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  docType: { fontSize: 11, color: '#64748B', marginTop: 1, textTransform: 'capitalize' },
-  docViewBtn: { color: '#4F46E5', fontWeight: '700', fontSize: 13, flexShrink: 0 },
-
-  handoverBtns: { flexDirection: 'row', gap: 10 },
-  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center' },
-  cancelBtnText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
-  submitBtn: { flex: 2, paddingVertical: 14, borderRadius: 10, backgroundColor: '#4F46E5', alignItems: 'center' },
-  submitBtnDisabled: { opacity: 0.5 },
-  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  content: { padding: spacing.lg, paddingBottom: 48 },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  section: { ...font.h2, marginTop: spacing.xl, marginBottom: spacing.md },
+  target: { ...font.caption, marginTop: spacing.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+  actionCell: { width: '50%', padding: 6 },
+  action: { alignItems: 'center', paddingVertical: spacing.lg },
+  actionIcon: { width: 52, height: 52, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  actionLabel: { ...font.bodyStrong, textAlign: 'center' },
+  empty: { ...font.body, color: colors.textSubtle, textAlign: 'center', paddingVertical: 8 },
+  final: { color: colors.success, fontSize: 15, fontWeight: '700', marginBottom: spacing.md },
+  doc: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm },
+  docIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  view: { color: colors.primary, fontWeight: '800', fontSize: 15 },
 });

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
+import { colors, radius } from '../theme';
 
 function SkeletonBox({ width, height, style }: { width: number | string; height: number; style?: object }) {
   const opacity = useRef(new Animated.Value(0.3)).current;
@@ -17,7 +18,7 @@ function SkeletonBox({ width, height, style }: { width: number | string; height:
 
   return (
     <Animated.View
-      style={[{ width: width as number, height, backgroundColor: '#E2E8F0', borderRadius: 6 }, style, { opacity }]}
+      style={[{ width: width as number, height, backgroundColor: colors.neutralSoft, borderRadius: 6 }, style, { opacity }]}
     />
   );
 }
@@ -67,21 +68,21 @@ export function SkeletonBlockerRow() {
 
 const s = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
   },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   taskRow: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 16,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,

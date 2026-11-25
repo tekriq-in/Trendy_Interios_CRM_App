@@ -10,7 +10,10 @@ type BlockerType = 'internal' | 'client_side';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  projectId: string;
+  /** Fixed project (when opened from a project screen). Omit it to let the user pick one. */
+  projectId?: string;
+  /** Projects to choose from when `projectId` is not given. */
+  projects?: { _id: string; title: string }[];
   onRaised: () => void;
 }
 
@@ -18,11 +21,16 @@ interface Props {
  * Any team can raise a blocker (SOW). It goes to the team lead and the MD/admin
  * dashboard; escalation stays manual, so nothing here triggers an SLA.
  */
-export function RaiseBlockerSheet({ visible, onClose, projectId, onRaised }: Props) {
+// A stable default: an inline `= []` is a new array every render, which would re-run the
+// reset effect below on each keystroke and wipe what the user is typing.
+const NO_PROJECTS: { _id: string; title: string }[] = [];
+
+export function RaiseBlockerSheet({ visible, onClose, projectId, projects = NO_PROJECTS, onRaised }: Props) {
   const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<BlockerType>('internal');
+  const [picked, setPicked] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,10 +40,16 @@ export function RaiseBlockerSheet({ visible, onClose, projectId, onRaised }: Pro
       setDescription('');
       setType('internal');
       setError('');
+      setPicked(projects.length === 1 ? projects[0]._id : '');
     }
-  }, [visible]);
+  }, [visible, projects]);
 
   async function submit() {
+    const targetId = projectId ?? picked;
+    if (!targetId) {
+      setError(t('tasks.pickProject'));
+      return;
+    }
     // The API requires 5 to 200 characters; check here so the message is instant and translated.
     if (title.trim().length < 5) {
       setError(t('blocker.titleMin'));
@@ -45,7 +59,7 @@ export function RaiseBlockerSheet({ visible, onClose, projectId, onRaised }: Pro
     setError('');
     try {
       await api.post('/blockers', {
-        projectId,
+        projectId: targetId,
         title: title.trim(),
         description: description.trim() || undefined,
         type,
@@ -62,6 +76,16 @@ export function RaiseBlockerSheet({ visible, onClose, projectId, onRaised }: Pro
 
   return (
     <Sheet visible={visible} title={t('blocker.raise')} onClose={onClose}>
+      {!projectId ? (
+        <>
+          <Text style={styles.label}>{t('blockers.pickProject')}</Text>
+          <View style={styles.chips}>
+            {projects.map((p) => (
+              <Chip key={p._id} label={p.title} selected={picked === p._id} onPress={() => setPicked(p._id)} />
+            ))}
+          </View>
+        </>
+      ) : null}
       <TextField label={t('blocker.title')} value={title} onChangeText={setTitle} maxLength={200} />
       <TextField
         label={`${t('blocker.description')} (${t('common.optional')})`}
@@ -85,6 +109,6 @@ export function RaiseBlockerSheet({ visible, onClose, projectId, onRaised }: Pro
 
 const styles = StyleSheet.create({
   label: { ...font.label, marginBottom: 8 },
-  chips: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   error: { color: colors.danger, fontSize: 15, fontWeight: '600', backgroundColor: colors.dangerSoft, padding: 12, borderRadius: radius.md, marginBottom: spacing.md },
 });

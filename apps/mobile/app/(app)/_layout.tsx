@@ -78,6 +78,7 @@ function AppTabs() {
       />
       {/* Reached from Home and from a project, not from the tab bar. */}
       <Tabs.Screen name="blockers/index" options={{ href: null }} />
+      <Tabs.Screen name="handovers/index" options={{ href: null }} />
     </Tabs>
   );
 }

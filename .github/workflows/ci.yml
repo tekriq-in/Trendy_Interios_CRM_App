@@ -2,9 +2,11 @@ name: CI
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, dev-env, main]
   push:
-    branches: [main] # dev pushes are verified by deploy.yml, which calls this workflow
+    # dev pushes are verified by deploy.yml, which calls this workflow. dev-env is an
+    # integration branch (it does not deploy), so its merges are verified here.
+    branches: [dev-env, main]
   workflow_call: # reused by deploy.yml so nothing ships unverified
 
 concurrency:

@@ -1,107 +1,66 @@
-import {
-  View, Text, TouchableOpacity, StyleSheet, Alert,
-  ActivityIndicator, ScrollView, TextInput, Modal,
-} from 'react-native';
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useLocalSearchParams } from 'expo-router';
-import {
-  PERMISSIONS,
-  PURCHASE_ITEM_STATUS_LABELS,
-  purchaseItemMatchKey,
-  type PurchaseItemStatus,
-} from '@ti/shared';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { PERMISSIONS, type PurchaseItemStatus } from '@ti/shared';
 import { api } from '../../../../src/services/api';
+import { usePermissions } from '../../../../src/hooks/usePermissions';
+import { Toast, useToast } from '../../../../src/components/Toast';
+import { Badge, Button, Card, Chip, EmptyState, ErrorState, HeaderIconButton, ProgressBar, ScreenHeader } from '../../../../src/components/ui';
+import { AddPurchaseItemSheet } from '../../../../src/components/purchase/AddPurchaseItemSheet';
+import { QuantitySheet } from '../../../../src/components/purchase/QuantitySheet';
+import { fmtQty, type PurchaseItem } from '../../../../src/components/purchase/purchase-shared';
+import { colors, font, radius, spacing, type Tone } from '../../../../src/theme';
 
-interface PurchaseItem {
-  _id: string;
-  slNo: number;
-  area: string;
-  item: string;
-  brand: string;
-  code: string;
-  size: string;
-  finish: string;
-  quantity: number;
-  orderedQty: number;
-  receivedQty: number;
-  yetToOrderQty: number;
-  balanceQty: number;
-  status: PurchaseItemStatus;
-}
+type Filter = 'all' | PurchaseItemStatus;
 
-type Form = { area: string; item: string; brand: string; code: string; size: string; finish: string; quantity: string };
-const EMPTY_FORM: Form = { area: '', item: '', brand: '', code: '', size: '', finish: '', quantity: '' };
-
-const FIELDS: { key: keyof Form; label: string; placeholder: string; numeric?: boolean }[] = [
-  { key: 'area', label: 'Area', placeholder: 'e.g. Kitchen' },
-  { key: 'item', label: 'Item name *', placeholder: 'e.g. Hinge' },
-  { key: 'brand', label: 'Brand', placeholder: 'e.g. Hettich' },
-  { key: 'code', label: 'Code', placeholder: 'e.g. H-35' },
-  { key: 'size', label: 'Size', placeholder: 'e.g. 35mm' },
-  { key: 'finish', label: 'Finish', placeholder: 'e.g. SS' },
-  { key: 'quantity', label: 'Quantity to add *', placeholder: '0', numeric: true },
-];
-
-const STATUS_COLORS: Record<PurchaseItemStatus, { bg: string; text: string }> = {
-  pending: { bg: '#FEF3C7', text: '#92400E' },
-  ordered: { bg: '#DBEAFE', text: '#1E40AF' },
-  received: { bg: '#D1FAE5', text: '#065F46' },
+const STATUS_TONE: Record<PurchaseItemStatus, Tone> = { pending: 'warning', ordered: 'info', received: 'success' };
+const STATUS_KEY: Record<PurchaseItemStatus, string> = {
+  pending: 'purchase.statusPending',
+  ordered: 'purchase.statusOrdered',
+  received: 'purchase.statusReceived',
 };
-
-const ERROR_TEXT: Record<string, string> = {
-  'purchase_item.received_exceeds_order': 'Received qty cannot be more than the order qty.',
-  'purchase_item.ordered_exceeds_order': 'Ordered qty cannot be more than the order qty.',
-  'purchase_item.ordered_below_received': 'Ordered qty cannot be less than what is already received.',
-  'auth.insufficient_permissions': 'You do not have permission to do this.',
-  'project.not_found': 'You do not have access to this project.',
-};
-
-function errorText(err: unknown, fallback: string): string {
-  const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-  const first = Array.isArray(msg) ? msg[0] : msg;
-  return (first && ERROR_TEXT[first]) || fallback;
-}
-
-function fmt(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000);
-}
 
 export default function PurchaseItemsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [items, setItems] = useState<PurchaseItem[]>([]);
-  const [perms, setPerms] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState<Form>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [qtyEdit, setQtyEdit] = useState<{ item: PurchaseItem; mode: 'ordered' | 'received' } | null>(null);
-  const [qtyInput, setQtyInput] = useState('');
+  const { t } = useTranslation();
+  const { can } = usePermissions();
+  const { toast, show: showToast, hide: hideToast } = useToast();
 
-  const canAdd = perms.includes(PERMISSIONS.PURCHASE_ITEMS_ADD);
-  const canManage = perms.includes(PERMISSIONS.PURCHASE_ITEMS_MANAGE);
+  const [items, setItems] = useState<PurchaseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [showAdd, setShowAdd] = useState(false);
+  const [qty, setQty] = useState<{ item: PurchaseItem; mode: 'ordered' | 'received' } | null>(null);
+
+  const canAdd = can(PERMISSIONS.PURCHASE_ITEMS_ADD);
+  const canManage = can(PERMISSIONS.PURCHASE_ITEMS_MANAGE);
 
   const load = useCallback(async () => {
     try {
-      const [itemsRes, permsRes] = await Promise.all([
-        api.get<PurchaseItem[]>(`/projects/${id}/purchase-items`),
-        api.get<{ permissions: string[] }>('/auth/permissions'),
-      ]);
-      setItems(itemsRes.data);
-      setPerms(permsRes.data.permissions);
+      const res = await api.get<PurchaseItem[]>(`/projects/${id}/purchase-items`);
+      setItems(res.data);
+      setFailed(false);
     } catch {
-      // offline — keep showing stale data
+      setFailed(true);
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  const mergeTarget = useMemo(() => {
-    if (!form.item.trim()) return null;
-    const key = purchaseItemMatchKey(form);
-    return items.find((i) => purchaseItemMatchKey(i) === key) ?? null;
-  }, [form, items]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   function replaceItem(updated: PurchaseItem) {
     setItems((prev) => {
@@ -111,261 +70,154 @@ export default function PurchaseItemsScreen() {
     });
   }
 
-  async function addItem() {
-    const qty = Number(form.quantity);
-    if (!form.item.trim()) { Alert.alert('Required', 'Item name is required.'); return; }
-    if (!qty || qty <= 0) { Alert.alert('Required', 'Enter a quantity greater than 0.'); return; }
-    setSaving(true);
-    try {
-      const res = await api.post<PurchaseItem & { merged: boolean }>(`/projects/${id}/purchase-items`, {
-        area: form.area, item: form.item, brand: form.brand, code: form.code,
-        size: form.size, finish: form.finish, quantity: qty,
-      });
-      replaceItem(res.data);
-      setShowAdd(false);
-      setForm(EMPTY_FORM);
-      if (res.data.merged) Alert.alert('Added', `Order qty for "${res.data.item}" is now ${fmt(res.data.quantity)}.`);
-    } catch (err) {
-      Alert.alert('Error', errorText(err, 'Failed to add item.'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function openQty(item: PurchaseItem, mode: 'ordered' | 'received') {
-    setQtyEdit({ item, mode });
-    setQtyInput(String(mode === 'ordered' ? item.orderedQty : item.receivedQty));
-  }
-
-  async function saveQty() {
-    if (!qtyEdit) return;
-    const { item, mode } = qtyEdit;
-    const qty = Number(qtyInput);
-    const min = mode === 'ordered' ? item.receivedQty : 0;
-    if (qtyInput.trim() === '' || Number.isNaN(qty) || qty < min || qty > item.quantity) {
-      Alert.alert('Invalid', `Enter a number from ${fmt(min)} to ${fmt(item.quantity)}.`);
-      return;
-    }
-    setSaving(true);
-    try {
-      const body = mode === 'ordered' ? { orderedQty: qty } : { receivedQty: qty };
-      const res = await api.patch<PurchaseItem>(`/purchase-items/${item._id}/progress`, body);
-      replaceItem(res.data);
-      setQtyEdit(null);
-    } catch (err) {
-      Alert.alert('Error', errorText(err, 'Failed to save.'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (loading) return <View style={s.center}><ActivityIndicator color="#4F46E5" size="large" /></View>;
-
-  const count = (st: PurchaseItemStatus) => items.filter((i) => i.status === st).length;
+  const count = useMemo(
+    () => ({
+      all: items.length,
+      pending: items.filter((i) => i.status === 'pending').length,
+      ordered: items.filter((i) => i.status === 'ordered').length,
+      received: items.filter((i) => i.status === 'received').length,
+    }),
+    [items],
+  );
+  const visible = filter === 'all' ? items : items.filter((i) => i.status === filter);
 
   return (
-    <View style={s.container}>
-      {/* Summary */}
-      <View style={s.summaryRow}>
-        {(['pending', 'ordered', 'received'] as const).map((st) => (
-          <View key={st} style={s.statCard}>
-            <Text style={[s.statCount, { color: STATUS_COLORS[st].text }]}>{count(st)}</Text>
-            <Text style={s.statLabel}>{PURCHASE_ITEM_STATUS_LABELS[st]}</Text>
-          </View>
-        ))}
-      </View>
+    <View style={styles.root}>
+      <Toast message={toast.message} kind={toast.kind} visible={toast.visible} onHide={hideToast} />
+      <ScreenHeader
+        title={t('purchase.title')}
+        subtitle={items.length ? `${count.received}/${items.length} ${t('purchase.statusReceived').toLowerCase()}` : undefined}
+        back
+        right={canAdd ? <HeaderIconButton icon="add" label={t('purchase.add')} onPress={() => setShowAdd(true)} /> : undefined}
+      />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {items.length === 0 && (
-          <Text style={s.empty}>No purchase items yet.{canAdd ? ' Tap + to add one.' : ''}</Text>
-        )}
-        {items.map((item) => {
-          const col = STATUS_COLORS[item.status];
-          const details = [item.area, item.brand, item.code, item.size, item.finish].filter(Boolean).join(' · ');
-          return (
-            <View key={item._id} style={s.card}>
-              <View style={s.cardTop}>
-                <Text style={s.itemName}>#{item.slNo}  {item.item}</Text>
-                <View style={[s.statusPill, { backgroundColor: col.bg }]}>
-                  <Text style={[s.statusText, { color: col.text }]}>{PURCHASE_ITEM_STATUS_LABELS[item.status]}</Text>
-                </View>
+      {loading ? null : failed && items.length === 0 ? (
+        <ErrorState
+          title={t('common.couldNotLoad')}
+          message={`${t('common.checkConnection')}\n${t('common.serverWaking')}`}
+          retryLabel={t('common.retry')}
+          onRetry={() => {
+            setLoading(true);
+            void load();
+          }}
+        />
+      ) : (
+        <FlatList
+          data={visible}
+          keyExtractor={(i) => i._id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            items.length > 0 ? (
+              <View style={styles.filters}>
+                <Chip label={`${t('purchase.all')} (${count.all})`} selected={filter === 'all'} onPress={() => setFilter('all')} />
+                <Chip label={`${t('purchase.statusPending')} (${count.pending})`} selected={filter === 'pending'} onPress={() => setFilter('pending')} />
+                <Chip label={`${t('purchase.statusOrdered')} (${count.ordered})`} selected={filter === 'ordered'} onPress={() => setFilter('ordered')} />
+                <Chip label={`${t('purchase.statusReceived')} (${count.received})`} selected={filter === 'received'} onPress={() => setFilter('received')} />
               </View>
-              {details ? <Text style={s.itemSub}>{details}</Text> : null}
-
-              <View style={s.qtyRow}>
-                <View style={s.qtyBox}><Text style={s.qtyNum}>{fmt(item.quantity)}</Text><Text style={s.qtyLabel}>Order</Text></View>
-                <View style={s.qtyBox}><Text style={[s.qtyNum, { color: '#1D4ED8' }]}>{fmt(item.orderedQty)}</Text><Text style={s.qtyLabel}>Ordered</Text></View>
-                <View style={s.qtyBox}><Text style={[s.qtyNum, { color: '#047857' }]}>{fmt(item.receivedQty)}</Text><Text style={s.qtyLabel}>Received</Text></View>
-                <View style={s.qtyBox}><Text style={[s.qtyNum, { color: item.balanceQty > 0 ? '#B45309' : '#94A3B8' }]}>{fmt(item.balanceQty)}</Text><Text style={s.qtyLabel}>Balance</Text></View>
-              </View>
-
-              {canManage && (
-                <View style={s.actionRow}>
-                  <TouchableOpacity style={[s.actionBtn, { backgroundColor: item.yetToOrderQty > 0 ? '#2563EB' : '#EFF6FF' }]}
-                    onPress={() => openQty(item, 'ordered')} accessibilityLabel={`How many ${item.item} are ordered`}>
-                    <Text style={[s.actionText, { color: item.yetToOrderQty > 0 ? '#fff' : '#1E40AF' }]}>
-                      {item.yetToOrderQty > 0 ? `Order (${fmt(item.yetToOrderQty)} left)` : 'Order'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.actionBtn, { backgroundColor: item.orderedQty > item.receivedQty ? '#059669' : '#ECFDF5' }]}
-                    onPress={() => openQty(item, 'received')} accessibilityLabel={`How many ${item.item} are received`}>
-                    <Text style={[s.actionText, { color: item.orderedQty > item.receivedQty ? '#fff' : '#065F46' }]}>Receive</Text>
-                  </TouchableOpacity>
+            ) : undefined
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon="cart-outline"
+              title={t('purchase.empty')}
+              message={canAdd ? t('purchase.emptyAdd') : undefined}
+              actionLabel={canAdd ? t('purchase.add') : undefined}
+              onAction={canAdd ? () => setShowAdd(true) : undefined}
+            />
+          }
+          renderItem={({ item }) => {
+            const details = [item.area, item.brand, item.code, item.size, item.finish].filter(Boolean).join(' · ');
+            const orderActive = item.yetToOrderQty > 0;
+            const receiveActive = item.orderedQty > item.receivedQty;
+            return (
+              <Card style={styles.card}>
+                <View style={styles.top}>
+                  <Text style={styles.name}>#{item.slNo}  {item.item}</Text>
+                  <Badge label={t(STATUS_KEY[item.status])} tone={STATUS_TONE[item.status]} />
                 </View>
-              )}
-            </View>
-          );
-        })}
-      </ScrollView>
+                {details ? <Text style={styles.details}>{details}</Text> : null}
 
-      {canAdd && (
-        <TouchableOpacity style={s.fab} onPress={() => { setForm(EMPTY_FORM); setShowAdd(true); }} accessibilityLabel="Add purchase item">
-          <Text style={s.fabText}>+</Text>
-        </TouchableOpacity>
+                <View style={styles.qtyRow}>
+                  <Qty label={t('purchase.qOrder')} value={fmtQty(item.quantity)} />
+                  <Qty label={t('purchase.qOrdered')} value={fmtQty(item.orderedQty)} color={colors.info} />
+                  <Qty label={t('purchase.qReceived')} value={fmtQty(item.receivedQty)} color={colors.success} />
+                  <Qty label={t('purchase.qBalance')} value={fmtQty(item.balanceQty)} color={item.balanceQty > 0 ? colors.warning : colors.textSubtle} />
+                </View>
+                <ProgressBar value={item.quantity > 0 ? (item.receivedQty / item.quantity) * 100 : 0} tone="success" showLabel={false} />
+
+                {canManage ? (
+                  <View style={styles.actions}>
+                    <View style={styles.flex}>
+                      <Button
+                        label={orderActive ? t('purchase.orderLeft', { n: fmtQty(item.yetToOrderQty) }) : t('purchase.orderBtn')}
+                        icon="cart"
+                        variant={orderActive ? 'primary' : 'secondary'}
+                        onPress={() => setQty({ item, mode: 'ordered' })}
+                      />
+                    </View>
+                    <View style={styles.flex}>
+                      <Button
+                        label={t('purchase.receiveBtn')}
+                        icon="checkmark-done"
+                        variant={receiveActive ? 'primary' : 'secondary'}
+                        onPress={() => setQty({ item, mode: 'received' })}
+                      />
+                    </View>
+                  </View>
+                ) : null}
+              </Card>
+            );
+          }}
+        />
       )}
 
-      {/* Add modal */}
-      <Modal visible={showAdd} animationType="slide" transparent onRequestClose={() => setShowAdd(false)}>
-        <View style={s.overlay}>
-          <ScrollView style={s.sheet} contentContainerStyle={{ paddingBottom: 36 }} keyboardShouldPersistTaps="handled">
-            <Text style={s.sheetTitle}>Add Purchase Item</Text>
-            {FIELDS.map((field) => (
-              <View key={field.key} style={s.fieldRow}>
-                <Text style={s.fieldLabel}>{field.label}</Text>
-                <TextInput
-                  style={s.input}
-                  value={form[field.key]}
-                  onChangeText={(v) => setForm((p) => ({ ...p, [field.key]: v }))}
-                  placeholder={field.placeholder}
-                  placeholderTextColor="#94A3B8"
-                  keyboardType={field.numeric ? 'decimal-pad' : 'default'}
-                />
-              </View>
-            ))}
-            {mergeTarget && (
-              <Text style={s.mergeHint}>
-                Matches item #{mergeTarget.slNo} — order qty will go from {fmt(mergeTarget.quantity)} to{' '}
-                {fmt(mergeTarget.quantity + (Number(form.quantity) || 0))} and the balance will be “Yet to order”.
-              </Text>
-            )}
-            <View style={s.sheetBtns}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>
-                <Text style={s.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={addItem} disabled={saving}>
-                <Text style={s.saveText}>{saving ? 'Saving…' : mergeTarget ? 'Add to existing' : 'Add item'}</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* Ordered / received qty modal */}
-      <Modal visible={!!qtyEdit} animationType="slide" transparent onRequestClose={() => setQtyEdit(null)}>
-        <View style={s.overlay}>
-          <View style={[s.sheet, { paddingBottom: 36 }]}>
-            {qtyEdit && (
-              <QtySheet
-                item={qtyEdit.item}
-                mode={qtyEdit.mode}
-                value={qtyInput}
-                onChange={setQtyInput}
-                saving={saving}
-                onCancel={() => setQtyEdit(null)}
-                onSave={saveQty}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
+      <AddPurchaseItemSheet
+        visible={showAdd}
+        projectId={id}
+        items={items}
+        onClose={() => setShowAdd(false)}
+        onSaved={(item, merged) => {
+          replaceItem(item);
+          showToast(merged ? t('purchase.merged', { item: item.item, qty: fmtQty(item.quantity) }) : t('purchase.added'), 'success');
+        }}
+      />
+      <QuantitySheet
+        item={qty?.item ?? null}
+        mode={qty?.mode ?? 'ordered'}
+        onClose={() => setQty(null)}
+        onSaved={(updated) => {
+          replaceItem(updated);
+          showToast(t('purchase.saved'), 'success');
+        }}
+      />
     </View>
   );
 }
 
-function QtySheet({ item, mode, value, onChange, saving, onCancel, onSave }: {
-  item: PurchaseItem;
-  mode: 'ordered' | 'received';
-  value: string;
-  onChange: (v: string) => void;
-  saving: boolean;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  const isOrdered = mode === 'ordered';
-  const accent = isOrdered ? '#2563EB' : '#059669';
-  const num = Number(value);
+function Qty({ label, value, color = colors.text }: { label: string; value: string; color?: string }) {
   return (
-    <>
-      <Text style={s.sheetTitle}>{isOrdered ? 'How many are ordered?' : 'How many are received?'}</Text>
-      <Text style={s.itemName}>#{item.slNo}  {item.item}</Text>
-      <View style={[s.qtyRow, { marginBottom: 14 }]}>
-        <View style={s.qtyBox}><Text style={s.qtyNum}>{fmt(item.quantity)}</Text><Text style={s.qtyLabel}>Order</Text></View>
-        <View style={[s.qtyBox, isOrdered && { borderWidth: 2, borderColor: accent }]}><Text style={s.qtyNum}>{fmt(item.orderedQty)}</Text><Text style={s.qtyLabel}>Ordered</Text></View>
-        <View style={[s.qtyBox, !isOrdered && { borderWidth: 2, borderColor: accent }]}><Text style={s.qtyNum}>{fmt(item.receivedQty)}</Text><Text style={s.qtyLabel}>Received</Text></View>
-      </View>
-      <Text style={s.fieldLabel}>{isOrdered ? 'Total ordered so far' : 'Total received so far'}</Text>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <TextInput
-          style={[s.input, { flex: 1, fontSize: 20, fontWeight: '700', textAlign: 'center' }]}
-          value={value}
-          onChangeText={onChange}
-          keyboardType="decimal-pad"
-          autoFocus
-        />
-        <TouchableOpacity style={s.allBtn} onPress={() => onChange(String(item.quantity))}>
-          <Text style={s.allText}>All ({fmt(item.quantity)})</Text>
-        </TouchableOpacity>
-      </View>
-      {!isOrdered && num > item.orderedQty && num <= item.quantity && (
-        <Text style={s.mergeHint}>Ordered qty will also be set to {fmt(num)}.</Text>
-      )}
-      <View style={s.sheetBtns}>
-        <TouchableOpacity style={s.cancelBtn} onPress={onCancel}>
-          <Text style={s.cancelText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.saveBtn, { backgroundColor: accent }, saving && { opacity: 0.6 }]} onPress={onSave} disabled={saving}>
-          <Text style={s.saveText}>{saving ? 'Saving…' : 'Save'}</Text>
-        </TouchableOpacity>
-      </View>
-    </>
+    <View style={styles.qty}>
+      <Text style={[styles.qtyNum, { color }]}>{value}</Text>
+      <Text style={styles.qtyLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  summaryRow: { flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 8 },
-  statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
-  statCount: { fontSize: 22, fontWeight: '700' },
-  statLabel: { fontSize: 11, color: '#94A3B8', marginTop: 2, fontWeight: '600' },
-  empty: { textAlign: 'center', color: '#94A3B8', fontSize: 14, marginTop: 40 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  itemName: { fontSize: 15, fontWeight: '600', color: '#0F172A', flexShrink: 1 },
-  itemSub: { fontSize: 12, color: '#64748B', marginTop: 3 },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  qtyRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  qtyBox: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 8, paddingVertical: 8, alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
-  qtyNum: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
-  qtyLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 1 },
-  actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  actionBtn: { flex: 1, minHeight: 48, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  actionText: { fontSize: 14, fontWeight: '700' },
-  fab: { position: 'absolute', bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8, elevation: 6 },
-  fabText: { color: '#fff', fontSize: 28, fontWeight: '300', lineHeight: 32 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: '90%' },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 16 },
-  fieldRow: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 12, minHeight: 48, fontSize: 15, color: '#0F172A', backgroundColor: '#F8FAFC' },
-  mergeHint: { fontSize: 12, color: '#3730A3', backgroundColor: '#EEF2FF', borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 8 },
-  allBtn: { minHeight: 48, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', justifyContent: 'center' },
-  allText: { fontSize: 13, fontWeight: '600', color: '#475569' },
-  sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  cancelBtn: { flex: 1, minHeight: 48, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' },
-  cancelText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
-  saveBtn: { flex: 2, minHeight: 48, borderRadius: 10, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
-  saveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  list: { padding: spacing.lg, paddingBottom: 40 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  card: { marginBottom: spacing.md },
+  top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
+  name: { ...font.h3, flex: 1 },
+  details: { ...font.caption, marginTop: 4 },
+  qtyRow: { flexDirection: 'row', gap: spacing.sm, marginVertical: spacing.md },
+  qty: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, paddingVertical: 10, alignItems: 'center' },
+  qtyNum: { fontSize: 20, fontWeight: '800' },
+  qtyLabel: { ...font.caption, fontSize: 12, marginTop: 2 },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
 });

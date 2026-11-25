@@ -1,171 +1,117 @@
-import { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
+import { api } from '../../../src/services/api';
 import { clearAuth } from '../../../src/store/slices/auth.slice';
+import { setLanguage, type Language } from '../../../src/store/slices/ui.slice';
 import type { RootState } from '../../../src/store';
+import { Button, Card, Chip, ScreenHeader } from '../../../src/components/ui';
+import { colors, font, spacing } from '../../../src/theme';
 
-function decodeJwt(token: string): Record<string, unknown> {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(base64));
-  } catch {
-    return {};
-  }
+function initials(name: string): string {
+  return (
+    name
+      .split(' ')
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'TI'
+  );
 }
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
   const dispatch = useDispatch();
-  const { i18n } = useTranslation();
-  const accessToken = useSelector((s: RootState) => s.auth.accessToken);
-  const currentLang = i18n.language;
+  const user = useSelector((s: RootState) => s.auth.user);
+  const refreshToken = useSelector((s: RootState) => s.auth.refreshToken);
+  const language = useSelector((s: RootState) => s.ui.language);
+  const pending = useSelector((s: RootState) => s.offlineQueue.queue.length);
 
-  const userInfo = useMemo(() => {
-    if (!accessToken) return { name: 'Staff', role: 'Employee', initials: 'ST', email: '' };
-    const payload = decodeJwt(accessToken);
-    const name = (payload.name as string) || (payload.email as string)?.split('@')[0] || 'Staff';
-    const role = (payload.role as string) || 'Employee';
-    const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
-    const email = (payload.email as string) || '';
-    return { name, role, initials, email };
-  }, [accessToken]);
-
-  function handleSignOut() {
+  async function signOut() {
+    // Best effort: revoke the refresh token on the server, but always sign out locally.
+    if (refreshToken) await api.post('/auth/logout', { refreshToken }).catch(() => {});
     dispatch(clearAuth());
     router.replace('/login');
   }
 
+  function confirmSignOut() {
+    Alert.alert(t('profile.signOutConfirmTitle'), t('profile.signOutConfirmMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('profile.signOut'), style: 'destructive', onPress: () => void signOut() },
+    ]);
+  }
+
+  const name = user?.name || 'Staff';
+  const pick = (lng: Language) => dispatch(setLanguage(lng));
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Profile</Text>
-
-      {/* Avatar + info */}
-      <View style={styles.avatarCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{userInfo.initials}</Text>
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.name} numberOfLines={1}>{userInfo.name}</Text>
-          <Text style={styles.role}>{userInfo.role}</Text>
-          {userInfo.email ? <Text style={styles.email} numberOfLines={1}>{userInfo.email}</Text> : null}
-        </View>
-      </View>
-
-      {/* Language */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>LANGUAGE</Text>
-        <View style={styles.langRow}>
-          <TouchableOpacity
-            style={[styles.langBtn, currentLang === 'en' && styles.langBtnActive]}
-            onPress={() => i18n.changeLanguage('en')}
-            accessibilityLabel="Switch to English"
-          >
-            <Text style={[styles.langBtnText, currentLang === 'en' && styles.langBtnTextActive]}>
-              English
+    <View style={styles.root}>
+      <ScreenHeader title={t('profile.title')} />
+      <ScrollView contentContainerStyle={styles.content}>
+        <Card style={styles.identity}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials(name)}</Text>
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.name} numberOfLines={1}>
+              {name}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.langBtn, currentLang === 'ta' && styles.langBtnActive]}
-            onPress={() => i18n.changeLanguage('ta')}
-            accessibilityLabel="Switch to Tamil"
-          >
-            <Text style={[styles.langBtnText, currentLang === 'ta' && styles.langBtnTextActive]}>
-              தமிழ்
-            </Text>
-          </TouchableOpacity>
+            {user?.role ? <Text style={styles.meta}>{user.role}</Text> : null}
+            {user?.departmentName ? <Text style={styles.meta}>{user.departmentName}</Text> : null}
+            {user?.email ? (
+              <Text style={styles.meta} numberOfLines={1}>
+                {user.email}
+              </Text>
+            ) : null}
+          </View>
+        </Card>
+
+        <Text style={styles.section}>{t('profile.language')}</Text>
+        <View style={styles.row}>
+          <Chip label={t('profile.english')} selected={language === 'en'} onPress={() => pick('en')} />
+          <Chip label={t('profile.tamil')} selected={language === 'ta'} onPress={() => pick('ta')} />
         </View>
-      </View>
 
-      {/* Sign out */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>ACCOUNT</Text>
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          onPress={handleSignOut}
-          accessibilityLabel="Sign out"
-        >
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
+        <Text style={styles.section}>{t('profile.sync')}</Text>
+        <Card style={styles.syncCard}>
+          <Ionicons
+            name={pending === 0 ? 'checkmark-circle' : 'sync'}
+            size={26}
+            color={pending === 0 ? colors.success : colors.info}
+          />
+          <Text style={styles.syncText}>
+            {pending === 0 ? t('profile.allSynced') : t('common.pendingSync', { count: pending })}
+          </Text>
+        </Card>
 
-      <Text style={styles.version}>Trendy Interios CRM · v0.1.0</Text>
+        <View style={{ height: spacing.xl }} />
+        <Button label={t('profile.signOut')} icon="log-out-outline" variant="danger" onPress={confirmSignOut} />
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 20,
-    paddingTop: 64,
-  },
-  heading: { fontSize: 24, fontWeight: '700', color: '#0F172A', marginBottom: 24 },
-  avatarCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 28,
-  },
+  root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  content: { padding: spacing.lg, paddingBottom: 40 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4F46E5',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: 18 },
-  name: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
-  role: { fontSize: 13, color: '#64748B', marginTop: 2 },
-  email: { fontSize: 12, color: '#94A3B8', marginTop: 3 },
-  section: { marginBottom: 28 },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#94A3B8',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  langRow: { flexDirection: 'row', gap: 12 },
-  langBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    alignItems: 'center',
-    minHeight: 52,
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  langBtnActive: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
-  langBtnText: { fontSize: 15, fontWeight: '600', color: '#64748B' },
-  langBtnTextActive: { color: '#4F46E5' },
-  signOutBtn: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    minHeight: 56,
-    justifyContent: 'center',
-  },
-  signOutText: { color: '#DC2626', fontWeight: '700', fontSize: 16 },
-  version: {
-    textAlign: 'center',
-    color: '#CBD5E1',
-    fontSize: 12,
-    position: 'absolute',
-    bottom: 32,
-    left: 0,
-    right: 0,
-  },
+  avatarText: { color: colors.onPrimary, fontSize: 22, fontWeight: '800' },
+  name: { ...font.h2 },
+  meta: { ...font.caption, marginTop: 2 },
+  section: { ...font.h3, marginTop: spacing.xl, marginBottom: spacing.md },
+  row: { flexDirection: 'row', gap: spacing.md },
+  syncCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  syncText: { ...font.bodyStrong, flex: 1 },
 });

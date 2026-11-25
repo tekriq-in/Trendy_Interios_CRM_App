@@ -1,80 +1,83 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Tabs } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { View, type ColorValue } from 'react-native';
+import { Tabs, Redirect } from 'expo-router';
 import { useSelector } from 'react-redux';
-import { Redirect } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import { syncOfflineQueue } from '../../src/services/sync.service';
 import { registerForPushNotifications } from '../../src/services/notifications.service';
 import type { RootState } from '../../src/store';
 import { SocketProvider, useSocket } from '../../src/context/socket.context';
+import { usePermissions } from '../../src/hooks/usePermissions';
+import { colors } from '../../src/theme';
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+function tabIcon(active: IconName, inactive: IconName) {
+  // The tab bar hands us a ColorValue (string | opaque native colour), but the
+  // icon wants a string, so fall back to the inactive colour for non-strings.
+  // eslint-disable-next-line react/display-name
+  return ({ focused, color }: { focused: boolean; color: ColorValue }) => (
+    <Ionicons
+      name={focused ? active : inactive}
+      size={26}
+      color={typeof color === 'string' ? color : colors.textSubtle}
+    />
+  );
+}
 
 function AppTabs() {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { unreadMap } = useSocket();
   const totalUnread = Object.values(unreadMap).reduce((sum, n) => sum + n, 0);
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#4F46E5',
-        tabBarInactiveTintColor: '#9CA3AF',
-        tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: '#E5E7EB',
-          height: 60,
-          paddingBottom: 8,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
         headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSubtle,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          height: 62 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
+        tabBarItemStyle: { minHeight: 48 },
       }}
     >
       <Tabs.Screen
+        name="home/index"
+        options={{ title: t('nav.home'), tabBarIcon: tabIcon('home', 'home-outline') }}
+      />
+      <Tabs.Screen
         name="projects"
-        options={{
-          title: 'Projects',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="folder-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
-          ),
-        }}
+        options={{ title: t('nav.projects'), tabBarIcon: tabIcon('albums', 'albums-outline') }}
       />
       <Tabs.Screen
         name="tasks/index"
-        options={{
-          title: 'My Tasks',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkmark-circle-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
-          ),
-        }}
+        options={{ title: t('nav.tasks'), tabBarIcon: tabIcon('checkbox', 'checkbox-outline') }}
       />
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Chat',
+          title: t('nav.chat'),
           tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="blockers/index"
-        options={{
-          title: 'Blockers',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="warning-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
-          ),
+          tabBarIcon: tabIcon('chatbubbles', 'chatbubbles-outline'),
         }}
       />
       <Tabs.Screen
         name="profile/index"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle-outline" size={size} color={typeof color === 'string' ? color : '#9CA3AF'} />
-          ),
-        }}
+        options={{ title: t('nav.profile'), tabBarIcon: tabIcon('person-circle', 'person-circle-outline') }}
       />
+      {/* Reached from Home and from a project, not from the tab bar. */}
+      <Tabs.Screen name="blockers/index" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -82,7 +85,7 @@ function AppTabs() {
 export default function AppLayout() {
   const token = useSelector((s: RootState) => s.auth.accessToken);
   const wasConnected = useRef<boolean | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(true);
+  usePermissions();
 
   useEffect(() => {
     registerForPushNotifications().catch(() => {});
@@ -90,12 +93,12 @@ export default function AppLayout() {
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
-      const isNowConnected = state.isConnected === true;
-      setIsConnected(isNowConnected);
-      if (isNowConnected && wasConnected.current === false) {
+      const online = state.isConnected === true && state.isInternetReachable !== false;
+      // Flush queued changes the moment we come back online.
+      if (online && wasConnected.current === false) {
         syncOfflineQueue().catch(() => {});
       }
-      wasConnected.current = isNowConnected;
+      wasConnected.current = online;
     });
     return () => unsubscribe();
   }, []);
@@ -103,30 +106,10 @@ export default function AppLayout() {
   if (!token) return <Redirect href="/login" />;
 
   return (
-    <View style={styles.root}>
-      {!isConnected && (
-        <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>Working offline — changes will sync when connected</Text>
-        </View>
-      )}
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SocketProvider>
         <AppTabs />
       </SocketProvider>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-  offlineBanner: {
-    backgroundColor: '#F59E0B',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  offlineText: {
-    color: '#78350F',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-});

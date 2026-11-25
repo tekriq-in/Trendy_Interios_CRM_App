@@ -23,6 +23,22 @@ Source of truth for branching strategy, commit conventions, and merge workflow a
 
 ---
 
+## AI agents (Claude Code)
+
+AI agents working in this repository **do not have the rights to open pull requests against `dev` or `main`**, and must never do so.
+
+| Branch | Agent may |
+|--------|-----------|
+| `main`, `dev` | Never open or retarget a PR against them, never push to them. A developer does this. |
+| `dev-env` | Open pull requests **into** it (`gh pr create --base dev-env`). |
+| feature / fix / chore branches | Create and push them. |
+
+- A developer reviews the pull request and promotes `dev-env` to `dev` and `main`.
+- `dev-env` is not covered by CI (`ci.yml` runs only for `dev` and `main`), so the agent runs type-check and tests locally and states that in the PR description.
+- Commits never carry a Claude co-author line (see `CLAUDE.md`).
+
+---
+
 ## Commit Message Convention
 
 Format follows [Conventional Commits](https://www.conventionalcommits.org/):

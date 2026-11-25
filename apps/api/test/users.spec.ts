@@ -8,8 +8,13 @@ import { ChatGroupsService } from '../src/modules/chat-groups/chat-groups.servic
 const mockUserModel = {
   findOne: jest.fn(),
   find: jest.fn(),
+  findById: jest.fn(),
   findByIdAndUpdate: jest.fn(),
   create: jest.fn(),
+};
+
+const mockRoleModel = {
+  findById: jest.fn(),
 };
 
 const mockActivityLog = {
@@ -32,6 +37,33 @@ const deletionModelNames = [
   'SlaSettings',
 ];
 
+function mockSelectedLeanQuery(result: unknown) {
+  const query = {
+    select: jest.fn(),
+    lean: jest.fn().mockResolvedValue(result),
+  };
+  query.select.mockReturnValue(query);
+  return query;
+}
+
+function configureResetLookups(
+  actorId: string,
+  targetId: string,
+  actorRoleName: string,
+  targetRoleName: string,
+) {
+  const roleNames: Record<string, string> = {
+    [`${actorId}-role`]: actorRoleName,
+    [`${targetId}-role`]: targetRoleName,
+  };
+  mockUserModel.findById.mockImplementation((userId: string) =>
+    mockSelectedLeanQuery({ role: `${userId}-role` }),
+  );
+  mockRoleModel.findById.mockImplementation((roleId: string) =>
+    mockSelectedLeanQuery({ name: roleNames[String(roleId)] }),
+  );
+}
+
 describe('UsersService', () => {
   let service: UsersService;
 
@@ -40,7 +72,8 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: getModelToken('User'), useValue: mockUserModel },
-        ...deletionModelNames.map((name) => ({
+        { provide: getModelToken('Role'), useValue: mockRoleModel },
+        ...deletionModelNames.filter((name) => name !== 'Role').map((name) => ({
           provide: getModelToken(name),
           useValue: {},
         })),
@@ -105,10 +138,12 @@ describe('UsersService', () => {
   });
 
   it('stores reset passwords as hashes and requires a password change', async () => {
+    const targetId = 'target-user';
+    configureResetLookups(actorId, targetId, 'GM', 'Employee');
     mockUserModel.findByIdAndUpdate.mockResolvedValue({ _id: 'target-user' });
 
     const result = await service.resetPassword(
-      'target-user',
+      targetId,
       { password: 'StrongPass123', confirmPassword: 'StrongPass123' },
       actorId,
     );
@@ -122,6 +157,45 @@ describe('UsersService', () => {
     expect(mockActivityLog.record).toHaveBeenCalledWith(expect.objectContaining({
       action: 'user.password_reset',
     }));
+  });
+
+  it('prevents a GM from resetting the MD password', async () => {
+    const targetId = 'md-user';
+    configureResetLookups(actorId, targetId, 'GM', 'MD');
+
+    await expect(service.resetPassword(
+      targetId,
+      { password: 'StrongPass123', confirmPassword: 'StrongPass123' },
+      actorId,
+    )).rejects.toThrow('user.cannot_reset_admin_password');
+
+    expect(mockUserModel.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(mockActivityLog.record).not.toHaveBeenCalled();
+  });
+
+  it('prevents a user from resetting their own password', async () => {
+    await expect(service.resetPassword(
+      actorId,
+      { password: 'StrongPass123', confirmPassword: 'StrongPass123' },
+      actorId,
+    )).rejects.toThrow('user.cannot_reset_own_password');
+
+    expect(mockUserModel.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(mockActivityLog.record).not.toHaveBeenCalled();
+  });
+
+  it('allows the MD to reset another administrator password', async () => {
+    const targetId = 'gm-user';
+    configureResetLookups(actorId, targetId, 'MD', 'GM');
+    mockUserModel.findByIdAndUpdate.mockResolvedValue({ _id: targetId });
+
+    await expect(service.resetPassword(
+      targetId,
+      { password: 'StrongPass123', confirmPassword: 'StrongPass123' },
+      actorId,
+    )).resolves.toEqual({ success: true });
+
+    expect(mockUserModel.findByIdAndUpdate).toHaveBeenCalled();
   });
 
   it('rejects a reset when the entered password confirmation differs', async () => {

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { Client, ClientDocument } from './schemas/client.schema';
@@ -124,11 +129,18 @@ export class ClientsService {
     return this.permanentlyDeleteClients(new Types.ObjectId(id), true);
   }
 
-  async deleteAllPermanently() {
-    return this.permanentlyDeleteClients();
+  async deleteAllPermanently(confirmation: string, actorId: string) {
+    if (confirmation !== 'DELETE ALL') {
+      throw new BadRequestException('bulk_delete.confirmation_required');
+    }
+    return this.permanentlyDeleteClients(undefined, false, actorId);
   }
 
-  private async permanentlyDeleteClients(clientId?: Types.ObjectId, requireClient = false) {
+  private async permanentlyDeleteClients(
+    clientId?: Types.ObjectId,
+    requireClient = false,
+    actorId?: string,
+  ) {
     const db = this.clientModel.db.db;
     if (!db) throw new ServiceUnavailableException('database.unavailable');
 
@@ -139,6 +151,7 @@ export class ClientsService {
     const session = await this.clientModel.db.startSession();
     let deletedClients = 0;
     let deletedProjects = 0;
+    let activityRecorded = false;
 
     const deleteClients = async (transactionSession?: ClientSession) => {
       const options = transactionSession ? { session: transactionSession } : {};
@@ -155,6 +168,17 @@ export class ClientsService {
       const projects = await projectsQuery.select('_id').lean();
       const projectIds = projects.map((project) => project._id);
       deletedProjects = projectIds.length;
+
+      if (actorId && !activityRecorded) {
+        await this.activityLog.record({
+          actor: actorId,
+          action: 'clients.bulk_delete_requested',
+          entity: 'clients',
+          entityId: new Types.ObjectId().toString(),
+          metadata: { deletedClients, deletedProjects },
+        });
+        activityRecorded = true;
+      }
 
       if (projectIds.length > 0) {
         const groupsQuery = this.chatGroupModel.find({ projectRef: { $in: projectIds } });

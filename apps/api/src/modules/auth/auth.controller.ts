@@ -47,6 +47,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @AllowPasswordChange()
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   changePassword(
     @CurrentUser() user: { _id: string },
     @Body() dto: ChangePasswordDto,

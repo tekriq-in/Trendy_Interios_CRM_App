@@ -168,16 +168,24 @@ describe('ClientsService permanent deletion', () => {
   it('permanently deletes every client, including clients with no projects', async () => {
     const clientIds = [new Types.ObjectId(), new Types.ObjectId()];
     const projectId = new Types.ObjectId();
+    const actorId = new Types.ObjectId().toString();
     models.Client.find.mockReturnValue(makeQuery(clientIds.map((_id) => ({ _id }))));
     models.Project.find.mockReturnValue(makeQuery([{ _id: projectId }]));
     models.ChatGroup.find.mockReturnValue(makeQuery([]));
 
-    await expect(service.deleteAllPermanently()).resolves.toEqual({
+    await expect(service.deleteAllPermanently('DELETE ALL', actorId)).resolves.toEqual({
       success: true,
       deletedClients: 2,
       deletedProjects: 1,
     });
 
+    expect(mockActivityLog.record).toHaveBeenCalledWith(expect.objectContaining({
+      actor: actorId,
+      action: 'clients.bulk_delete_requested',
+      metadata: { deletedClients: 2, deletedProjects: 1 },
+    }));
+    expect(mockActivityLog.record.mock.invocationCallOrder[0])
+      .toBeLessThan(models.Client.deleteMany.mock.invocationCallOrder[0]);
     expect(models.Project.find).toHaveBeenCalledWith({ client: { $in: clientIds } });
     expect(models.ClientMessage.deleteMany).toHaveBeenCalledWith(
       {
@@ -196,11 +204,12 @@ describe('ClientsService permanent deletion', () => {
 
   it('deletes clients on standalone MongoDB without starting an unsupported transaction', async () => {
     const clientId = new Types.ObjectId();
+    const actorId = new Types.ObjectId().toString();
     mockHelloCommand.mockResolvedValue({});
     models.Client.find.mockReturnValue(makeQuery([{ _id: clientId }]));
     models.Project.find.mockReturnValue(makeQuery([]));
 
-    await expect(service.deleteAllPermanently()).resolves.toEqual({
+    await expect(service.deleteAllPermanently('DELETE ALL', actorId)).resolves.toEqual({
       success: true,
       deletedClients: 1,
       deletedProjects: 0,
@@ -215,5 +224,15 @@ describe('ClientsService permanent deletion', () => {
       { $or: [{ client: { $in: [clientId] } }] },
       {},
     );
+  });
+
+  it('requires the exact bulk-delete confirmation before database access', async () => {
+    await expect(
+      service.deleteAllPermanently('delete all', new Types.ObjectId().toString()),
+    ).rejects.toThrow('bulk_delete.confirmation_required');
+
+    expect(mockStartSession).not.toHaveBeenCalled();
+    expect(models.Client.find).not.toHaveBeenCalled();
+    expect(mockActivityLog.record).not.toHaveBeenCalled();
   });
 });

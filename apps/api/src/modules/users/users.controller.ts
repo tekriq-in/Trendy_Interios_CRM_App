@@ -99,7 +99,10 @@ export class UsersController {
   @Delete()
   @RequirePermissions(PERMISSIONS.USERS_DELETE)
   @HttpCode(HttpStatus.OK)
-  deleteAllPermanently(@CurrentUser() actor: { _id: string }) {
-    return this.usersService.deleteAllPermanently(actor._id);
+  deleteAllPermanently(
+    @Body('confirm') confirmation: string,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.usersService.deleteAllPermanently(confirmation, actor._id);
   }
 }

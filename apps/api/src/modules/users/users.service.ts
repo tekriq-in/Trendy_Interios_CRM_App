@@ -211,11 +211,38 @@ export class UsersService {
   }
 
   async resetPassword(id: string, dto: ResetPasswordDto, actorId: string) {
+    const isSelfReset = id === actorId
+      || (
+        Types.ObjectId.isValid(id)
+        && Types.ObjectId.isValid(actorId)
+        && new Types.ObjectId(id).equals(new Types.ObjectId(actorId))
+      );
+    if (isSelfReset) throw new ForbiddenException('user.cannot_reset_own_password');
+
     if (!dto.password || !dto.confirmPassword) {
       throw new BadRequestException('Password and password confirmation are required.');
     }
     if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Password confirmation does not match.');
+    }
+
+    const target = await this.userModel.findById(id).select('role').lean();
+    if (!target) throw new NotFoundException('user.not_found');
+    const actor = await this.userModel.findById(actorId).select('role').lean();
+    if (!actor) throw new ForbiddenException('auth.insufficient_permissions');
+
+    const [targetRole, actorRole] = await Promise.all([
+      this.roleModel.findById(target.role).select('name').lean(),
+      this.roleModel.findById(actor.role).select('name').lean(),
+    ]);
+    if (!targetRole || !actorRole) {
+      throw new ForbiddenException('auth.insufficient_permissions');
+    }
+    if (
+      targetRole.name.toUpperCase() === 'MD'
+      && actorRole.name.toUpperCase() !== 'MD'
+    ) {
+      throw new ForbiddenException('user.cannot_reset_admin_password');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -250,7 +277,11 @@ export class UsersService {
     return { success: true };
   }
 
-  async deleteAllPermanently(actorId: string) {
+  async deleteAllPermanently(confirmation: string, actorId: string) {
+    if (confirmation !== 'DELETE ALL') {
+      throw new BadRequestException('bulk_delete.confirmation_required');
+    }
+
     const adminRoles = await this.roleModel
       .find()
       .select('_id name')
@@ -265,6 +296,22 @@ export class UsersService {
       })
       .select('_id')
       .lean();
+
+    const [deletedMessages, deletedChatGroups] = await Promise.all([
+      this.messageModel.countDocuments({}),
+      this.chatGroupModel.countDocuments({}),
+    ]);
+    await this.activityLog.record({
+      actor: actorId,
+      action: 'users.bulk_delete_requested',
+      entity: 'users',
+      entityId: new Types.ObjectId().toString(),
+      metadata: {
+        deletedUsers: employees.length,
+        deletedChatGroups,
+        deletedMessages,
+      },
+    });
 
     await this.messageModel.deleteMany({});
     await this.chatGroupModel.deleteMany({});

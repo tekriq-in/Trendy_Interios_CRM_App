@@ -56,8 +56,11 @@ export class ClientsController {
 
   @Delete()
   @RequirePermissions(PERMISSIONS.CLIENTS_DELETE)
-  deleteAllPermanently() {
-    return this.service.deleteAllPermanently();
+  deleteAllPermanently(
+    @Body('confirm') confirmation: string,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.service.deleteAllPermanently(confirmation, actor._id);
   }
 
   @Delete(':id')

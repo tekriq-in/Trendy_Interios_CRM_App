@@ -94,13 +94,13 @@ export default function UsersPage() {
   );
 
   function confirmDeleteAll() {
-    const confirmed = window.confirm(
-      'Permanently delete ALL employees except the MD admin account, including the General Manager, department heads, and inactive employees? All chat groups and message history (direct, project, department, and custom) will be permanently cleared. Employee-linked operational data will also be deleted. Shared projects will remain with assignments removed. Immutable audit history and Google Drive files will be retained. This cannot be undone.',
+    const confirmation = window.prompt(
+      'Permanently delete ALL employees except the MD admin account, including the General Manager, department heads, and inactive employees? All chat groups and all messages across the entire system (direct, project, department, and custom) will be permanently cleared. Employee-linked operational data will also be deleted. Shared projects will remain with assignments removed. Immutable audit history and Google Drive files will be retained. Type DELETE ALL to continue.',
     );
-    if (!confirmed) return;
+    if (confirmation !== 'DELETE ALL') return;
 
     setDeleteError('');
-    deleteAllMut.mutate();
+    deleteAllMut.mutate(confirmation);
   }
 
   const { data: roles = [] } = useQuery<Role[]>({
@@ -121,7 +121,7 @@ export default function UsersPage() {
   });
 
   const deleteAllMut = useMutation({
-    mutationFn: () => apiClient.delete('/users'),
+    mutationFn: (confirm: string) => apiClient.delete('/users', { data: { confirm } }),
     onSuccess: () => {
       setDeleteError('');
       void qc.invalidateQueries();

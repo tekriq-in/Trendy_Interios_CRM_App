@@ -27,6 +27,7 @@ const createMockModel = () => ({
   },
   find: jest.fn(),
   findById: jest.fn(),
+  countDocuments: jest.fn(),
   deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
   deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
   updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
@@ -48,6 +49,8 @@ const models = {
   SlaSettings: createMockModel(),
 };
 
+const mockActivityLog = { record: jest.fn() };
+
 function makeQuery<T>(result: T) {
   return {
     select: jest.fn().mockReturnThis(),
@@ -68,6 +71,7 @@ describe('UsersService permanent deletion', () => {
       Object.values(model).forEach((value) => {
         if (jest.isMockFunction(value)) value.mockReset();
       });
+      model.countDocuments.mockResolvedValue(0);
       model.deleteMany.mockResolvedValue({ deletedCount: 0 });
       model.deleteOne.mockResolvedValue({ deletedCount: 1 });
       model.updateMany.mockResolvedValue({ modifiedCount: 0 });
@@ -77,6 +81,7 @@ describe('UsersService permanent deletion', () => {
     models.User.db.startSession = mockStartSession;
     mockSession.withTransaction.mockClear().mockImplementation(async (callback) => callback());
     mockSession.endSession.mockReset().mockResolvedValue(undefined);
+    mockActivityLog.record.mockReset();
     auditCollection.updateMany.mockClear();
     otherCollection.updateMany.mockClear();
 
@@ -88,7 +93,7 @@ describe('UsersService permanent deletion', () => {
       providers: [
         UsersService,
         ...modelProviders,
-        { provide: ActivityLogService, useValue: { record: jest.fn() } },
+        { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: ChatGroupsService, useValue: {} },
       ],
     }).compile();
@@ -201,6 +206,8 @@ describe('UsersService permanent deletion', () => {
     const departmentHeadId = new Types.ObjectId();
     const employeeId = new Types.ObjectId();
     const actorId = new Types.ObjectId();
+    models.Message.countDocuments.mockResolvedValue(17);
+    models.ChatGroup.countDocuments.mockResolvedValue(8);
 
     models.Role.find.mockReturnValue(
       makeQuery([
@@ -221,11 +228,22 @@ describe('UsersService permanent deletion', () => {
     models.TIDocument.find.mockReturnValue(makeQuery([]));
     models.ChatGroup.find.mockReturnValue(makeQuery([]));
 
-    await expect(service.deleteAllPermanently(actorId.toString())).resolves.toEqual({
+    await expect(service.deleteAllPermanently('DELETE ALL', actorId.toString())).resolves.toEqual({
       success: true,
       deletedCount: 3,
     });
 
+    expect(mockActivityLog.record).toHaveBeenCalledWith(expect.objectContaining({
+      actor: actorId.toString(),
+      action: 'users.bulk_delete_requested',
+      metadata: {
+        deletedUsers: 3,
+        deletedChatGroups: 8,
+        deletedMessages: 17,
+      },
+    }));
+    expect(mockActivityLog.record.mock.invocationCallOrder[0])
+      .toBeLessThan(models.Message.deleteMany.mock.invocationCallOrder[0]);
     const filter = models.User.find.mock.calls[0][0];
     expect(filter.role.$nin.map((id: Types.ObjectId) => id.toString())).toEqual([
       mdRoleId.toString(),
@@ -250,5 +268,15 @@ describe('UsersService permanent deletion', () => {
     );
     expect(models.Message.deleteMany).toHaveBeenNthCalledWith(1, {});
     expect(models.ChatGroup.deleteMany).toHaveBeenCalledWith({});
+  });
+
+  it('requires the exact bulk-delete confirmation before database access', async () => {
+    await expect(
+      service.deleteAllPermanently('delete all', new Types.ObjectId().toString()),
+    ).rejects.toThrow('bulk_delete.confirmation_required');
+
+    expect(models.Role.find).not.toHaveBeenCalled();
+    expect(mockActivityLog.record).not.toHaveBeenCalled();
+    expect(models.Message.deleteMany).not.toHaveBeenCalled();
   });
 });

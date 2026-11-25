@@ -71,7 +71,7 @@ export default function ClientsPage() {
   });
 
   const deleteAllMut = useMutation({
-    mutationFn: () => apiClient.delete('/clients'),
+    mutationFn: (confirm: string) => apiClient.delete('/clients', { data: { confirm } }),
     onSuccess: () => {
       setDeleteError('');
       void qc.invalidateQueries();
@@ -101,13 +101,13 @@ export default function ClientsPage() {
   const sortedDepts = [...departments].sort((a, b) => a.order - b.order);
 
   function confirmDeleteAll() {
-    const confirmed = window.confirm(
-      'Permanently delete ALL clients, including inactive clients and clients hidden by your current search, along with their MongoDB project data? Immutable audit history and Google Drive files will be retained. This cannot be undone.',
+    const confirmation = window.prompt(
+      'Permanently delete ALL clients, including inactive clients and clients hidden by your current search, along with their project data? Immutable audit history and Google Drive files will be retained. Type DELETE ALL to continue.',
     );
-    if (!confirmed) return;
+    if (confirmation !== 'DELETE ALL') return;
 
     setDeleteError('');
-    deleteAllMut.mutate();
+    deleteAllMut.mutate(confirmation);
   }
 
   function set(key: keyof FormState, value: string | boolean) {

@@ -5,6 +5,7 @@ import { BlockersController } from './blockers.controller';
 import { Blocker, BlockerSchema } from './schemas/blocker.schema';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { ProjectAccessModule } from '../../common/access/project-access.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
       { name: Project.name, schema: ProjectSchema },
     ]),
     ActivityLogModule,
+    ProjectAccessModule,
   ],
   providers: [BlockersService],
   controllers: [BlockersController],

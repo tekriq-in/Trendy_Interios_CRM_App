@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { HandoversService } from './handovers.service';
+import { HandoversService, type HandoverActor } from './handovers.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -9,8 +9,11 @@ export class HandoversController {
   constructor(private service: HandoversService) {}
 
   @Get()
-  findAll(@Query('projectId') projectId?: string) {
-    return this.service.findAll(projectId);
+  findAll(
+    @CurrentUser() actor: HandoverActor,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.service.findAll(actor, projectId);
   }
 
   @Post()
@@ -23,7 +26,7 @@ export class HandoversController {
       proofFileIds: string[];
       notes?: string;
     },
-    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @CurrentUser() actor: HandoverActor,
   ) {
     return this.service.raise(dto, actor);
   }
@@ -31,7 +34,7 @@ export class HandoversController {
   @Patch(':id/confirm')
   confirm(
     @Param('id') id: string,
-    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @CurrentUser() actor: HandoverActor,
   ) {
     return this.service.confirm(id, actor);
   }
@@ -39,7 +42,7 @@ export class HandoversController {
   @Patch(':id/accept')
   accept(
     @Param('id') id: string,
-    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @CurrentUser() actor: HandoverActor,
   ) {
     return this.service.accept(id, actor);
   }
@@ -48,7 +51,7 @@ export class HandoversController {
   reject(
     @Param('id') id: string,
     @Body() dto: { reason: string },
-    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+    @CurrentUser() actor: HandoverActor,
   ) {
     return this.service.reject(id, dto.reason, actor);
   }

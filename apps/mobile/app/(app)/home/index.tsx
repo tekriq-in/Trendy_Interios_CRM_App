@@ -1,12 +1,11 @@
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { api } from '../../../src/services/api';
-import type { RootState } from '../../../src/store';
+import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
 import { Badge, Card, ProgressBar, ScreenHeader } from '../../../src/components/ui';
 import { colors, font, radius, spacing, type Tone, toneColors } from '../../../src/theme';
 
@@ -35,7 +34,7 @@ const idOf = (v: unknown): string =>
 
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const user = useSelector((s: RootState) => s.auth.user);
+  const user = useCurrentUser();
 
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [openBlockers, setOpenBlockers] = useState(0);

@@ -11,7 +11,7 @@ import { syncOfflineQueue } from '../../src/services/sync.service';
 import { registerForPushNotifications } from '../../src/services/notifications.service';
 import type { RootState } from '../../src/store';
 import { SocketProvider, useSocket } from '../../src/context/socket.context';
-import { usePermissions } from '../../src/hooks/usePermissions';
+import { useLoadPermissions } from '../../src/hooks/usePermissions';
 import { colors } from '../../src/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -86,7 +86,7 @@ function AppTabs() {
 export default function AppLayout() {
   const token = useSelector((s: RootState) => s.auth.accessToken);
   const wasConnected = useRef<boolean | null>(null);
-  usePermissions();
+  useLoadPermissions();
 
   useEffect(() => {
     registerForPushNotifications().catch(() => {});

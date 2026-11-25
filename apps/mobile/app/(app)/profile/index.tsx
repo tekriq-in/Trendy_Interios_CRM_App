@@ -5,8 +5,11 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../../src/services/api';
 import { clearAuth } from '../../../src/store/slices/auth.slice';
+import { discardFailed, retryFailed } from '../../../src/store/slices/offline-queue.slice';
+import { syncOfflineQueue } from '../../../src/services/sync.service';
 import { setLanguage, type Language } from '../../../src/store/slices/ui.slice';
 import type { RootState } from '../../../src/store';
+import { useCurrentUser } from '../../../src/hooks/useCurrentUser';
 import { Button, Card, Chip, ScreenHeader } from '../../../src/components/ui';
 import { colors, font, spacing } from '../../../src/theme';
 
@@ -25,10 +28,12 @@ function initials(name: string): string {
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const dispatch = useDispatch();
-  const user = useSelector((s: RootState) => s.auth.user);
+  const user = useCurrentUser();
   const refreshToken = useSelector((s: RootState) => s.auth.refreshToken);
   const language = useSelector((s: RootState) => s.ui.language);
-  const pending = useSelector((s: RootState) => s.offlineQueue.queue.length);
+  const queue = useSelector((s: RootState) => s.offlineQueue.queue);
+  const failedCount = queue.filter((q) => q.failed).length;
+  const pending = queue.length - failedCount;
 
   async function signOut() {
     // Best effort: revoke the refresh token on the server, but always sign out locally.
@@ -42,6 +47,18 @@ export default function ProfileScreen() {
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('profile.signOut'), style: 'destructive', onPress: () => void signOut() },
     ]);
+  }
+
+  function confirmDiscard() {
+    Alert.alert(t('common.discardTitle'), t('common.discardMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.discardUpload'), style: 'destructive', onPress: () => dispatch(discardFailed()) },
+    ]);
+  }
+
+  function retryUploads() {
+    dispatch(retryFailed());
+    void syncOfflineQueue();
   }
 
   const name = user?.name || 'Staff';
@@ -78,14 +95,28 @@ export default function ProfileScreen() {
         <Text style={styles.section}>{t('profile.sync')}</Text>
         <Card style={styles.syncCard}>
           <Ionicons
-            name={pending === 0 ? 'checkmark-circle' : 'sync'}
+            name={failedCount > 0 ? 'alert-circle' : pending === 0 ? 'checkmark-circle' : 'sync'}
             size={26}
-            color={pending === 0 ? colors.success : colors.info}
+            color={failedCount > 0 ? colors.danger : pending === 0 ? colors.success : colors.info}
           />
           <Text style={styles.syncText}>
-            {pending === 0 ? t('profile.allSynced') : t('common.pendingSync', { count: pending })}
+            {failedCount > 0
+              ? t('common.failedSync', { count: failedCount })
+              : pending === 0
+                ? t('profile.allSynced')
+                : t('common.pendingSync', { count: pending })}
           </Text>
         </Card>
+        {failedCount > 0 ? (
+          <View style={styles.failedActions}>
+            <View style={styles.flex}>
+              <Button label={t('common.discardUpload')} variant="secondary" onPress={confirmDiscard} />
+            </View>
+            <View style={styles.flex}>
+              <Button label={t('common.retryUpload')} icon="refresh" onPress={retryUploads} />
+            </View>
+          </View>
+        ) : null}
 
         <View style={{ height: spacing.xl }} />
         <Button label={t('profile.signOut')} icon="log-out-outline" variant="danger" onPress={confirmSignOut} />
@@ -114,4 +145,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: spacing.md },
   syncCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   syncText: { ...font.bodyStrong, flex: 1 },
+  failedActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
 });

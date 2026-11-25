@@ -4,16 +4,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { combineReducers } from '@reduxjs/toolkit';
 import authReducer from './slices/auth.slice';
 import offlineQueueReducer from './slices/offline-queue.slice';
+import uiReducer from './slices/ui.slice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
   offlineQueue: offlineQueueReducer,
+  ui: uiReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth', 'offlineQueue'],
+  whitelist: ['auth', 'offlineQueue', 'ui'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

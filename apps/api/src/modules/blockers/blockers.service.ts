@@ -6,6 +6,7 @@ import { Blocker, BlockerDocument } from './schemas/blocker.schema';
 import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
+import { ProjectAccessService } from '../../common/access/project-access.service';
 
 @Injectable()
 export class BlockersService {
@@ -14,6 +15,7 @@ export class BlockersService {
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
+    private access: ProjectAccessService,
   ) {}
 
   async findAll(user: { _id: string; rolePermissions: string[] }, status?: string) {
@@ -46,6 +48,7 @@ export class BlockersService {
     if (!actor.rolePermissions.includes(PERMISSIONS.BLOCKERS_RAISE)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
+    await this.access.assertAccess(dto.projectId, actor);
 
     const blocker = await this.blockerModel.create({
       project: new Types.ObjectId(dto.projectId),
@@ -79,6 +82,7 @@ export class BlockersService {
     if (!actor.rolePermissions.includes(PERMISSIONS.BLOCKERS_TRIGGER_SLA)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
+    await this.assertBlockerAccess(id, actor);
 
     const blocker = await this.blockerModel.findByIdAndUpdate(
       id,
@@ -105,6 +109,7 @@ export class BlockersService {
     if (!actor.rolePermissions.includes(PERMISSIONS.BLOCKERS_RESOLVE)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
+    await this.assertBlockerAccess(id, actor);
 
     const blocker = await this.blockerModel.findByIdAndUpdate(
       id,
@@ -121,5 +126,13 @@ export class BlockersService {
     });
 
     return blocker;
+  }
+
+  /** The blocker must exist and belong to a project the actor can see (404 otherwise). */
+  private async assertBlockerAccess(id: string, actor: { _id: string; rolePermissions: string[] }) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('blocker.not_found');
+    const existing = await this.blockerModel.findById(id).select('project').lean();
+    if (!existing) throw new NotFoundException('blocker.not_found');
+    await this.access.assertAccess(String(existing.project), actor);
   }
 }

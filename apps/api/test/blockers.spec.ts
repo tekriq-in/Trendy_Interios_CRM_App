@@ -5,6 +5,7 @@ import { BlockersService } from '../src/modules/blockers/blockers.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PERMISSIONS } from '@ti/shared';
+import { ProjectAccessService } from '../src/common/access/project-access.service';
 
 const mockBlockerModel = {
   find: jest.fn(),
@@ -12,6 +13,11 @@ const mockBlockerModel = {
 
 const mockProjectModel = {
   find: jest.fn(),
+};
+
+const allowAllAccess = {
+  assertAccess: jest.fn().mockResolvedValue(undefined),
+  visibleProjectIds: jest.fn().mockResolvedValue(null),
 };
 
 describe('BlockersService', () => {
@@ -25,6 +31,7 @@ describe('BlockersService', () => {
         { provide: getModelToken('Project'), useValue: mockProjectModel },
         { provide: ActivityLogService, useValue: { record: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: ProjectAccessService, useValue: allowAllAccess },
       ],
     }).compile();
 

@@ -16,6 +16,22 @@ export class ChatGroupsService {
     @InjectModel(Message.name) private messageModel: Model<Message & { _id: unknown }>,
   ) {}
 
+  /**
+   * May this user read and write this channel? Same rule as the message history
+   * endpoint: members of the group; anyone for department chats; roles that can read
+   * all projects (MD, GM). A channel with no active group is closed to everyone, so a
+   * made-up channel name cannot be joined to listen in or post.
+   */
+  async canAccessChannel(userId: string, canReadAll: boolean, channel: string): Promise<boolean> {
+    const group = await this.groupModel
+      .findOne({ channel, isActive: true })
+      .select('type members')
+      .lean();
+    if (!group) return false;
+    if (group.type === 'department' || canReadAll) return true;
+    return group.members.some((member: Types.ObjectId) => String(member) === userId);
+  }
+
   async findForUser(userId: string): Promise<(ChatGroupDocument & { lastMessage?: { body: string; senderName: string; createdAt: string } | null })[]> {
     // Department groups are common channels — return all of them regardless of membership.
     // For all other types (project, individual, custom) return only groups the user belongs to.

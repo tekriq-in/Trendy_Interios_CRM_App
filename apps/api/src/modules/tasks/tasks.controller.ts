@@ -33,9 +33,9 @@ export class TasksController {
       dueDate?: Date;
       offlineCreatedAt?: Date;
     },
-    @CurrentUser() actor: { _id: string },
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
   ) {
-    return this.service.create(projectId, dto, actor._id);
+    return this.service.create(projectId, dto, actor);
   }
 
   @Patch('tasks/:id')

@@ -5,12 +5,18 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { HandoversService } from '../src/modules/handovers/handovers.service';
 import { ActivityLogService } from '../src/modules/activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
+import { ProjectAccessService } from '../src/common/access/project-access.service';
 
 const mockHandoverModel = {
   find: jest.fn(),
   findById: jest.fn(),
   create: jest.fn(),
   findByIdAndUpdate: jest.fn(),
+};
+
+const allowAllAccess = {
+  assertAccess: jest.fn().mockResolvedValue(undefined),
+  visibleProjectIds: jest.fn().mockResolvedValue(null),
 };
 
 const mockActivityLog = { record: jest.fn() };
@@ -27,6 +33,7 @@ describe('Handover Rules', () => {
         { provide: getModelToken('Handover'), useValue: mockHandoverModel },
         { provide: ActivityLogService, useValue: mockActivityLog },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: ProjectAccessService, useValue: allowAllAccess },
       ],
     }).compile();
 

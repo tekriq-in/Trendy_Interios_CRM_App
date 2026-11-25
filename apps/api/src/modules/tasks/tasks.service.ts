@@ -5,6 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Task, TaskDocument } from './schemas/task.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
+import { ProjectAccessService } from '../../common/access/project-access.service';
 
 @Injectable()
 export class TasksService {
@@ -12,9 +13,12 @@ export class TasksService {
     @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
+    private access: ProjectAccessService,
   ) {}
 
-  findByProject(projectId: string, user: { _id: string; rolePermissions: string[] }) {
+  async findByProject(projectId: string, user: { _id: string; rolePermissions: string[] }) {
+    // Employees may only open projects they are assigned to (answers 404 otherwise).
+    await this.access.assertAccess(projectId, user);
     const hasReadAll = user.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL);
     const filter: Record<string, unknown> = { project: new Types.ObjectId(projectId) };
     if (!hasReadAll) {
@@ -37,8 +41,10 @@ export class TasksService {
       dueDate?: Date;
       offlineCreatedAt?: Date;
     },
-    actorId: string,
+    actor: { _id: string; rolePermissions: string[] },
   ) {
+    const actorId = actor._id;
+    await this.access.assertAccess(projectId, actor);
     const task = await this.taskModel.create({
       project: new Types.ObjectId(projectId),
       department: new Types.ObjectId(dto.departmentId),
@@ -69,6 +75,8 @@ export class TasksService {
   ) {
     const task = await this.taskModel.findById(id);
     if (!task) throw new NotFoundException('task.not_found');
+    // Having tasks:edit is not enough: the task must belong to a project the actor can see.
+    await this.access.assertAccess(String(task.project), actor);
 
     const isAssigned = task.assignedTo.toString() === actor._id;
     const canEdit =
@@ -114,6 +122,9 @@ export class TasksService {
     if (!actor.rolePermissions.includes(PERMISSIONS.TASKS_DELETE)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
+    const existing = await this.taskModel.findById(id).select('project').lean();
+    if (!existing) throw new NotFoundException('task.not_found');
+    await this.access.assertAccess(String(existing.project), actor);
     const task = await this.taskModel.findByIdAndDelete(id);
     if (!task) throw new NotFoundException('task.not_found');
 

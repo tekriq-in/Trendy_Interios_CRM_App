@@ -10,6 +10,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Handover, HandoverDocument } from './schemas/handover.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
+import { ProjectAccessService, type Actor } from '../../common/access/project-access.service';
+
+/** The signed-in user. `department` comes from the user record (set by the JWT strategy). */
+export type HandoverActor = Actor & { department?: unknown };
 
 @Injectable()
 export class HandoversService {
@@ -17,12 +21,32 @@ export class HandoversService {
     @InjectModel(Handover.name) private handoverModel: Model<HandoverDocument>,
     private activityLog: ActivityLogService,
     private eventEmitter: EventEmitter2,
+    private access: ProjectAccessService,
   ) {}
 
-  async findAll(projectId?: string) {
-    const matchStage = projectId
-      ? { $match: { project: new Types.ObjectId(projectId) } }
-      : { $match: {} };
+  /**
+   * Handovers the actor may see. Roles with projects:read_all see all; everyone else
+   * only the handovers of projects they are assigned to. (This used to return every
+   * project's handovers to any logged-in user.)
+   */
+  async findAll(actor: HandoverActor, projectId?: string) {
+    if (projectId !== undefined && !Types.ObjectId.isValid(projectId)) {
+      throw new NotFoundException('project.not_found');
+    }
+    const visible = await this.access.visibleProjectIds(actor); // null = every project
+    let match: Record<string, unknown> = {};
+    if (visible) {
+      // Own projects, plus (for leads) any handover to or from their own department.
+      const reach: Record<string, unknown>[] = [{ project: { $in: visible } }];
+      const dept = this.leadDepartment(actor);
+      if (dept) reach.push({ fromDepartment: dept }, { toDepartment: dept });
+      match = reach.length === 1 ? reach[0] : { $or: reach };
+    }
+    if (projectId) {
+      const byProject = { project: new Types.ObjectId(projectId) };
+      match = visible ? { $and: [match, byProject] } : byProject;
+    }
+    const matchStage = { $match: match };
 
     return this.handoverModel.aggregate([
       matchStage,
@@ -108,6 +132,7 @@ export class HandoversService {
     if (!actor.rolePermissions.includes(PERMISSIONS.HANDOVERS_RAISE)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
+    await this.access.assertAccess(dto.projectId, actor);
 
     if (!dto.proofFileIds || dto.proofFileIds.length === 0) {
       throw new BadRequestException('handover.proof_required');
@@ -134,13 +159,14 @@ export class HandoversService {
     return handover;
   }
 
-  async confirm(id: string, actor: { _id: string; rolePermissions: string[] }) {
+  async confirm(id: string, actor: HandoverActor) {
     if (!actor.rolePermissions.includes(PERMISSIONS.HANDOVERS_CONFIRM_FROM)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
 
     const handover = await this.handoverModel.findById(id);
     if (!handover) throw new NotFoundException('handover.not_found');
+    await this.assertHandoverAccess(handover, actor, 'from');
     if (handover.status !== 'draft') {
       throw new BadRequestException('handover.invalid_transition');
     }
@@ -165,13 +191,14 @@ export class HandoversService {
     return handover;
   }
 
-  async accept(id: string, actor: { _id: string; rolePermissions: string[] }) {
+  async accept(id: string, actor: HandoverActor) {
     if (!actor.rolePermissions.includes(PERMISSIONS.HANDOVERS_ACCEPT_TO)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
 
     const handover = await this.handoverModel.findById(id);
     if (!handover) throw new NotFoundException('handover.not_found');
+    await this.assertHandoverAccess(handover, actor, 'to');
     if (handover.status !== 'confirmed') {
       throw new BadRequestException('handover.invalid_transition');
     }
@@ -196,7 +223,7 @@ export class HandoversService {
     return handover;
   }
 
-  async reject(id: string, reason: string, actor: { _id: string; rolePermissions: string[] }) {
+  async reject(id: string, reason: string, actor: HandoverActor) {
     if (!actor.rolePermissions.includes(PERMISSIONS.HANDOVERS_ACCEPT_TO)) {
       throw new ForbiddenException('auth.insufficient_permissions');
     }
@@ -205,6 +232,7 @@ export class HandoversService {
 
     const handover = await this.handoverModel.findById(id);
     if (!handover) throw new NotFoundException('handover.not_found');
+    await this.assertHandoverAccess(handover, actor, 'to');
     if (handover.status !== 'confirmed') {
       throw new BadRequestException('handover.invalid_transition');
     }
@@ -228,6 +256,37 @@ export class HandoversService {
     });
 
     return handover;
+  }
+
+  /**
+   * Department of an actor who leads a team (can confirm or accept handovers), or null.
+   * The SOW flow is lead to lead: the sending lead confirms, the receiving lead accepts.
+   * Project assignment is managed by hand, so those leads must still reach handovers of
+   * their own department even when they are not named on the project. Plain employees
+   * never get this: they only reach their assigned projects.
+   */
+  private leadDepartment(actor: HandoverActor): Types.ObjectId | null {
+    const isLead =
+      actor.rolePermissions.includes(PERMISSIONS.HANDOVERS_CONFIRM_FROM) ||
+      actor.rolePermissions.includes(PERMISSIONS.HANDOVERS_ACCEPT_TO);
+    const dept = actor.department ? String(actor.department) : '';
+    return isLead && Types.ObjectId.isValid(dept) ? new Types.ObjectId(dept) : null;
+  }
+
+  /**
+   * May the actor act on this handover? Yes for a lead of the sending department
+   * ('from': confirm) or the receiving department ('to': accept or reject); otherwise
+   * only if they can see the handover's project (404 if not).
+   */
+  private async assertHandoverAccess(
+    handover: { project: unknown; fromDepartment: unknown; toDepartment: unknown },
+    actor: HandoverActor,
+    side: 'from' | 'to',
+  ) {
+    const dept = this.leadDepartment(actor);
+    const target = side === 'from' ? handover.fromDepartment : handover.toDepartment;
+    if (dept && target && String(target) === String(dept)) return;
+    await this.access.assertAccess(String(handover.project), actor);
   }
 
   async createDraft(dto: {

@@ -18,6 +18,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Role, RoleDocument } from '../roles/schemas/role.schema';
 import { PERMISSIONS } from '@ti/shared';
+import { escapeRegExp } from '../../common/utils/escape-regex';
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/' })
 export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -43,12 +44,15 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       client.data.name = payload.name ?? payload.email;
 
       // Auto-join approver room so client.replied notifications reach MD/GM
+      client.data.canReadAll = false;
       const user = await this.userModel.findById(payload.sub).select('role').lean();
       if (user?.role) {
         const role = await this.roleModel.findById(user.role).select('permissions').lean();
         if (role?.permissions?.includes(PERMISSIONS.APPROVALS_DECIDE)) {
           client.join('role:approver');
         }
+        // Read once per connection (tokens last 15 minutes, so clients reconnect regularly).
+        client.data.canReadAll = role?.permissions?.includes(PERMISSIONS.PROJECTS_READ_ALL) ?? false;
       }
     } catch {
       client.disconnect();
@@ -56,6 +60,16 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   handleDisconnect(_client: Socket) {}
+
+  /** May this socket's user use the channel? (members, department chats, read-all roles) */
+  private async canAccess(client: Socket, channel: unknown): Promise<boolean> {
+    if (typeof channel !== 'string' || !channel || !client.data.userId) return false;
+    return this.chatGroupsService.canAccessChannel(
+      client.data.userId,
+      client.data.canReadAll === true,
+      channel,
+    );
+  }
 
   emitMessageUpdated(message: Record<string, unknown>) {
     if (this.server && typeof message.channel === 'string') {
@@ -68,7 +82,11 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('join_channel')
-  handleJoinChannel(@ConnectedSocket() client: Socket, @MessageBody() channel: string) {
+  async handleJoinChannel(@ConnectedSocket() client: Socket, @MessageBody() channel: string) {
+    // Previously anyone could join any channel name and read its live messages.
+    if (!(await this.canAccess(client, channel))) {
+      return { event: 'error', data: 'messages.channel_access_denied' };
+    }
     client.join(channel);
     return { event: 'joined', data: channel };
   }
@@ -91,6 +109,10 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     },
   ) {
     if (!client.data.userId) return;
+    if (typeof payload?.body !== 'string' || !payload.body.trim()) return;
+    if (!(await this.canAccess(client, payload.channel))) {
+      return { event: 'error', data: 'messages.channel_access_denied' };
+    }
 
     // Parse @mentions: match @Name patterns
     const mentionHandles = (payload.body.match(/@([\w\s]+?)(?=\s|$|@)/g) ?? [])
@@ -98,7 +120,9 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     let mentionedIds: string[] = [];
     if (mentionHandles.length > 0) {
-      const regex = mentionHandles.map((h) => new RegExp(h, 'i'));
+      // The handle is user text: escape it (it was used as a raw pattern, so a crafted
+      // @mention could hang the server or match everyone) and cap how many are looked up.
+      const regex = mentionHandles.slice(0, 10).map((h) => new RegExp(escapeRegExp(h.slice(0, 60)), 'i'));
       const users = await this.userModel
         .find({ name: { $in: regex }, isActive: true })
         .select('_id fcmToken name')
@@ -143,6 +167,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() payload: { channel: string; messageId: string },
   ) {
     if (!client.data.userId) return;
+    if (!(await this.canAccess(client, payload?.channel))) return;
     await this.messageModel.updateMany(
       { channel: payload.channel, 'readBy.user': { $ne: client.data.userId } },
       { $push: { readBy: { user: client.data.userId, readAt: new Date() } } },

@@ -11,7 +11,16 @@ interface SocketContextValue {
   connected: boolean;
   joinChannel: (channel: string) => void;
   leaveChannel: (channel: string) => void;
-  sendMessage: (channel: string, body: string, attachments?: string[]) => void;
+  /**
+   * Sends a message and resolves with the saved message once the server confirms
+   * it (the gateway returns it as the acknowledgement). Rejects when offline or
+   * when no confirmation arrives in time, so the UI can show "failed, tap to retry".
+   */
+  sendMessage: (
+    channel: string,
+    body: string,
+    extra?: { attachments?: string[]; mediaType?: 'image'; mediaUrl?: string },
+  ) => Promise<ChatMessage>;
   markRead: (channel: string) => void;
   unreadMap: Record<string, number>;
   clearUnread: (channel: string) => void;
@@ -23,7 +32,7 @@ const SocketContext = createContext<SocketContextValue>({
   connected: false,
   joinChannel: () => {},
   leaveChannel: () => {},
-  sendMessage: () => {},
+  sendMessage: () => Promise.reject(new Error('socket unavailable')),
   markRead: () => {},
   unreadMap: {},
   clearUnread: () => {},
@@ -96,8 +105,21 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketRef.current?.emit('leave_channel', channel);
   }, []);
 
-  const sendMessage = useCallback((channel: string, body: string, attachments?: string[]) => {
-    socketRef.current?.emit('message', { channel, body, attachments: attachments ?? [] });
+  const sendMessage = useCallback<SocketContextValue['sendMessage']>((channel, body, extra) => {
+    return new Promise<ChatMessage>((resolve, reject) => {
+      const socket = socketRef.current;
+      // Fail fast when offline instead of letting socket.io queue it invisibly.
+      if (!socket || !socket.connected) {
+        reject(new Error('offline'));
+        return;
+      }
+      socket
+        .timeout(10000)
+        .emit('message', { channel, body, attachments: extra?.attachments ?? [], mediaType: extra?.mediaType, mediaUrl: extra?.mediaUrl }, (err: Error | null, saved?: ChatMessage) => {
+          if (err || !saved) reject(err ?? new Error('no confirmation'));
+          else resolve(saved);
+        });
+    });
   }, []);
 
   const markRead = useCallback((channel: string) => {

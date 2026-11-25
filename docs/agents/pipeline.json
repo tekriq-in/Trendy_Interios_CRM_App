@@ -1,0 +1,26 @@
+{
+  "$comment": "Configuration for the Herdr multi-agent pipeline. Read by scripts/agents/herdr-stage.ps1 and described in docs/agents/PIPELINE.md.",
+  "agentKind": "claude",
+  "maxConcurrentAgents": 2,
+  "maxFixRounds": 2,
+  "stages": [
+    { "id": 1, "role": "planner",        "output": "plan.md",         "parallelWith": null,            "readOnly": true },
+    { "id": 2, "role": "coder",          "output": "coder-notes.md",  "parallelWith": null,            "readOnly": false },
+    { "id": 3, "role": "builder-tester", "output": "build-report.md", "parallelWith": "code-reviewer", "readOnly": true },
+    { "id": 4, "role": "code-reviewer",  "output": "review.md",       "parallelWith": "builder-tester", "readOnly": true },
+    { "id": 5, "role": "pr-raiser",      "output": "pr.md",           "parallelWith": null,            "readOnly": false },
+    { "id": 6, "role": "pr-reviewer",    "output": "pr-review.md",    "parallelWith": null,            "readOnly": true }
+  ],
+  "git": {
+    "baseBranch": "origin/dev-env",
+    "prBase": "dev-env",
+    "neverPrBase": ["dev", "main"],
+    "neverPushTo": ["dev", "main", "dev-env"],
+    "coAuthorLines": false
+  },
+  "pullRequest": {
+    "onGood": "comment-and-leave-open",
+    "onNotGood": "comment-and-close",
+    "neverMerge": true
+  }
+}

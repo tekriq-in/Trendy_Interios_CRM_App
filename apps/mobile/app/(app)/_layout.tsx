@@ -13,6 +13,7 @@ import type { RootState } from '../../src/store';
 import { SocketProvider, useSocket } from '../../src/context/socket.context';
 import { useLoadPermissions } from '../../src/hooks/usePermissions';
 import { colors } from '../../src/theme';
+import { decodeJwt } from '../../src/utils/jwt';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -105,6 +106,8 @@ export default function AppLayout() {
   }, []);
 
   if (!token) return <Redirect href="/login" />;
+  // An admin reset this user's password: they must set a new one before using the app.
+  if (decodeJwt(token)?.mustChangePassword === true) return <Redirect href="/change-password" />;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>

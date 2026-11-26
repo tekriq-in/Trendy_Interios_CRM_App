@@ -111,6 +111,10 @@ A system that tracks every interior-manufacturing project end to end, department
 
 All documents carry `createdAt`, `updatedAt`, `createdBy`. The activity log is append-only and readable only by MD and GM.
 
+Authorized admins can permanently delete one client or all clients. This removes the clients and project-related operational records from MongoDB. Append-only activity-log history is retained for audit purposes.
+
+Authorized admins can permanently delete all employee accounts except the MD account in one operation, including the General Manager, department heads, and inactive accounts. All chat groups and messages are permanently cleared. Employee-linked operational records are removed, while shared project records are retained with the deleted employees removed from assignments and chat groups. Append-only activity-log history is retained for audit purposes.
+
 ---
 
 ## 7. Admin Dashboard Must Include

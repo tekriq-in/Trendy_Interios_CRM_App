@@ -5,10 +5,14 @@ import { DocumentsController } from './documents.controller';
 import { TIDocument, TIDocumentSchema } from './schemas/document.schema';
 import { DriveModule } from '../drive/drive.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: TIDocument.name, schema: TIDocumentSchema }]),
+    MongooseModule.forFeature([
+      { name: TIDocument.name, schema: TIDocumentSchema },
+      { name: Project.name, schema: ProjectSchema },
+    ]),
     DriveModule,
     ActivityLogModule,
   ],

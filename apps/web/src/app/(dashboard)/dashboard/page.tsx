@@ -210,7 +210,7 @@ export default function DashboardOverviewPage() {
     dateRangeValid,
   );
   const departments = useDashboardData<Dept[]>(['departments'], '/departments');
-  const employees = useDashboardData<Employee[]>(['users'], '/users');
+  const employees = useDashboardData<Employee[]>(['dashboard-employees'], '/users/for-dashboard');
   const slaReport = useDashboardData<SlaReportRow[]>(['sla-report'], '/sla/report');
   const queries = [
     board,
@@ -778,7 +778,7 @@ export default function DashboardOverviewPage() {
           <div className={`${panel} min-w-0 p-5 sm:p-6`}>
             <h3 className="text-sm font-semibold text-slate-900">Team task progress</h3>
             <p className="mb-4 mt-1 text-xs text-slate-500">
-              Pending and in-progress tasks for every active employee.
+              Pending and in-progress task workload for projects available to you.
             </p>
             <DataState
               pending={workload.isPending}

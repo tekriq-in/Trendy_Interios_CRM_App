@@ -40,6 +40,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       reportsTo: user.reportsTo,
       assignedProjects: user.assignedProjects,
       rolePermissions: (user.role as unknown as { permissions: string[] })?.permissions ?? [],
+      mustChangePassword: user.mustChangePassword === true,
     };
   }
 }

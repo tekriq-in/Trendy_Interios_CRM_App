@@ -353,8 +353,19 @@ export default function ChatPage() {
     queryKey: ['chat-groups'],
     queryFn: () => apiClient.get<ChatGroup[]>('/chat-groups').then((r) => r.data),
   });
+  const { data: permissionsData } = useQuery({
+    queryKey: ['auth-permissions'],
+    queryFn: () => apiClient.get<{ permissions: string[] }>('/auth/permissions').then((r) => r.data),
+  });
   const groups: ChatGroup[] = groupsData ?? [];
   const activeMembers = activeGroup ? resolveGroupMembers(activeGroup, allUsers) : [];
+  const canManageDepartmentMembers = permissionsData?.permissions.includes('users:edit') ?? false;
+
+  useEffect(() => {
+    if (!activeGroup) return;
+    const refreshedGroup = groupsData?.find((group) => group._id === activeGroup._id);
+    if (refreshedGroup && refreshedGroup !== activeGroup) setActiveGroup(refreshedGroup);
+  }, [activeGroup, groupsData]);
 
   // Load all users for @mention and member management
   useEffect(() => {
@@ -1026,9 +1037,15 @@ export default function ChatPage() {
                     </div>
                     <span className="text-xs text-gray-700 truncate max-w-[100px]">{m.name}</span>
                   </div>
-                  {activeGroup.type === 'custom' && m._id !== currentUser?.id && (
+                  {(activeGroup.type === 'custom' ||
+                    (activeGroup.type === 'department' && canManageDepartmentMembers)) &&
+                    m._id !== currentUser?.id && (
                     <button
-                      onClick={() => removeMemberMut.mutate(m._id)}
+                      onClick={() => {
+                        if (window.confirm(`Remove ${m.name} from "${activeGroup.name}"?`)) {
+                          removeMemberMut.mutate(m._id);
+                        }
+                      }}
                       className="text-red-400 hover:text-red-600"
                     >
                       <X className="w-3 h-3" />

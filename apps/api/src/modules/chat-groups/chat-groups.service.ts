@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { PERMISSIONS } from '@ti/shared';
 import { ChatGroup, ChatGroupDocument, ChatGroupType } from './chat-group.schema';
 import { Message } from '../messages/messages.schema';
+import { Department, DepartmentDocument } from '../departments/schemas/department.schema';
 
 export interface CreateGroupDto {
   name: string;
@@ -14,6 +16,7 @@ export class ChatGroupsService {
   constructor(
     @InjectModel(ChatGroup.name) private groupModel: Model<ChatGroupDocument>,
     @InjectModel(Message.name) private messageModel: Model<Message & { _id: unknown }>,
+    @InjectModel(Department.name) private departmentModel: Model<DepartmentDocument>,
   ) {}
 
   /**
@@ -223,6 +226,30 @@ export class ChatGroupsService {
     }) as unknown as ChatGroupDocument;
   }
 
+  async addDepartmentMember(deptId: string, userId: string): Promise<void> {
+    const existingGroup = await this.groupModel.findOne({ channel: `dept:${deptId}` });
+    let groupId: string;
+    if (existingGroup) {
+      groupId = String(existingGroup._id);
+    } else {
+      const department = await this.departmentModel.findById(deptId).select('name').lean();
+      if (!department) throw new NotFoundException('department.not_found');
+      const group = await this.autoCreateForDepartment(deptId, department.name);
+      groupId = String(group._id);
+    }
+
+    await this.groupModel.findByIdAndUpdate(groupId, {
+      $addToSet: { members: new Types.ObjectId(userId) },
+    });
+  }
+
+  async removeDepartmentMember(deptId: string, userId: string): Promise<void> {
+    await this.groupModel.findOneAndUpdate(
+      { channel: `dept:${deptId}` },
+      { $pull: { members: new Types.ObjectId(userId) } },
+    );
+  }
+
   async addMember(groupId: string, userId: string, actorId: string): Promise<ChatGroupDocument> {
     const group = await this.groupModel.findById(groupId);
     if (!group) throw new NotFoundException('chat_group.not_found');
@@ -240,13 +267,26 @@ export class ChatGroupsService {
       .lean() as unknown as ChatGroupDocument;
   }
 
-  async removeMember(groupId: string, userId: string, actorId: string): Promise<void> {
+  async removeMember(
+    groupId: string,
+    userId: string,
+    actorId: string,
+    actorPermissions: string[] = [],
+  ): Promise<void> {
     const group = await this.groupModel.findById(groupId);
     if (!group) throw new NotFoundException('chat_group.not_found');
     // Members can remove themselves from any group type (self-leave).
-    // Removing others requires being a member of a custom group.
     const isSelfLeave = userId === actorId;
-    if (!isSelfLeave && group.type !== 'custom' && !group.members.some((m) => String(m) === actorId)) {
+    const canManageDepartmentMembers = actorPermissions.includes(PERMISSIONS.USERS_EDIT);
+    if (!isSelfLeave && group.type === 'department' && !canManageDepartmentMembers) {
+      throw new ForbiddenException('auth.insufficient_permissions');
+    }
+    if (
+      !isSelfLeave &&
+      group.type !== 'custom' &&
+      group.type !== 'department' &&
+      !group.members.some((m) => String(m) === actorId)
+    ) {
       throw new ForbiddenException('chat_group.not_member');
     }
     await this.groupModel.findByIdAndUpdate(groupId, {

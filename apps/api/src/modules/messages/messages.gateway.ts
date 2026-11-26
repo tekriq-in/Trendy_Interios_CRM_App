@@ -45,8 +45,13 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       // Auto-join approver room so client.replied notifications reach MD/GM
       client.data.canReadAll = false;
-      const user = await this.userModel.findById(payload.sub).select('role').lean();
-      if (user?.role) {
+      const user = await this.userModel.findById(payload.sub).select('role isActive mustChangePassword').lean();
+      // A deactivated user, or one who must change their password first, may not use chat.
+      if (!user?.isActive || user.mustChangePassword) {
+        client.disconnect();
+        return;
+      }
+      if (user.role) {
         const role = await this.roleModel.findById(user.role).select('permissions').lean();
         if (role?.permissions?.includes(PERMISSIONS.APPROVALS_DECIDE)) {
           client.join('role:approver');
@@ -61,9 +66,32 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(_client: Socket) {}
 
-  /** May this socket's user use the channel? (members, department chats, read-all roles) */
+  /**
+   * May this socket's user use chat at all? Re-checked on every event, so a user who is
+   * deactivated or who must change their password is cut off immediately, not only at connect.
+   */
+  private async canUseChat(client: Socket): Promise<boolean> {
+    const userId = client.data.userId;
+    if (typeof userId !== 'string') {
+      client.disconnect();
+      return false;
+    }
+
+    const user = await this.userModel.findById(userId).select('isActive mustChangePassword').lean();
+    if (!user?.isActive || user.mustChangePassword) {
+      client.disconnect();
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * May this socket's user use THIS channel? Requires an active user (canUseChat), then
+   * channel access: members, anyone for department chats, and read-all roles.
+   */
   private async canAccess(client: Socket, channel: unknown): Promise<boolean> {
     if (typeof channel !== 'string' || !channel || !client.data.userId) return false;
+    if (!(await this.canUseChat(client))) return false;
     return this.chatGroupsService.canAccessChannel(
       client.data.userId,
       client.data.canReadAll === true,

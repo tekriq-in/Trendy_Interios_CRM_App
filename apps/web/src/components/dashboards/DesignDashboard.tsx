@@ -81,10 +81,22 @@ export function DesignDashboard() {
   });
 
   const { data: drawings = [] } = useQuery<TIDocument[]>({
-    queryKey: ['documents', 'design-drawings'],
-    queryFn: () => apiClient.get<TIDocument[]>('/documents').then((r) =>
-      r.data.filter((d) => d.type === 'drawing_2d' || d.type === 'drawing_3d'),
-    ),
+    queryKey: ['documents', 'design-drawings', projects.map((project) => project._id).join(',')],
+    queryFn: async () => {
+      const results = await Promise.all(
+        projects.map((project) =>
+          apiClient
+            .get<TIDocument[]>('/documents', { params: { projectId: project._id } })
+            .then((r) =>
+              r.data
+                .filter((document) => document.type === 'drawing_2d' || document.type === 'drawing_3d')
+                .map((document) => ({ ...document, project: { title: project.title } })),
+            ),
+        ),
+      );
+      return results.flat();
+    },
+    enabled: projects.length > 0,
   });
 
   const { data: purchaseItems = [] } = useQuery<PurchaseItem[]>({

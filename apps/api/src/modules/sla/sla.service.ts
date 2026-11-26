@@ -68,11 +68,14 @@ export class SlaService {
     }
   }
 
-  async getReport() {
+  async getReport(actor?: { _id: string; rolePermissions: string[] }) {
+    const projectScope = actor && !actor.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL)
+      ? { assignedTeam: new Types.ObjectId(actor._id) }
+      : {};
     const [slaSettings, projects] = await Promise.all([
       this.slaModel.find().populate('department', 'name order').lean(),
       this.projectModel
-        .find({ status: 'active' })
+        .find({ status: 'active', ...projectScope })
         .populate('currentStage', 'name order')
         .lean(),
     ]);

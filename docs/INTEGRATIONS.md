@@ -135,11 +135,12 @@ FCM_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
 **Provider:** `MessageGeneratorService` (`apps/api/src/modules/message-generator/`)
 
-**Model:** `llama-3.3-70b-versatile` via Groq API
+**Model:** `qwen/qwen3.8-27b` via Groq API
 
 ### Setup
 
 ```env
+LLM_PROVIDER=groq
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -147,7 +148,7 @@ Sign up for a free API key at [console.groq.com](https://console.groq.com).
 
 ### Mock mode
 
-If `GROQ_API_KEY` is not set (or provider is `mock`), the service returns a deterministic placeholder message. Tamil translation falls back to prepending `(தமிழ்)` to the original text.
+If the provider is set to `mock`, the service returns a deterministic English placeholder message. Tamil generation requires a live AI provider; when none is configured or a provider returns English, the API reports an explicit error rather than presenting untranslated notes as Tamil.
 
 ### How it works
 

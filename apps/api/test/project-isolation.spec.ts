@@ -366,6 +366,7 @@ describe('ChatGroupsService.canAccessChannel', () => {
         ChatGroupsService,
         { provide: getModelToken('ChatGroup'), useValue: groupModel },
         { provide: getModelToken('Message'), useValue: {} },
+        { provide: getModelToken('Department'), useValue: {} },
       ],
     }).compile();
     service = mod.get(ChatGroupsService);
@@ -400,11 +401,19 @@ describe('ChatGroupsService.canAccessChannel', () => {
 
 describe('MessagesGateway channel access', () => {
   const messageModel = { create: jest.fn(), updateMany: jest.fn() };
-  const userModel = { find: jest.fn() };
+  const userModel = { find: jest.fn(), findById: jest.fn() };
+  const activeUser = (over: object = {}) => ({
+    select: jest.fn().mockReturnThis(),
+    lean: jest.fn().mockResolvedValue({ isActive: true, mustChangePassword: false, ...over }),
+  });
   const chatGroups = { canAccessChannel: jest.fn() };
   const emit = jest.fn();
   let gateway: MessagesGateway;
-  const socket = (canReadAll = false) => ({ data: { userId: employee._id, name: 'Emp', canReadAll }, join: jest.fn() });
+  const socket = (canReadAll = false) => ({
+    data: { userId: employee._id, name: 'Emp', canReadAll },
+    join: jest.fn(),
+    disconnect: jest.fn(),
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -417,6 +426,7 @@ describe('MessagesGateway channel access', () => {
       { sendToMany: jest.fn() } as never,
     );
     gateway.server = { to: () => ({ emit }) } as never;
+    userModel.findById.mockReturnValue(activeUser());
   });
 
   it('does not let a user join a channel they cannot access', async () => {
@@ -441,6 +451,20 @@ describe('MessagesGateway channel access', () => {
     expect(messageModel.create).not.toHaveBeenCalled();
     expect(emit).not.toHaveBeenCalled();
     expect(result).toEqual({ event: 'error', data: 'messages.channel_access_denied' });
+  });
+
+  it.each([
+    ['deactivated', { isActive: false }],
+    ['required to change their password', { mustChangePassword: true }],
+  ])('cuts off a user who is %s, even for a channel they belong to', async (_label, state) => {
+    chatGroups.canAccessChannel.mockResolvedValue(true);
+    userModel.findById.mockReturnValue(activeUser(state));
+    const s = socket();
+    const result = await gateway.handleJoinChannel(s as never, 'project:mine');
+    expect(s.join).not.toHaveBeenCalled();
+    expect(s.disconnect).toHaveBeenCalled();
+    expect(result).toEqual({ event: 'error', data: 'messages.channel_access_denied' });
+    expect(chatGroups.canAccessChannel).not.toHaveBeenCalled();
   });
 
   it('ignores empty or non-string message bodies', async () => {

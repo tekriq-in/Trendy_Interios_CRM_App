@@ -8,8 +8,10 @@ import { Task, TaskDocument } from '../tasks/schemas/task.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { PurchaseItem, PurchaseItemDocument } from '../purchase-items/schemas/purchase-item.schema';
 import { Handover, HandoverDocument } from '../handovers/schemas/handover.schema';
+import { PERMISSIONS } from '@ti/shared';
 
 type ActivityPeriod = { from?: string; to?: string };
+type DashboardActor = { _id: string; rolePermissions: string[] };
 
 @Injectable()
 export class DashboardService {
@@ -54,24 +56,45 @@ export class DashboardService {
     return range;
   }
 
-  private async getProjectsWithActivity(period: ActivityPeriod): Promise<string[] | null> {
+  private async getAssignedProjectIds(actor: DashboardActor): Promise<Types.ObjectId[] | null> {
+    if (actor.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL)) return null;
+
+    const projects = await this.projectModel
+      .find({ assignedTeam: new Types.ObjectId(actor._id) })
+      .select('_id')
+      .lean();
+    return projects.map((project) => new Types.ObjectId(String(project._id)));
+  }
+
+  private async getProjectsWithActivity(
+    period: ActivityPeriod,
+    projectScope: Types.ObjectId[] | null,
+  ): Promise<string[] | null> {
     const dateRange = this.getActivityRange(period);
     if (!dateRange) return null;
 
-    const dateMatch = (fields: string[]) => ({
-      $or: fields.map((field) => ({ [field]: dateRange })),
-    });
+    const dateMatch = (fields: string[]) => {
+      const match = {
+        $or: fields.map((field) => ({ [field]: dateRange })),
+      };
+      return projectScope ? { $and: [{ project: { $in: projectScope } }, match] } : match;
+    };
+
+    const projectDateMatch = {
+      $or: [
+        { createdAt: dateRange },
+        { updatedAt: dateRange },
+        { 'stageHistory.enteredAt': dateRange },
+        { 'stageHistory.completedAt': dateRange },
+      ],
+    };
+    const projectMatch = projectScope
+      ? { $and: [{ _id: { $in: projectScope } }, projectDateMatch] }
+      : projectDateMatch;
 
     const [projects, tasks, approvals, blockers, purchaseItems, handovers] = await Promise.all([
       this.projectModel
-        .find({
-          $or: [
-            { createdAt: dateRange },
-            { updatedAt: dateRange },
-            { 'stageHistory.enteredAt': dateRange },
-            { 'stageHistory.completedAt': dateRange },
-          ],
-        })
+        .find(projectMatch)
         .select('_id')
         .lean(),
       this.taskModel.find(dateMatch(['createdAt', 'updatedAt', 'completedAt'])).select('project').lean(),
@@ -91,8 +114,14 @@ export class DashboardService {
     ])];
   }
 
-  async getBoard(period: ActivityPeriod = {}) {
-    const projectIds = await this.getProjectsWithActivity(period);
+  private async getProjectIds(period: ActivityPeriod, actor: DashboardActor) {
+    const projectScope = await this.getAssignedProjectIds(actor);
+    const activityProjectIds = await this.getProjectsWithActivity(period, projectScope);
+    return activityProjectIds ?? projectScope?.map(String) ?? null;
+  }
+
+  async getBoard(period: ActivityPeriod, actor: DashboardActor) {
+    const projectIds = await this.getProjectIds(period, actor);
     const filter: Record<string, unknown> = { status: 'active' };
     if (projectIds) filter._id = { $in: projectIds };
 
@@ -114,8 +143,11 @@ export class DashboardService {
     return grouped;
   }
 
-  async getWorkload(period: ActivityPeriod = {}) {
-    const projectIds = await this.getProjectsWithActivity(period);
+  async getWorkload(period: ActivityPeriod, actor: DashboardActor) {
+    const projectIds = await this.getProjectIds(period, actor);
+    const employeeFilter = actor && !actor.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL)
+      ? { _id: new Types.ObjectId(actor._id), isActive: true }
+      : { isActive: true };
     const [tasks, employees] = await Promise.all([
       this.taskModel
       .aggregate([
@@ -154,7 +186,7 @@ export class DashboardService {
         { $sort: { totalTasks: -1 } },
       ])
       .exec(),
-      this.userModel.find({ isActive: true }).select('_id name').lean(),
+      this.userModel.find(employeeFilter).select('_id name').lean(),
     ]);
 
     const workloadByUser = new Map(
@@ -177,8 +209,8 @@ export class DashboardService {
       .sort((a, b) => b.totalTasks - a.totalTasks || a.userName.localeCompare(b.userName));
   }
 
-  async getBlockersSummary(period: ActivityPeriod = {}) {
-    const projectIds = await this.getProjectsWithActivity(period);
+  async getBlockersSummary(period: ActivityPeriod, actor: DashboardActor) {
+    const projectIds = await this.getProjectIds(period, actor);
     const filter: Record<string, unknown> = { status: { $in: ['open', 'sla_triggered'] } };
     if (projectIds) filter.project = { $in: projectIds };
 
@@ -190,9 +222,13 @@ export class DashboardService {
       .lean();
   }
 
-  async getStageDurations(period: ActivityPeriod = {}) {
+  async getStageDurations(period: ActivityPeriod, actor: DashboardActor) {
     const dateRange = this.getActivityRange(period);
+    const projectIds = await this.getProjectIds(period, actor);
     const results = await this.projectModel.aggregate([
+      ...(projectIds
+        ? [{ $match: { _id: { $in: projectIds.map((projectId) => new Types.ObjectId(projectId)) } } }]
+        : []),
       { $unwind: '$stageHistory' },
       { $match: { 'stageHistory.completedAt': { $exists: true, $ne: null } } },
       ...(dateRange ? [{ $match: { 'stageHistory.completedAt': dateRange } }] : []),
@@ -237,8 +273,8 @@ export class DashboardService {
     return results;
   }
 
-  async getApprovalsPending(period: ActivityPeriod = {}) {
-    const projectIds = await this.getProjectsWithActivity(period);
+  async getApprovalsPending(period: ActivityPeriod, actor: DashboardActor) {
+    const projectIds = await this.getProjectIds(period, actor);
     const filter: Record<string, unknown> = { status: 'pending' };
     if (projectIds) filter.project = { $in: projectIds };
 

@@ -8,7 +8,9 @@ import { ProjectAccessModule } from '../../common/access/project-access.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Handover.name, schema: HandoverSchema }]),
+    MongooseModule.forFeature([
+      { name: Handover.name, schema: HandoverSchema },
+    ]),
     ActivityLogModule,
     ProjectAccessModule,
   ],

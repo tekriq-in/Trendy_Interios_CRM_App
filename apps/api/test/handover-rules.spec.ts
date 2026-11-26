@@ -12,6 +12,7 @@ const mockHandoverModel = {
   findById: jest.fn(),
   create: jest.fn(),
   findByIdAndUpdate: jest.fn(),
+  aggregate: jest.fn(),
 };
 
 const allowAllAccess = {
@@ -58,6 +59,20 @@ describe('Handover Rules', () => {
         actor,
       ),
     ).rejects.toThrow('handover.proof_required');
+  });
+
+  it('lists only handovers for projects assigned to the employee', async () => {
+    const projectId = new Types.ObjectId();
+    // ProjectAccessService answers which projects this employee is assigned to.
+    allowAllAccess.visibleProjectIds.mockResolvedValueOnce([projectId]);
+    mockHandoverModel.aggregate.mockResolvedValue([]);
+
+    await service.findAll({ _id: actorId, rolePermissions: [] });
+
+    expect(allowAllAccess.visibleProjectIds).toHaveBeenCalledWith({ _id: actorId, rolePermissions: [] });
+    const [firstStage] = mockHandoverModel.aggregate.mock.calls[0][0];
+    const [scopedProjectId] = firstStage.$match.project.$in;
+    expect(String(scopedProjectId)).toBe(String(projectId));
   });
 
   it('throws BadRequestException when proofFileIds is missing', async () => {

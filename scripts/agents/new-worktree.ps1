@@ -81,4 +81,5 @@ Add-Link 'packages\shared\dist'   # built types used by the apps
   branch   = $Branch
   base     = $Base
   linked   = $links.ToArray()
+  warning  = 'node_modules here are links into the main checkout. NEVER run pnpm install (any flags) in this worktree: it would empty the main checkout node_modules. Only type-check, build and test.'
 } | ConvertTo-Json

@@ -13,7 +13,7 @@ You are ONE stage of a multi-agent pipeline run by a lead agent through Herdr. A
 6. **Never merge anything**, and never use `gh pr merge`.
 7. Commits use Conventional Commits (`feat(scope): ...`, `fix:`, `security:`, `docs:`, `refactor:`, `test:`, `chore:`). **No `Co-Authored-By` line, no "Claude", no "Generated with" or any other attribution** in commits or PR text. Never commit `.env` files or secrets.
 8. Work **only in the working directory given** in "This run" (a git worktree). Never switch branches or edit files in any other checkout: another checkout may be serving a running app.
-9. Do not change dependencies (`package.json`, lockfiles). The worktree shares `node_modules` with the main checkout, so installing would change the main checkout. If a dependency change is needed, stop with `STATUS: NEEDS_HUMAN`.
+9. Do not change dependencies (`package.json`, lockfiles). The worktree's `node_modules` are links into the main checkout. **Never run `pnpm install` (with ANY flags, including `--frozen-lockfile` and `--lockfile-only`), `pnpm add`, `pnpm remove`, `pnpm update`, or delete `node_modules`.** pnpm sees a different workspace location and prunes through the links, emptying the main checkout's dependencies. Only run `type-check`, `build` and `test`. If a dependency change is needed, stop with `STATUS: NEEDS_HUMAN`.
 
 ## Project rules (CLAUDE.md and docs/SOW.md; the SOW wins)
 10. **Client isolation:** employees only see and act on their assigned projects, enforced server-side.

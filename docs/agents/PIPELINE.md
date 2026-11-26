@@ -44,6 +44,7 @@ request
 - **At most 2 agents run at once** (`maxConcurrentAgents`, the machine has limited memory): only stages 3 and 4 run in parallel. `herdr-stage.ps1` refuses to open a third pane.
 - **One worktree per run** (`../wt-<slug>`), created from `origin/dev-env`. Agents never touch the main checkout, which may be serving a running dev server.
 - **No dependency changes** by agents: the worktree shares the main checkout's `node_modules`. A needed dependency change stops the run with `NEEDS_HUMAN`.
+- **Never run `pnpm install` (any flags, including `--frozen-lockfile --lockfile-only`) in a worktree**, by an agent or by the lead. The worktree's `node_modules` are junctions into the main checkout, and pnpm prunes through them: this once emptied the main checkout's `node_modules` (repaired with `pnpm install --frozen-lockfile --offline` in the main checkout). To check that the lockfile is consistent, use a plain clone or copy with no junctions.
 - **Blocked agents ask you.** If an agent is waiting on a permission prompt the lead stops and asks; it never approves for you.
 - **Fix rounds are capped** (`maxFixRounds`, 2). After that the lead stops and reports instead of looping.
 

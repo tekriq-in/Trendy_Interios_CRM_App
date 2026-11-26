@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
+import { Types } from 'mongoose';
+import { PERMISSIONS } from '@ti/shared';
 import { DashboardService } from '../src/modules/dashboard/dashboard.service';
 
 const mockProjectModel = { find: jest.fn() };
@@ -45,7 +47,10 @@ describe('DashboardService', () => {
       ]),
     });
 
-    const result = await service.getWorkload();
+    const result = await service.getWorkload({}, {
+      _id: new Types.ObjectId().toHexString(),
+      rolePermissions: [PERMISSIONS.PROJECTS_READ_ALL],
+    });
 
     expect(result).toEqual([
       { userId: 'user-with-tasks', userName: 'Employee with tasks', totalTasks: 2, inProgress: 1 },
@@ -54,8 +59,40 @@ describe('DashboardService', () => {
     expect(mockUserModel.find).toHaveBeenCalledWith({ isActive: true });
   });
 
+  it('limits the project board to projects assigned to the requesting employee', async () => {
+    const employeeId = new Types.ObjectId().toHexString();
+    const projectId = new Types.ObjectId();
+    const assignedProjectsQuery = {
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([{ _id: projectId }]),
+    };
+    const boardQuery = {
+      populate: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([
+        { _id: projectId, title: 'Assigned project', currentStage: { name: 'Design' } },
+      ]),
+    };
+    mockProjectModel.find
+      .mockReturnValueOnce(assignedProjectsQuery)
+      .mockReturnValueOnce(boardQuery);
+
+    await service.getBoard({}, { _id: employeeId, rolePermissions: [] });
+
+    expect(mockProjectModel.find).toHaveBeenNthCalledWith(1, {
+      assignedTeam: new Types.ObjectId(employeeId),
+    });
+    expect(mockProjectModel.find).toHaveBeenNthCalledWith(2, {
+      status: 'active',
+      _id: { $in: [String(projectId)] },
+    });
+  });
+
   it('rejects invalid date ranges instead of silently returning misleading analytics', async () => {
-    await expect(service.getBoard({ from: '2026-02-30', to: '2026-03-01' })).rejects.toThrow(
+    await expect(service.getBoard(
+      { from: '2026-02-30', to: '2026-03-01' },
+      { _id: new Types.ObjectId().toHexString(), rolePermissions: [PERMISSIONS.PROJECTS_READ_ALL] },
+    )).rejects.toThrow(
       'dashboard.invalid_from_date',
     );
   });
@@ -96,7 +133,10 @@ describe('DashboardService', () => {
       });
     }
 
-    const result = await service.getBoard({ from: '2026-11-01', to: '2026-11-12' });
+    const result = await service.getBoard(
+      { from: '2026-11-01', to: '2026-11-12' },
+      { _id: new Types.ObjectId().toHexString(), rolePermissions: [PERMISSIONS.PROJECTS_READ_ALL] },
+    );
 
     expect(mockTaskModel.find).toHaveBeenCalledWith({
       $or: [

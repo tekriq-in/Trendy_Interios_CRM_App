@@ -5,6 +5,18 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { useAuthStore } from '@/store/auth.store';
 
+function requiresPasswordChange(token: string): boolean {
+  try {
+    const encoded = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+    if (!encoded) return false;
+    const padded = encoded + '='.repeat((4 - encoded.length % 4) % 4);
+    const payload = JSON.parse(atob(padded)) as { mustChangePassword?: boolean };
+    return payload.mustChangePassword === true;
+  } catch {
+    return false;
+  }
+}
+
 export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { _hasHydrated, refreshToken, accessToken, setAuth, clearAuth } = useAuthStore();
@@ -14,7 +26,14 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     if (!_hasHydrated) return;
 
     // Already have an in-memory access token — good to go.
-    if (accessToken) { setReady(true); return; }
+    if (accessToken) {
+      if (requiresPasswordChange(accessToken)) {
+        router.replace('/change-password');
+        return;
+      }
+      setReady(true);
+      return;
+    }
 
     // No refresh token persisted → send to login.
     if (!refreshToken) { router.replace('/login'); return; }
@@ -29,7 +48,11 @@ export function AuthGuard({ children }: { children: ReactNode }) {
       )
       .then(({ data }) => {
         setAuth(data.accessToken, data.refreshToken);
-        setReady(true);
+        if (requiresPasswordChange(data.accessToken)) {
+          router.replace('/change-password');
+        } else {
+          setReady(true);
+        }
       })
       .catch(() => {
         clearAuth();

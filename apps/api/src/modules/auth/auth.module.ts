@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { ActivityLogModule } from '../activity-log/activity-log.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { User, UserSchema } from '../users/schemas/user.schema';
       }),
     }),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    ActivityLogModule,
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController],

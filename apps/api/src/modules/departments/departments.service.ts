@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Department, DepartmentDocument } from './schemas/department.schema';
+import { SlaSettings, SlaSettingsDocument } from '../sla/schemas/sla-settings.schema';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service';
 import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
@@ -10,6 +11,7 @@ import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
 export class DepartmentsService {
   constructor(
     @InjectModel(Department.name) private deptModel: Model<DepartmentDocument>,
+    @InjectModel(SlaSettings.name) private slaModel: Model<SlaSettingsDocument>,
     private activityLog: ActivityLogService,
     private chatGroups: ChatGroupsService,
   ) {}
@@ -35,6 +37,12 @@ export class DepartmentsService {
       createdBy: new Types.ObjectId(actorId),
     });
 
+    await this.slaModel.updateOne(
+      { department: dept._id },
+      { $set: { defaultHours: dept.defaultSlaHours } },
+      { upsert: true },
+    );
+
     await this.activityLog.record({
       actor: actorId,
       action: 'department.created',
@@ -51,6 +59,14 @@ export class DepartmentsService {
   async update(id: string, dto: UpdateDepartmentDto, actorId: string) {
     const dept = await this.deptModel.findByIdAndUpdate(id, { $set: dto }, { new: true });
     if (!dept) throw new NotFoundException('department.not_found');
+
+    if (dto.defaultSlaHours !== undefined) {
+      await this.slaModel.updateOne(
+        { department: dept._id },
+        { $set: { defaultHours: dto.defaultSlaHours } },
+        { upsert: true },
+      );
+    }
 
     await this.activityLog.record({
       actor: actorId,

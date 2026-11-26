@@ -5,10 +5,14 @@ import { DepartmentsController } from './departments.controller';
 import { Department, DepartmentSchema } from './schemas/department.schema';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { ChatGroupsModule } from '../chat-groups/chat-groups.module';
+import { SlaSettings, SlaSettingsSchema } from '../sla/schemas/sla-settings.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Department.name, schema: DepartmentSchema }]),
+    MongooseModule.forFeature([
+      { name: Department.name, schema: DepartmentSchema },
+      { name: SlaSettings.name, schema: SlaSettingsSchema },
+    ]),
     ActivityLogModule,
     ChatGroupsModule,
   ],

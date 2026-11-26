@@ -4,6 +4,8 @@ import { AuthService } from './auth.service';
 import { LoginDto, MfaVerifyDto, RefreshDto, LogoutDto, MfaSetupConfirmDto } from './dto/login.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AllowPasswordChange } from '../../common/decorators/allow-password-change.decorator';
+import { ChangePasswordDto } from '../users/dto/user.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -39,6 +41,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   confirmMfa(@CurrentUser() user: { _id: string }, @Body() dto: MfaSetupConfirmDto) {
     return this.authService.confirmMfaSetup(user._id, dto.token);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @AllowPasswordChange()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  changePassword(
+    @CurrentUser() user: { _id: string },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user._id, dto);
   }
 
   @Post('refresh')

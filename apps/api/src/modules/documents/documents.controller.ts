@@ -49,8 +49,11 @@ export class DocumentsController {
   }
 
   @Get()
-  findByProject(@Query('projectId') projectId: string) {
-    return this.service.findByProject(projectId);
+  findByProject(
+    @Query('projectId') projectId: string,
+    @CurrentUser() actor: { _id: string; rolePermissions: string[] },
+  ) {
+    return this.service.findByProject(projectId, actor);
   }
 
   @Get(':id')

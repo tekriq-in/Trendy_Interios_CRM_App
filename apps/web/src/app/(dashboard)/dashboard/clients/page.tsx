@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { PERMISSIONS } from '@ti/shared';
 import { usePermissions } from '@/lib/usePermissions';
-import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2, UserX, UserCheck } from 'lucide-react';
+import { UserPlus, Pencil, X, Phone, Mail, MapPin, FolderPlus, UserCircle2, UserX, UserCheck, Trash2 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 interface Client {
@@ -29,6 +29,7 @@ export default function ClientsPage() {
   const canCreateClient = hasPermission(PERMISSIONS.CLIENTS_CREATE);
   const canCreateProject = hasPermission(PERMISSIONS.PROJECTS_CREATE);
   const canEditClient = hasPermission(PERMISSIONS.CLIENTS_EDIT);
+  const canDeleteClient = hasPermission(PERMISSIONS.CLIENTS_DELETE);
   const router = useRouter();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -39,6 +40,7 @@ export default function ClientsPage() {
   const [err, setErr] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [showInactive, setShowInactive] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // New project after client creation
   const [newClientId, setNewClientId] = useState<string | null>(null);
@@ -54,6 +56,30 @@ export default function ClientsPage() {
   const reactivateMut = useMutation({
     mutationFn: (id: string) => apiClient.patch(`/clients/${id}/reactivate`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/clients/${id}`),
+    onSuccess: () => {
+      setDeleteError('');
+      void qc.invalidateQueries();
+    },
+    onError: (error: unknown) => {
+      const raw = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setDeleteError(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to permanently delete the client.'));
+    },
+  });
+
+  const deleteAllMut = useMutation({
+    mutationFn: (confirm: string) => apiClient.delete('/clients', { data: { confirm } }),
+    onSuccess: () => {
+      setDeleteError('');
+      void qc.invalidateQueries();
+    },
+    onError: (error: unknown) => {
+      const raw = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setDeleteError(Array.isArray(raw) ? raw.join(', ') : (raw ?? 'Failed to permanently delete all clients.'));
+    },
   });
 
   const { data: clients = [], isLoading } = useQuery<Client[]>({
@@ -73,6 +99,16 @@ export default function ClientsPage() {
   });
 
   const sortedDepts = [...departments].sort((a, b) => a.order - b.order);
+
+  function confirmDeleteAll() {
+    const confirmation = window.prompt(
+      'Permanently delete ALL clients, including inactive clients and clients hidden by your current search, along with their project data? Immutable audit history and Google Drive files will be retained. Type DELETE ALL to continue.',
+    );
+    if (confirmation !== 'DELETE ALL') return;
+
+    setDeleteError('');
+    deleteAllMut.mutate(confirmation);
+  }
 
   function set(key: keyof FormState, value: string | boolean) {
     setForm(p => ({ ...p, [key]: value }));
@@ -188,6 +224,17 @@ export default function ClientsPage() {
             <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
             Show inactive
           </label>
+          {canDeleteClient && (
+            <button
+              onClick={confirmDeleteAll}
+              disabled={deleteAllMut.isPending || deleteMut.isPending}
+              aria-label={deleteAllMut.isPending ? 'Deleting all clients' : 'Delete all clients permanently'}
+              title={deleteAllMut.isPending ? 'Deleting all clients…' : 'Delete all clients permanently'}
+              className="flex items-center justify-center bg-red-600 text-white p-2.5 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           {canCreateClient && (
             <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap">
               <UserPlus className="w-4 h-4" /> Add Client
@@ -195,6 +242,12 @@ export default function ClientsPage() {
           )}
         </div>
       </div>
+
+      {deleteError && (
+        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {deleteError}
+        </p>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -261,6 +314,25 @@ export default function ClientsPage() {
                       <UserCheck className="w-3.5 h-3.5" />
                     </button>
                   ))}
+                  {canDeleteClient && (
+                    <button
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Permanently delete ${c.name} and all of their MongoDB project data, including tasks, documents, approvals, handovers, chats, purchase items, shade cards, and blockers? Immutable audit history will be retained. This cannot be undone.`,
+                        );
+                        if (confirmed) {
+                          setDeleteError('');
+                          deleteMut.mutate(c._id);
+                        }
+                      }}
+                      disabled={deleteMut.isPending || deleteAllMut.isPending}
+                      aria-label={`Permanently delete ${c.name}`}
+                      title="Permanently delete client and project data"
+                      className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -292,7 +364,6 @@ export default function ClientsPage() {
           ))}
         </div>
       )}
-
       {/* Add/Edit Client Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-12 px-4 overflow-y-auto">

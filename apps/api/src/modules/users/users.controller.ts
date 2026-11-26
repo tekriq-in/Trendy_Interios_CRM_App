@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UsersService, CreateUserDto, UpdateUserDto } from './users.service';
+import { UsersService, CreateUserDto, ResetPasswordDto, UpdateUserDto } from './users.service';
 import { PERMISSIONS } from '@ti/shared';
 
 @Controller('users')
@@ -34,6 +34,12 @@ export class UsersController {
     return this.usersService.findAll({ isActive: true }).then((users) =>
       users.map((u) => ({ _id: u._id, name: u.name, email: u.email })),
     );
+  }
+
+  @Get('for-dashboard')
+  @RequirePermissions(PERMISSIONS.DASHBOARD_VIEW)
+  findForDashboard(@CurrentUser() actor: { _id: string; rolePermissions: string[] }) {
+    return this.usersService.findForDashboard(actor);
   }
 
   @Get()
@@ -73,10 +79,30 @@ export class UsersController {
     return this.usersService.update(id, dto, actor._id);
   }
 
-  @Delete(':id')
+  @Post(':id/reset-password')
+  @RequirePermissions(PERMISSIONS.USERS_RESET_PASSWORD)
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.usersService.resetPassword(id, dto, actor._id);
+  }
+
+  @Patch(':id/deactivate')
   @RequirePermissions(PERMISSIONS.USERS_DELETE)
   @HttpCode(HttpStatus.OK)
   deactivate(@Param('id') id: string, @CurrentUser() actor: { _id: string }) {
     return this.usersService.deactivate(id, actor._id);
+  }
+
+  @Delete()
+  @RequirePermissions(PERMISSIONS.USERS_DELETE)
+  @HttpCode(HttpStatus.OK)
+  deleteAllPermanently(
+    @Body('confirm') confirmation: string,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.usersService.deleteAllPermanently(confirmation, actor._id);
   }
 }

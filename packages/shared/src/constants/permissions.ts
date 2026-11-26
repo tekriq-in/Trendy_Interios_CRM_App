@@ -4,6 +4,7 @@ export const PERMISSIONS = {
   USERS_CREATE: 'users:create',
   USERS_EDIT: 'users:edit',
   USERS_DELETE: 'users:delete',
+  USERS_RESET_PASSWORD: 'users:reset_password',
 
   // Roles
   ROLES_READ: 'roles:read',
@@ -21,6 +22,7 @@ export const PERMISSIONS = {
   CLIENTS_READ: 'clients:read',
   CLIENTS_CREATE: 'clients:create',
   CLIENTS_EDIT: 'clients:edit',
+  CLIENTS_DELETE: 'clients:delete',
 
   // Projects
   PROJECTS_READ_ALL: 'projects:read_all',
@@ -86,6 +88,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.USERS_READ,
     PERMISSIONS.USERS_CREATE,
     PERMISSIONS.USERS_EDIT,
+    PERMISSIONS.USERS_RESET_PASSWORD,
     PERMISSIONS.DEPARTMENTS_READ,
     PERMISSIONS.DEPARTMENTS_CREATE,
     PERMISSIONS.DEPARTMENTS_EDIT,

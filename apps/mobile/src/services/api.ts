@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { router } from 'expo-router';
 import { store } from '../store';
 import { clearAuth, setAuth } from '../store/slices/auth.slice';
 
@@ -48,6 +49,13 @@ api.interceptors.response.use(
   (res) => res,
   async (err: AxiosError) => {
     const original = err.config as RetriableConfig | undefined;
+    // An admin reset this user's password: the API refuses everything (403) until they change
+    // it, so send them to the change-password screen instead of treating it as a failure.
+    const data = err.response?.data as { message?: string } | undefined;
+    if (err.response?.status === 403 && data?.message === 'auth.password_change_required') {
+      router.replace('/change-password');
+      return Promise.reject(err);
+    }
     // Access tokens last 15 minutes. Without this, staff were signed out of
     // the app every 15 minutes even though their refresh token was still valid.
     if (err.response?.status === 401 && original && !original._retried && !isAuthRoute(original.url)) {

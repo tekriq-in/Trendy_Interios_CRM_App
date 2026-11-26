@@ -46,10 +46,9 @@ export class HandoversService {
       const byProject = { project: new Types.ObjectId(projectId) };
       match = visible ? { $and: [match, byProject] } : byProject;
     }
-    const matchStage = { $match: match };
 
     return this.handoverModel.aggregate([
-      matchStage,
+      { $match: match },
       { $sort: { createdAt: -1 } },
       {
         $lookup: {

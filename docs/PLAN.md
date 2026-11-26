@@ -202,6 +202,7 @@ whatsapp:send_approved   ← system-only, never assignable to users
 | roles:* | ✓ | — | — | — |
 | departments:* | ✓ | ✓ | — | — |
 | clients:read | ✓ | ✓ | ✓ | assigned |
+| clients:delete | ✓ | — | — | — |
 | projects:read_all | ✓ | ✓ | — | — |
 | projects:read_own | ✓ | ✓ | ✓ | ✓ |
 | projects:create/edit | ✓ | ✓ | — | — |

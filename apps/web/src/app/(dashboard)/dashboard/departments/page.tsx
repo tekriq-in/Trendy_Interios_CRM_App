@@ -110,6 +110,7 @@ export default function DepartmentsPage() {
       if (editing) { await apiClient.patch(`/departments/${editing._id}`, payload); }
       else { await apiClient.post('/departments', payload); }
       qc.invalidateQueries({ queryKey: ['departments'] });
+      qc.invalidateQueries({ queryKey: ['sla'] });
       setShowModal(false);
     } catch (e: unknown) {
       setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to save.');

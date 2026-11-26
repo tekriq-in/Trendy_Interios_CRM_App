@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, ParseBoolPipe, DefaultValuePipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, ParseBoolPipe, DefaultValuePipe } from '@nestjs/common';
 import { ClientsService, CreateClientDto, UpdateClientDto } from './clients.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -52,5 +52,20 @@ export class ClientsController {
     @CurrentUser() actor: { _id: string },
   ) {
     return this.service.update(id, dto, actor._id);
+  }
+
+  @Delete()
+  @RequirePermissions(PERMISSIONS.CLIENTS_DELETE)
+  deleteAllPermanently(
+    @Body('confirm') confirmation: string,
+    @CurrentUser() actor: { _id: string },
+  ) {
+    return this.service.deleteAllPermanently(confirmation, actor._id);
+  }
+
+  @Delete(':id')
+  @RequirePermissions(PERMISSIONS.CLIENTS_DELETE)
+  deletePermanently(@Param('id') id: string) {
+    return this.service.deletePermanently(id);
   }
 }

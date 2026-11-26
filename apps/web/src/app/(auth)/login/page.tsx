@@ -19,6 +19,24 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  function finishSignIn(accessToken: string, refreshToken: string, fallbackIdentifier: string) {
+    const encoded = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = encoded + '='.repeat((4 - encoded.length % 4) % 4);
+    const payload = JSON.parse(atob(padded));
+    const name: string = payload.name ?? fallbackIdentifier.split('@')[0];
+    const roleName: string = payload.role ?? 'Staff';
+    const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+    setAuth(accessToken, refreshToken, {
+      id: payload.sub as string,
+      name,
+      email: payload.email ?? fallbackIdentifier,
+      role: roleName,
+      initials,
+      department: payload.department ?? null,
+    });
+    router.push(payload.mustChangePassword ? '/change-password' : '/dashboard');
+  }
+
   // Detect whether the identifier looks like a phone number
   const isPhoneInput = /^[+\d][\d\s\-()+]*$/.test(identifier.trim()) && !identifier.includes('@');
 
@@ -47,16 +65,7 @@ export default function LoginPage() {
         setMfaRequired(true);
         setUserId(res.data.userId!);
       } else {
-        const payload = JSON.parse(atob(res.data.accessToken!.split('.')[1]));
-        const name: string = payload.name ?? id.split('@')[0];
-        const roleName: string = payload.role ?? 'Staff';
-        const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
-        setAuth(res.data.accessToken!, res.data.refreshToken!, {
-          id: payload.sub as string,
-          name, email: payload.email ?? id, role: roleName, initials,
-          department: payload.department ?? null,
-        });
-        router.push('/dashboard');
+        finishSignIn(res.data.accessToken!, res.data.refreshToken!, id);
       }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string }; status?: number }; message?: string; code?: string };
@@ -83,12 +92,7 @@ export default function LoginPage() {
         `${API_URL}/auth/mfa/verify`,
         { userId, token: mfaToken },
       );
-      const payload = JSON.parse(atob(res.data.accessToken.split('.')[1]));
-      const name: string = payload.name ?? identifier.split('@')[0];
-      const roleName: string = payload.role ?? 'Staff';
-      const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
-      setAuth(res.data.accessToken, res.data.refreshToken, { id: payload.sub as string, name, email: payload.email ?? identifier, role: roleName, initials, department: payload.department ?? null });
-      router.push('/dashboard');
+      finishSignIn(res.data.accessToken, res.data.refreshToken, identifier);
     } catch {
       setError('Invalid MFA code. Please try again.');
     } finally {

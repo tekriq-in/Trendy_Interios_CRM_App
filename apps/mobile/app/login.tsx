@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { api } from '../src/services/api';
 import { setAuth } from '../src/store/slices/auth.slice';
+import { decodeJwt } from '../src/utils/jwt';
 import { setLanguage, type Language } from '../src/store/slices/ui.slice';
 import type { RootState } from '../src/store';
 import { Button, TextField } from '../src/components/ui';
@@ -52,7 +53,8 @@ export default function LoginScreen() {
 
   async function finishSignIn(accessToken: string, refreshToken: string) {
     dispatch(setAuth({ accessToken, refreshToken }));
-    router.replace('/(app)/home');
+    // An admin reset this user's password: they must set a new one before using the app.
+    router.replace(decodeJwt(accessToken)?.mustChangePassword ? '/change-password' : '/(app)/home');
   }
 
   async function handleLogin() {

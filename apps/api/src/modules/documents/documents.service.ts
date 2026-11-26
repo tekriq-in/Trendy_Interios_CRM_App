@@ -2,13 +2,16 @@ import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { TIDocument, DocumentDoc } from './schemas/document.schema';
+import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 import { DRIVE_SERVICE, IDriveService } from '../drive/drive.interface';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { PERMISSIONS } from '@ti/shared';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     @InjectModel(TIDocument.name) private docModel: Model<DocumentDoc>,
+    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     @Inject(DRIVE_SERVICE) private driveService: IDriveService,
     private activityLog: ActivityLogService,
   ) {}
@@ -55,7 +58,21 @@ export class DocumentsService {
     return doc;
   }
 
-  async findByProject(projectId: string) {
+  async findByProject(
+    projectId: string,
+    actor: { _id: string; rolePermissions: string[] },
+  ) {
+    if (!actor.rolePermissions.includes(PERMISSIONS.PROJECTS_READ_ALL)) {
+      const project = await this.projectModel
+        .findOne({
+          _id: new Types.ObjectId(projectId),
+          assignedTeam: new Types.ObjectId(actor._id),
+        })
+        .select('_id')
+        .lean();
+      if (!project) throw new NotFoundException('project.not_found');
+    }
+
     return this.docModel
       .find({ project: new Types.ObjectId(projectId), isDeleted: { $ne: true } })
       .sort({ createdAt: -1 })

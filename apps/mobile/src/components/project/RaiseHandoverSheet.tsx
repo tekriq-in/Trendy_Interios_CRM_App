@@ -1,10 +1,14 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
+import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
 import { api, describeApiError } from '../../services/api';
 import { uploadProjectPhoto } from '../../services/uploads';
+import { enqueue } from '../../store/slices/offline-queue.slice';
 import { pickPhoto, type PhotoSource, type PickedPhoto } from '../../utils/photo';
+import { createRequestId } from '../../utils/request-id';
 import { Button, Sheet, TextField } from '../ui';
 import { colors, font, radius, spacing } from '../../theme';
 import type { StageDept } from './StageStepper';
@@ -17,7 +21,7 @@ interface Props {
   projectId: string;
   from: StageDept;
   to: StageDept;
-  onRaised: () => void;
+  onRaised: (queued?: boolean) => void;
 }
 
 /**
@@ -27,6 +31,7 @@ interface Props {
  */
 export function RaiseHandoverSheet({ visible, onClose, projectId, from, to, onRaised }: Props) {
   const { t } = useTranslation();
+  const dispatch = useDispatch();
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -54,9 +59,29 @@ export function RaiseHandoverSheet({ visible, onClose, projectId, from, to, onRa
     }
     setSubmitting(true);
     setError('');
+    const clientRequestId = createRequestId();
+    const proofFileIds: string[] = [];
     try {
+      const connection = await NetInfo.fetch();
+      if (connection.isConnected === false || connection.isInternetReachable === false) {
+        dispatch(enqueue({
+          type: 'handover_create',
+          payload: {
+            projectId,
+            fromDepartmentId: from._id,
+            toDepartmentId: to._id,
+            proofFileIds,
+            proofPhotos: photos,
+            notes: notes.trim() || undefined,
+            clientRequestId,
+          },
+        }));
+        onRaised(true);
+        onClose();
+        return;
+      }
+
       // 1. Upload the proof photos, 2. raise the handover pointing at them.
-      const proofFileIds: string[] = [];
       for (const photo of photos) {
         proofFileIds.push(await uploadProjectPhoto(photo, projectId, from._id));
       }
@@ -66,10 +91,28 @@ export function RaiseHandoverSheet({ visible, onClose, projectId, from, to, onRa
         toDepartmentId: to._id,
         proofFileIds,
         notes: notes.trim() || undefined,
+        clientRequestId,
       });
       onRaised();
       onClose();
     } catch (err) {
+      if (describeApiError(err, '') === 'offline') {
+        dispatch(enqueue({
+          type: 'handover_create',
+          payload: {
+            projectId,
+            fromDepartmentId: from._id,
+            toDepartmentId: to._id,
+            proofFileIds,
+            proofPhotos: photos,
+            notes: notes.trim() || undefined,
+            clientRequestId,
+          },
+        }));
+        onRaised(true);
+        onClose();
+        return;
+      }
       const msg = describeApiError(err, t('handover.failed'));
       setError(msg === 'offline' ? t('common.checkConnection') : msg);
     } finally {

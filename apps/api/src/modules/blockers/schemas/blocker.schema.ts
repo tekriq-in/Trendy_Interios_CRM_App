@@ -6,6 +6,9 @@ export type BlockerDocument = Blocker & Document;
 
 @Schema({ timestamps: true })
 export class Blocker {
+  @Prop({ type: String, unique: true, sparse: true })
+  clientRequestId?: string;
+
   @Prop({ type: Types.ObjectId, ref: 'Project', required: true })
   project: Types.ObjectId;
 

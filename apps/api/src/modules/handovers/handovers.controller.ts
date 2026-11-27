@@ -25,6 +25,7 @@ export class HandoversController {
       toDepartmentId: string;
       proofFileIds: string[];
       notes?: string;
+      clientRequestId?: string;
     },
     @CurrentUser() actor: HandoverActor,
   ) {

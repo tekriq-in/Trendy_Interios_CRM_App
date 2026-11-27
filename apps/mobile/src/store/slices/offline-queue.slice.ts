@@ -1,9 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { randomUUID } from 'expo-crypto';
+import { createRequestId } from '../../utils/request-id';
 
 export interface QueuedAction {
   id: string;
-  type: 'task_update' | 'task_create' | 'document_upload';
+  type: 'task_update' | 'task_create' | 'document_upload' | 'blocker_create' | 'handover_create';
   payload: Record<string, unknown>;
   createdAt: string;
   retries: number;
@@ -28,7 +28,7 @@ export const offlineQueueSlice = createSlice({
     enqueue: (state, action: PayloadAction<Omit<QueuedAction, 'id' | 'createdAt' | 'retries' | 'failed'>>) => {
       state.queue.push({
         ...action.payload,
-        id: randomUUID(),
+        id: createRequestId(),
         createdAt: new Date().toISOString(),
         retries: 0,
       });
@@ -39,6 +39,10 @@ export const offlineQueueSlice = createSlice({
     incrementRetry: (state, action: PayloadAction<string>) => {
       const item = state.queue.find((i) => i.id === action.payload);
       if (item) item.retries += 1;
+    },
+    updatePayload: (state, action: PayloadAction<{ id: string; payload: Record<string, unknown> }>) => {
+      const item = state.queue.find((i) => i.id === action.payload.id);
+      if (item) Object.assign(item.payload, action.payload.payload);
     },
     markFailed: (state, action: PayloadAction<string>) => {
       const item = state.queue.find((i) => i.id === action.payload);
@@ -53,6 +57,13 @@ export const offlineQueueSlice = createSlice({
         }
       });
     },
+    retryItem: (state, action: PayloadAction<string>) => {
+      const item = state.queue.find((i) => i.id === action.payload);
+      if (item) {
+        item.failed = false;
+        item.retries = 0;
+      }
+    },
     /** Removes the failed actions (the user chose "Discard"). */
     discardFailed: (state) => {
       state.queue = state.queue.filter((item) => !item.failed);
@@ -63,6 +74,6 @@ export const offlineQueueSlice = createSlice({
   },
 });
 
-export const { enqueue, dequeue, incrementRetry, markFailed, retryFailed, discardFailed, clearQueue } =
+export const { enqueue, dequeue, incrementRetry, updatePayload, markFailed, retryFailed, retryItem, discardFailed, clearQueue } =
   offlineQueueSlice.actions;
 export default offlineQueueSlice.reducer;

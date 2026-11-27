@@ -1,7 +1,11 @@
-import { IsString, IsOptional, IsEnum, IsMongoId, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsMongoId, MinLength, MaxLength, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class RaiseBlockerDto {
+  @IsOptional()
+  @IsUUID()
+  clientRequestId?: string;
+
   @IsMongoId({ message: 'projectId must be a valid ID.' })
   projectId: string;
 

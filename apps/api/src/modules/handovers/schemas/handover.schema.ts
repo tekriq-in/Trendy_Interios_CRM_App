@@ -6,6 +6,9 @@ export type HandoverDocument = Handover & Document;
 
 @Schema({ timestamps: true })
 export class Handover {
+  @Prop({ type: String, unique: true, sparse: true })
+  clientRequestId?: string;
+
   @Prop({ type: Types.ObjectId, ref: 'Project', required: true })
   project: Types.ObjectId;
 

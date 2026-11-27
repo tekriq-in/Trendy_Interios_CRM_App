@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { View, type ColorValue } from 'react-native';
+import { Platform, View, type ColorValue } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
+import Constants from 'expo-constants';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +9,6 @@ import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { syncOfflineQueue } from '../../src/services/sync.service';
-import { registerForPushNotifications } from '../../src/services/notifications.service';
 import type { RootState } from '../../src/store';
 import { SocketProvider, useSocket } from '../../src/context/socket.context';
 import { useLoadPermissions } from '../../src/hooks/usePermissions';
@@ -90,14 +90,25 @@ export default function AppLayout() {
   useLoadPermissions();
 
   useEffect(() => {
-    registerForPushNotifications().catch(() => {});
-  }, []);
+    // Push registration is opt-in because Expo Go does not include the
+    // notifications native module. Set this flag only for a native build.
+    if (
+      !token ||
+      Platform.OS === 'web' ||
+      Constants.appOwnership === 'expo' ||
+      process.env.EXPO_PUBLIC_ENABLE_PUSH_NOTIFICATIONS !== 'true'
+    ) return;
+
+    import('../../src/services/notifications.service')
+      .then(({ registerForPushNotifications }) => registerForPushNotifications())
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       const online = state.isConnected === true && state.isInternetReachable !== false;
       // Flush queued changes the moment we come back online.
-      if (online && wasConnected.current === false) {
+      if (online && wasConnected.current !== true) {
         syncOfflineQueue().catch(() => {});
       }
       wasConnected.current = online;

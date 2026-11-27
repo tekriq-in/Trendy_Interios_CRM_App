@@ -180,9 +180,9 @@ export default function BlockersScreen() {
         visible={showRaise}
         onClose={() => setShowRaise(false)}
         projects={projects}
-        onRaised={() => {
-          showToast(t('blocker.raised'), 'success');
-          void load();
+        onRaised={(queued) => {
+          showToast(queued ? t('task.savedOffline') : t('blocker.raised'), queued ? 'info' : 'success');
+          if (!queued) void load();
         }}
       />
     </View>

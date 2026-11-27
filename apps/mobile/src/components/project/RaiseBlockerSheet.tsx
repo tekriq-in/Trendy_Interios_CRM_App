@@ -1,7 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
+import NetInfo from '@react-native-community/netinfo';
 import { api, describeApiError } from '../../services/api';
+import { enqueue } from '../../store/slices/offline-queue.slice';
+import { createRequestId } from '../../utils/request-id';
 import { Button, Chip, Sheet, TextField } from '../ui';
 import { colors, font, radius, spacing } from '../../theme';
 
@@ -14,7 +18,7 @@ interface Props {
   projectId?: string;
   /** Projects to choose from when `projectId` is not given. */
   projects?: { _id: string; title: string }[];
-  onRaised: () => void;
+  onRaised: (queued?: boolean) => void;
 }
 
 /**
@@ -27,6 +31,7 @@ const NO_PROJECTS: { _id: string; title: string }[] = [];
 
 export function RaiseBlockerSheet({ visible, onClose, projectId, projects = NO_PROJECTS, onRaised }: Props) {
   const { t } = useTranslation();
+  const dispatch = useDispatch();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<BlockerType>('internal');
@@ -57,16 +62,31 @@ export function RaiseBlockerSheet({ visible, onClose, projectId, projects = NO_P
     }
     setSubmitting(true);
     setError('');
-    try {
-      await api.post('/blockers', {
+    const data = {
         projectId: targetId,
         title: title.trim(),
         description: description.trim() || undefined,
         type,
-      });
+        clientRequestId: createRequestId(),
+      };
+    try {
+      const connection = await NetInfo.fetch();
+      if (connection.isConnected === false || connection.isInternetReachable === false) {
+        dispatch(enqueue({ type: 'blocker_create', payload: data }));
+        onRaised(true);
+        onClose();
+        return;
+      }
+      await api.post('/blockers', data);
       onRaised();
       onClose();
     } catch (err) {
+      if (describeApiError(err, '') === 'offline') {
+        dispatch(enqueue({ type: 'blocker_create', payload: data }));
+        onRaised(true);
+        onClose();
+        return;
+      }
       const msg = describeApiError(err, t('blocker.failed'));
       setError(msg === 'offline' ? t('common.checkConnection') : msg);
     } finally {

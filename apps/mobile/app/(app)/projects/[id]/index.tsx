@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { PERMISSIONS } from '@ti/shared';
@@ -17,6 +18,11 @@ import { HandoverItem, type HandoverRow } from '../../../../src/components/proje
 import { RaiseHandoverSheet } from '../../../../src/components/project/RaiseHandoverSheet';
 import { RaiseBlockerSheet } from '../../../../src/components/project/RaiseBlockerSheet';
 import { RejectHandoverSheet } from '../../../../src/components/project/RejectHandoverSheet';
+import { PendingPhotos } from '../../../../src/components/project/PendingPhotos';
+import { PendingHandovers } from '../../../../src/components/project/PendingHandovers';
+import { AddPhotoSheet } from '../../../../src/components/project/AddPhotoSheet';
+import type { PickedPhoto } from '../../../../src/utils/photo';
+import type { RootState } from '../../../../src/store';
 import { colors, font, radius, spacing } from '../../../../src/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -37,11 +43,22 @@ interface DocRow {
   type: string;
 }
 
+function displayFileName(fileName: string): string {
+  try {
+    return decodeURIComponent(fileName);
+  } catch {
+    return fileName;
+  }
+}
+
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, i18n } = useTranslation();
   const { can } = usePermissions();
   const { toast, show: showToast, hide: hideToast } = useToast();
+  const pendingHandoverCount = useSelector((state: RootState) =>
+    state.offlineQueue.queue.filter((item) => item.type === 'handover_create' && item.payload.projectId === id).length,
+  );
 
   const [project, setProject] = useState<ProjectData | null>(null);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -55,6 +72,7 @@ export default function ProjectDetailScreen() {
 
   const [showHandover, setShowHandover] = useState(false);
   const [showBlocker, setShowBlocker] = useState(false);
+  const [photoTarget, setPhotoTarget] = useState<{ taskId?: string } | null>(null);
   const [rejecting, setRejecting] = useState<HandoverRow | null>(null);
 
   const load = useCallback(async () => {
@@ -91,6 +109,10 @@ export default function ProjectDetailScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  }, [load]);
+
+  const refreshAfterQueuedHandover = useCallback(() => {
+    void load();
   }, [load]);
 
   const currentId = typeof project?.currentStage === 'object' ? project.currentStage._id : (project?.currentStage ?? '');
@@ -182,6 +204,9 @@ export default function ProjectDetailScreen() {
           {dueFmt ? <Text style={styles.target}>{t('project.targetDate')}: {dueFmt}</Text> : null}
         </Card>
 
+        {/* Keep queued photos near the top so they are visible after capture. */}
+        <PendingPhotos projectId={id} />
+
         {/* Stage stepper */}
         {stages.length > 0 ? (
           <>
@@ -193,7 +218,7 @@ export default function ProjectDetailScreen() {
         {/* Quick actions */}
         <Text style={styles.section}>{t('project.actions')}</Text>
         <View style={styles.grid}>
-          {canUpload ? <Action icon="camera" label={t('project.addPhoto')} onPress={() => taskActions.addPhoto({ projectId: id, departmentId: currentStage?._id })} /> : null}
+          {canUpload ? <Action icon="camera" label={t('project.addPhoto')} onPress={() => setPhotoTarget({})} /> : null}
           {canRaiseBlocker ? <Action icon="warning" label={t('project.raiseBlocker')} onPress={() => setShowBlocker(true)} tone="danger" /> : null}
           <Action icon="chatbubbles" label={t('project.chat')} onPress={() => router.push(`/projects/${id}/chat` as never)} />
           <Action icon="cart" label={t('project.items')} onPress={() => router.push(`/projects/${id}/purchase-items` as never)} />
@@ -214,7 +239,7 @@ export default function ProjectDetailScreen() {
               canEdit={canEditTasks}
               onStart={() => taskActions.setStatus(task._id, 'in_progress')}
               onDone={() => taskActions.setStatus(task._id, 'done')}
-              onPhoto={() => taskActions.addPhoto({ projectId: id, departmentId: currentStage?._id, taskId: task._id })}
+              onPhoto={() => setPhotoTarget({ taskId: task._id })}
             />
           ))
         )}
@@ -230,12 +255,13 @@ export default function ProjectDetailScreen() {
         ) : !nextStage && currentStage ? (
           <Text style={styles.final}>{t('project.finalStage')}</Text>
         ) : null}
-        {handovers.length === 0 ? (
+        <PendingHandovers projectId={id} departments={stages} onSynced={refreshAfterQueuedHandover} />
+        {handovers.length === 0 && pendingHandoverCount === 0 ? (
           <Card>
             <Text style={styles.empty}>{t('handover.none')}</Text>
           </Card>
-        ) : (
-          handovers.map((h) => (
+        ) : null}
+        {handovers.map((h) => (
             <HandoverItem
               key={h._id}
               handover={h}
@@ -246,8 +272,7 @@ export default function ProjectDetailScreen() {
               onAccept={() => handoverAction(h, 'accept')}
               onReject={() => setRejecting(h)}
             />
-          ))
-        )}
+          ))}
 
         {/* Documents */}
         {docs.length > 0 ? (
@@ -264,7 +289,7 @@ export default function ProjectDetailScreen() {
                   <Ionicons name={d.mimeType.includes('pdf') ? 'document-text' : 'image'} size={22} color={colors.primary} />
                 </View>
                 <View style={styles.flex}>
-                  <Text style={font.bodyStrong} numberOfLines={1}>{d.fileName}</Text>
+                  <Text style={font.bodyStrong} numberOfLines={1}>{displayFileName(d.fileName)}</Text>
                   <Text style={font.caption}>{d.type.replace('drawing_', '').replace(/_/g, ' ')}</Text>
                 </View>
                 <Text style={styles.view}>{t('project.view')}</Text>
@@ -282,9 +307,9 @@ export default function ProjectDetailScreen() {
           projectId={id}
           from={currentStage}
           to={nextStage}
-          onRaised={() => {
-            showToast(t('handover.submitted'), 'success');
-            void load();
+          onRaised={(queued) => {
+            showToast(queued ? t('task.savedOffline') : t('handover.submitted'), queued ? 'info' : 'success');
+            if (!queued) void load();
           }}
         />
       ) : null}
@@ -292,9 +317,18 @@ export default function ProjectDetailScreen() {
         visible={showBlocker}
         onClose={() => setShowBlocker(false)}
         projectId={id}
-        onRaised={() => showToast(t('blocker.raised'), 'success')}
+        onRaised={(queued) => showToast(queued ? t('task.savedOffline') : t('blocker.raised'), queued ? 'info' : 'success')}
       />
       <RejectHandoverSheet handover={rejecting} onClose={() => setRejecting(null)} onRejected={() => void load()} />
+      <AddPhotoSheet
+        visible={photoTarget !== null}
+        onClose={() => setPhotoTarget(null)}
+        onUpload={(photo: PickedPhoto, fileName: string) => taskActions.addPhoto(
+          { projectId: id, departmentId: currentStage?._id, taskId: photoTarget?.taskId },
+          photo,
+          fileName,
+        )}
+      />
     </View>
   );
 }

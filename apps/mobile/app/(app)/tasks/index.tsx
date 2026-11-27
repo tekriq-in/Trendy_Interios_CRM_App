@@ -12,7 +12,10 @@ import { SkeletonTaskRow } from '../../../src/components/Skeleton';
 import { Toast, useToast } from '../../../src/components/Toast';
 import { Chip, EmptyState, ErrorState, HeaderIconButton, ScreenHeader } from '../../../src/components/ui';
 import { TaskCard, type TaskRow } from '../../../src/components/project/TaskCard';
+import { AddPhotoSheet } from '../../../src/components/project/AddPhotoSheet';
+import { PendingPhotos } from '../../../src/components/project/PendingPhotos';
 import { CreateTaskSheet, type ProjectOption } from '../../../src/components/tasks/CreateTaskSheet';
+import type { PickedPhoto } from '../../../src/utils/photo';
 import { colors, font, spacing } from '../../../src/theme';
 
 interface ProjectRef extends ProjectOption {
@@ -54,6 +57,7 @@ export default function TasksScreen() {
   const [filter, setFilter] = useState<Filter>('open');
   const [everyone, setEveryone] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [photoTarget, setPhotoTarget] = useState<FlatTask | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -154,13 +158,16 @@ export default function TasksScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            <View style={styles.filters}>
-              <Chip label={`${t('tasks.open')} (${openCount})`} selected={filter === 'open'} onPress={() => setFilter('open')} />
-              <Chip label={`${t('tasks.done')} (${doneCount})`} selected={filter === 'done'} onPress={() => setFilter('done')} />
-              <Chip label={t('tasks.all')} selected={filter === 'all'} onPress={() => setFilter('all')} />
-              {canSeeOthers ? (
-                <Chip label={everyone ? t('tasks.everyone') : t('tasks.mine')} selected={everyone} onPress={() => setEveryone((v) => !v)} />
-              ) : null}
+            <View>
+              <View style={styles.filters}>
+                <Chip label={`${t('tasks.open')} (${openCount})`} selected={filter === 'open'} onPress={() => setFilter('open')} />
+                <Chip label={`${t('tasks.done')} (${doneCount})`} selected={filter === 'done'} onPress={() => setFilter('done')} />
+                <Chip label={t('tasks.all')} selected={filter === 'all'} onPress={() => setFilter('all')} />
+                {canSeeOthers ? (
+                  <Chip label={everyone ? t('tasks.everyone') : t('tasks.mine')} selected={everyone} onPress={() => setEveryone((v) => !v)} />
+                ) : null}
+              </View>
+              <PendingPhotos />
             </View>
           }
           ListEmptyComponent={
@@ -185,7 +192,7 @@ export default function TasksScreen() {
               canEdit={canEdit}
               onStart={() => actions.setStatus(item._id, 'in_progress')}
               onDone={() => actions.setStatus(item._id, 'done')}
-              onPhoto={() => actions.addPhoto({ projectId: item.projectId, departmentId: item.departmentId, taskId: item._id })}
+              onPhoto={() => setPhotoTarget(item)}
             />
           )}
         />
@@ -200,6 +207,17 @@ export default function TasksScreen() {
           showToast(t('tasks.created'), 'success');
           void load();
         }}
+      />
+      <AddPhotoSheet
+        visible={photoTarget !== null}
+        onClose={() => setPhotoTarget(null)}
+        onUpload={(photo: PickedPhoto, fileName: string) => photoTarget
+          ? actions.addPhoto(
+            { projectId: photoTarget.projectId, departmentId: photoTarget.departmentId, taskId: photoTarget._id },
+            photo,
+            fileName,
+          )
+          : Promise.resolve(false)}
       />
     </View>
   );

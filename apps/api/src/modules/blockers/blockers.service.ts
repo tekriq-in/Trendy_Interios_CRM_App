@@ -8,6 +8,10 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 import { ProjectAccessService } from '../../common/access/project-access.service';
 
+function isDuplicateKeyError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
+}
+
 @Injectable()
 export class BlockersService {
   constructor(
@@ -42,7 +46,7 @@ export class BlockersService {
   }
 
   async raise(
-    dto: { projectId: string; title: string; description?: string; type: string },
+    dto: { projectId: string; title: string; description?: string; type: string; clientRequestId?: string },
     actor: { _id: string; rolePermissions: string[] },
   ) {
     if (!actor.rolePermissions.includes(PERMISSIONS.BLOCKERS_RAISE)) {
@@ -50,14 +54,35 @@ export class BlockersService {
     }
     await this.access.assertAccess(dto.projectId, actor);
 
-    const blocker = await this.blockerModel.create({
-      project: new Types.ObjectId(dto.projectId),
-      raisedBy: new Types.ObjectId(actor._id),
-      title: dto.title,
-      description: dto.description,
-      type: dto.type,
-      createdBy: new Types.ObjectId(actor._id),
-    });
+    if (dto.clientRequestId) {
+      const existing = await this.blockerModel.findOne({
+        clientRequestId: dto.clientRequestId,
+        raisedBy: new Types.ObjectId(actor._id),
+      });
+      if (existing) return existing;
+    }
+
+    let blocker: BlockerDocument;
+    try {
+      blocker = await this.blockerModel.create({
+        project: new Types.ObjectId(dto.projectId),
+        raisedBy: new Types.ObjectId(actor._id),
+        title: dto.title,
+        description: dto.description,
+        type: dto.type,
+        clientRequestId: dto.clientRequestId,
+        createdBy: new Types.ObjectId(actor._id),
+      });
+    } catch (error) {
+      if (dto.clientRequestId && isDuplicateKeyError(error)) {
+        const existing = await this.blockerModel.findOne({
+          clientRequestId: dto.clientRequestId,
+          raisedBy: new Types.ObjectId(actor._id),
+        });
+        if (existing) return existing;
+      }
+      throw error;
+    }
 
     await this.activityLog.record({
       actor: actor._id,

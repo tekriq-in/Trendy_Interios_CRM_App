@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { Provider, useSelector } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
@@ -15,14 +14,6 @@ function AppInit() {
     if (i18n.language !== language) void i18n.changeLanguage(language);
   }, [language]);
 
-  useEffect(() => {
-    // expo-notifications does not run on web
-    if (Platform.OS !== 'web') {
-      import('../src/services/notifications.service').then(({ registerForPushNotifications }) => {
-        registerForPushNotifications();
-      });
-    }
-  }, []);
   return (
     <>
       <StatusBar style="dark" />

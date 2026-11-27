@@ -14,10 +14,9 @@ export type PhotoResult =
   | { status: 'denied' };
 
 /**
- * Opens the camera (default) or the gallery and returns one photo.
+ * Opens the camera or the gallery and returns one photo.
  *
- * Staff are standing at the work in front of them, so the camera is the
- * primary path; the gallery is the fallback. Quality 0.7 keeps uploads small
+ * Staff can take a new photo or choose an existing one. Quality 0.7 keeps uploads small
  * on weak mobile data without making site photos unreadable.
  */
 export async function pickPhoto(source: PhotoSource = 'camera'): Promise<PhotoResult> {

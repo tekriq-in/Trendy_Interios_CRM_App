@@ -7,6 +7,17 @@ import { DRIVE_SERVICE, IDriveService } from '../drive/drive.interface';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 
+/** React Native encodes spaces in multipart filenames as `%20` on some versions. */
+function normalizeUploadedFileName(fileName: string): string {
+  let decoded = fileName;
+  try {
+    decoded = decodeURIComponent(fileName);
+  } catch {
+    // Keep the original name if it contains malformed percent escapes.
+  }
+  return decoded.replace(/[\\/\u0000-\u001f\u007f]/g, '_').trim() || 'upload';
+}
+
 @Injectable()
 export class DocumentsService {
   constructor(
@@ -26,10 +37,11 @@ export class DocumentsService {
     },
     actorId: string,
   ) {
+    const fileName = normalizeUploadedFileName(file.originalname);
     const folderPath = meta.folderPath ?? `projects/${meta.projectId ?? 'general'}`;
     const result = await this.driveService.uploadFile(
       file.buffer,
-      file.originalname,
+      fileName,
       file.mimetype,
       folderPath,
     );
@@ -52,7 +64,7 @@ export class DocumentsService {
       action: 'document.uploaded',
       entity: 'documents',
       entityId: String(doc._id),
-      metadata: { fileName: file.originalname, type: meta.type },
+      metadata: { fileName, type: meta.type },
     });
 
     return doc;

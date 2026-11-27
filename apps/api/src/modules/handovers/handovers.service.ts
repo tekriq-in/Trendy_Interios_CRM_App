@@ -12,6 +12,10 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 import { PERMISSIONS } from '@ti/shared';
 import { ProjectAccessService, type Actor } from '../../common/access/project-access.service';
 
+function isDuplicateKeyError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
+}
+
 /** The signed-in user. `department` comes from the user record (set by the JWT strategy). */
 export type HandoverActor = Actor & { department?: unknown };
 
@@ -125,6 +129,7 @@ export class HandoversService {
       toDepartmentId: string;
       proofFileIds: string[];
       notes?: string;
+      clientRequestId?: string;
     },
     actor: { _id: string; rolePermissions: string[] },
   ) {
@@ -133,20 +138,41 @@ export class HandoversService {
     }
     await this.access.assertAccess(dto.projectId, actor);
 
+    if (dto.clientRequestId) {
+      const existing = await this.handoverModel.findOne({
+        clientRequestId: dto.clientRequestId,
+        raisedBy: new Types.ObjectId(actor._id),
+      });
+      if (existing) return existing;
+    }
+
     if (!dto.proofFileIds || dto.proofFileIds.length === 0) {
       throw new BadRequestException('handover.proof_required');
     }
 
-    const handover = await this.handoverModel.create({
-      project: new Types.ObjectId(dto.projectId),
-      fromDepartment: new Types.ObjectId(dto.fromDepartmentId),
-      toDepartment: new Types.ObjectId(dto.toDepartmentId),
-      raisedBy: new Types.ObjectId(actor._id),
-      proofFiles: dto.proofFileIds.map((id) => new Types.ObjectId(id)),
-      notes: dto.notes,
-      status: 'draft',
-      createdBy: new Types.ObjectId(actor._id),
-    });
+    let handover: HandoverDocument;
+    try {
+      handover = await this.handoverModel.create({
+        project: new Types.ObjectId(dto.projectId),
+        fromDepartment: new Types.ObjectId(dto.fromDepartmentId),
+        toDepartment: new Types.ObjectId(dto.toDepartmentId),
+        raisedBy: new Types.ObjectId(actor._id),
+        proofFiles: dto.proofFileIds.map((id) => new Types.ObjectId(id)),
+        clientRequestId: dto.clientRequestId,
+        notes: dto.notes,
+        status: 'draft',
+        createdBy: new Types.ObjectId(actor._id),
+      });
+    } catch (error) {
+      if (dto.clientRequestId && isDuplicateKeyError(error)) {
+        const existing = await this.handoverModel.findOne({
+          clientRequestId: dto.clientRequestId,
+          raisedBy: new Types.ObjectId(actor._id),
+        });
+        if (existing) return existing;
+      }
+      throw error;
+    }
 
     await this.activityLog.record({
       actor: actor._id,
